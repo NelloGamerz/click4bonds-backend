@@ -3,6 +3,7 @@ package com.click4bonds.app.Service;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Dto.ClerkWebhookRequest;
+import com.click4bonds.app.Modules.User.Service.UserService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;

@@ -1,4 +1,4 @@
-package com.click4bonds.app.Model;
+package com.click4bonds.app.Modules.User.Model;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -6,26 +6,17 @@ import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import com.click4bonds.app.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Enums.UserStatus;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Index;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import jakarta.persistence.*;
+import lombok.*;
 
 @Entity
 @Table(name = "users", indexes = {
         @Index(name = "idx_user_clerk_id", columnList = "clerkUserId", unique = true),
-        @Index(name = "idx_user_email", columnList = "email", unique = true)
+        @Index(name = "idx_user_email", columnList = "email", unique = true),
+        @Index(name = "idx_user_role", columnList = "role")
 })
 @Data
 @NoArgsConstructor
@@ -50,9 +41,16 @@ public class User {
     private String profileImage;
 
     @Column(nullable = false)
-    private Boolean onboardingCompleted;
+    @Builder.Default
+    private Boolean onboardingCompleted = false;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private UserRole role = UserRole.CUSTOMER;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 

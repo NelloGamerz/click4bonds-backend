@@ -1,13 +1,13 @@
-package com.click4bonds.app.Service;
+package com.click4bonds.app.Modules.User.Service;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.click4bonds.app.Dto.ClerkWebhookRequest.ClerkUserData;
-import com.click4bonds.app.Enums.UserStatus;
-import com.click4bonds.app.Model.User;
-import com.click4bonds.app.Repository.UserRepository;
+import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
