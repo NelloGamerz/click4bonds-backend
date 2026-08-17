@@ -15,12 +15,16 @@ public class CorsConfig {
         @Value("${frontend.url}")
         private String frontendUrl;
 
+        @Value("${frontend.www-url}")
+        private String frontendWwwUrl;
+
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
 
                 configuration.setAllowedOrigins(List.of(
                                 frontendUrl,
+                                frontendWwwUrl,
                                 "http://localhost:3000"));
 
                 configuration.setAllowedMethods(List.of(

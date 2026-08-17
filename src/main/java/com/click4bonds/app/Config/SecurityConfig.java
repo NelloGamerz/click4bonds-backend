@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -22,12 +23,27 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/public/**", "/api/webhooks/clerk", "/actuator/health", "/swagger-ui/**",
+
+                        // Public endpoints
+                        .requestMatchers(
+                                "/public/**",
+                                "/api/webhooks/clerk",
+                                "/actuator/health",
+                                "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**")
                         .permitAll()
+
+                        // Public bond endpoints
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/bonds/**")
+                        .permitAll()
+
+                        // Everything else requires authentication
                         .anyRequest()
                         .authenticated())
+
                 .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
         return http.build();
