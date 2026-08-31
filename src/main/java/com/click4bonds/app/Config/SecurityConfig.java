@@ -32,7 +32,8 @@ public class SecurityConfig {
                                                                 "/swagger-ui/**",
                                                                 "/swagger-ui.html",
                                                                 "/v3/api-docs/**",
-                                                                "/error")
+                                                                "/error",
+                                                                "/api/v1/contact-inquiries")
                                                 .permitAll()
 
                                                 // Public bond endpoints
