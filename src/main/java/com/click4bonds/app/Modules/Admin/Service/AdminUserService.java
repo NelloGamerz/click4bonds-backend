@@ -12,7 +12,7 @@ import com.click4bonds.app.Modules.Common.Enums.OutboxStatus;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Common.Model.OutboxEvent;
 import com.click4bonds.app.Modules.Common.Repository.OutboxEventRepository;
-import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryResponse;
+import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.Service.ContactInquiryService;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
@@ -110,7 +110,7 @@ public class AdminUserService {
         }
 
         @Transactional(readOnly = true)
-        public Page<ContactInquiryResponse> getContactInquiries(
+        public Page<ContactInquiryAdminResponse> getContactInquiries(
                         ContactInquiryStatus status,
                         Pageable pageable) {
 
@@ -123,7 +123,7 @@ public class AdminUserService {
                                 pageable);
         }
 
-        public ContactInquiryResponse updateContactInquiryStatus(
+        public ContactInquiryAdminResponse updateContactInquiryStatus(
                         UUID inquiryId,
                         ContactInquiryStatus status) {
 

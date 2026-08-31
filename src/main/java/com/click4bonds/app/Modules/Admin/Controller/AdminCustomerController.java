@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Admin.Dto.UpdateContactInquiryStatusRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminUserService;
-import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryResponse;
+import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
@@ -72,7 +72,7 @@ public class AdminCustomerController {
         }
 
         @GetMapping("/contact-inquiries")
-        public ResponseEntity<Page<ContactInquiryResponse>> getContactInquiries(
+        public ResponseEntity<Page<ContactInquiryAdminResponse>> getContactInquiries(
                         @RequestParam(required = false) ContactInquiryStatus status,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
@@ -81,7 +81,7 @@ public class AdminCustomerController {
         }
 
         @PatchMapping("/contact-inquiries/{inquiryId}/status")
-        public ContactInquiryResponse updateContactInquiryStatus(
+        public ContactInquiryAdminResponse updateContactInquiryStatus(
                         @PathVariable UUID inquiryId,
                         @Valid @RequestBody UpdateContactInquiryStatusRequest request) {
 

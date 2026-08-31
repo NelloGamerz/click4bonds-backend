@@ -3,8 +3,6 @@ package com.click4bonds.app.Modules.ContactUS.Service;
 import java.util.Locale;
 import java.util.UUID;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -16,19 +14,20 @@ import com.click4bonds.app.Modules.Common.Exceptions.InternalServerException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryRequest;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryResponse;
+import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.Models.ContactInquiry;
 import com.click4bonds.app.Modules.ContactUS.Repository.ContactInquiryRepository;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class ContactInquiryService {
-
-    private static final Logger log = LoggerFactory.getLogger(ContactInquiryService.class);
 
     private final ContactInquiryRepository contactInquiryRepository;
 
@@ -83,7 +82,11 @@ public class ContactInquiryService {
                     saved.getId(),
                     getEmailDomain(email));
 
-            return ContactInquiryResponse.from(saved);
+            // return ContactInquiryResponse.from(saved);
+            return new ContactInquiryResponse(
+                    201,
+                    saved.getId(),
+                    "Thank you. Your request has been submitted successfully.");
 
         } catch (DataIntegrityViolationException ex) {
 
@@ -162,25 +165,25 @@ public class ContactInquiryService {
     }
 
     @Transactional(readOnly = true)
-    public Page<ContactInquiryResponse> getAllInquiries(
+    public Page<ContactInquiryAdminResponse> getAllInquiries(
             Pageable pageable) {
 
         return contactInquiryRepository
                 .findAllByOrderByCreatedAtDesc(pageable)
-                .map(ContactInquiryResponse::from);
+                .map(ContactInquiryAdminResponse::from);
     }
 
     @Transactional(readOnly = true)
-    public Page<ContactInquiryResponse> getInquiriesByStatus(
+    public Page<ContactInquiryAdminResponse> getInquiriesByStatus(
             ContactInquiryStatus status,
             Pageable pageable) {
 
         return contactInquiryRepository
                 .findByStatusOrderByCreatedAtDesc(status, pageable)
-                .map(ContactInquiryResponse::from);
+                .map(ContactInquiryAdminResponse::from);
     }
 
-    public ContactInquiryResponse updateStatus(
+    public ContactInquiryAdminResponse updateStatus(
             UUID inquiryId,
             ContactInquiryStatus status) {
 
@@ -197,7 +200,7 @@ public class ContactInquiryService {
                 saved.getId(),
                 saved.getStatus());
 
-        return ContactInquiryResponse.from(saved);
+        return ContactInquiryAdminResponse.from(saved);
     }
 
 }
