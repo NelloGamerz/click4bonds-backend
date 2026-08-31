@@ -16,55 +16,59 @@ import org.springframework.security.web.SecurityFilterChain;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        @Bean
+        SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
-        http
-                .csrf(csrf -> csrf.disable())
-                .cors(Customizer.withDefaults())
-                .authorizeHttpRequests(auth -> auth
+                http
+                                .csrf(csrf -> csrf.disable())
+                                .cors(Customizer.withDefaults())
+                                .authorizeHttpRequests(auth -> auth
 
-                        // Public endpoints
-                        .requestMatchers(
-                                "/public/**",
-                                "/api/webhooks/clerk",
-                                "/actuator/health",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/v3/api-docs/**")
-                        .permitAll()
+                                                // Public endpoints
+                                                .requestMatchers(
+                                                                "/public/**",
+                                                                "/api/webhooks/clerk",
+                                                                "/actuator/health",
+                                                                "/swagger-ui/**",
+                                                                "/swagger-ui.html",
+                                                                "/v3/api-docs/**",
+                                                                "/error")
+                                                .permitAll()
 
-                        // Public bond endpoints
-                        .requestMatchers(
-                                HttpMethod.GET,
-                                "/api/bonds/**")
-                        .permitAll()
+                                                // Public bond endpoints
+                                                // .requestMatchers(
+                                                // HttpMethod.GET,
+                                                // "/api/bonds/**")
+                                                // .permitAll()
 
-                        // Everything else requires authentication
-                        .anyRequest()
-                        .authenticated())
+                                                .requestMatchers(HttpMethod.GET, "/api/bonds", "/api/bonds/**")
+                                                .permitAll()
 
-                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
+                                                // Everything else requires authentication
+                                                .anyRequest()
+                                                .authenticated())
 
-        return http.build();
-    }
+                                .oauth2ResourceServer(oauth -> oauth.jwt(Customizer.withDefaults()));
 
-    @Bean
-    JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+                return http.build();
+        }
 
-        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-            String role = jwt.getClaimAsString("role");
+        @Bean
+        JwtAuthenticationConverter jwtAuthenticationConverter() {
+                JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
 
-            if (role == null) {
-                return List.of();
-            }
+                converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+                        String role = jwt.getClaimAsString("role");
 
-            return List.of(
-                    new SimpleGrantedAuthority(
-                            "ROLE_" + role.toUpperCase()));
-        });
+                        if (role == null) {
+                                return List.of();
+                        }
 
-        return converter;
-    }
+                        return List.of(
+                                        new SimpleGrantedAuthority(
+                                                        "ROLE_" + role.toUpperCase()));
+                });
+
+                return converter;
+        }
 }

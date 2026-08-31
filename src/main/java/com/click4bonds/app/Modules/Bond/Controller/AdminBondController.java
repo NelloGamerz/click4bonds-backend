@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.Bond.Controller;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.apache.coyote.BadRequestException;
@@ -23,11 +24,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
+import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
 import lombok.RequiredArgsConstructor;
 
 @RestController
@@ -53,6 +56,14 @@ public class AdminBondController {
                                                                 adminId));
         }
 
+        @PatchMapping("/prices")
+        public ResponseEntity<List<BondResponse>> updatePrices(
+                        @Valid @RequestBody @NotEmpty List<@Valid BondPriceUpdateRequest> requests) throws BadRequestException {
+
+                return ResponseEntity.ok(
+                                bondService.updatePrices(requests));
+        }
+
         @GetMapping
         public ResponseEntity<Page<BondResponse>> getBonds(
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -63,7 +74,7 @@ public class AdminBondController {
 
         @GetMapping("/{id}")
         public ResponseEntity<BondResponse> getBond(
-                        @PathVariable UUID id) {
+                        @PathVariable String id) {
 
                 return ResponseEntity.ok(
                                 bondService.getBond(id));
@@ -88,7 +99,7 @@ public class AdminBondController {
 
         @PatchMapping("/{id}/suspend")
         public ResponseEntity<BondResponse> suspendBond(
-                        @PathVariable UUID id) {
+                        @PathVariable UUID id) throws BadRequestException {
 
                 return ResponseEntity.ok(
                                 bondService.suspendBond(id));

@@ -35,23 +35,23 @@ public class BondOrderController {
 
     private final BondOrderService orderService;
 
-    @PostMapping
-    public ResponseEntity<BondOrderResponse> createOrder(
-            @Valid @RequestBody CreateOrderRequest request,
-            @AuthenticationPrincipal Jwt jwt
-    ) throws BadRequestException {
+//     @PostMapping
+//     public ResponseEntity<BondOrderResponse> createOrder(
+//             @Valid @RequestBody CreateOrderRequest request,
+//             @AuthenticationPrincipal Jwt jwt
+//     ) throws BadRequestException {
 
-        String customerId = jwt.getSubject();
+//         String customerId = jwt.getSubject();
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(
-                        orderService.createOrder(
-                                customerId,
-                                request
-                        )
-                );
-    }
+//         return ResponseEntity
+//                 .status(HttpStatus.CREATED)
+//                 .body(
+//                         orderService.createOrder(
+//                                 customerId,
+//                                 request
+//                         )
+//                 );
+//     }
 
     @GetMapping("/my")
     public ResponseEntity<Page<BondOrderResponse>> getMyOrders(

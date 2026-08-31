@@ -34,64 +34,64 @@ public class BondOrderService {
     private final BondRepository bondRepository;
     private final UserRepository userRepository;
 
-    public BondOrderResponse createOrder(
-            String customerId,
-            CreateOrderRequest request) throws BadRequestException {
+//     public BondOrderResponse createOrder(
+//             String customerId,
+//             CreateOrderRequest request) throws BadRequestException {
 
-        User customer = userRepository.findByClerkUserId(customerId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Customer not found"));
+//         User customer = userRepository.findByClerkUserId(customerId)
+//                 .orElseThrow(() -> new ResourceNotFoundException(
+//                         "Customer not found"));
 
-        if (customer.getRole() != UserRole.CUSTOMER) {
-            throw new ForbiddenException(
-                    "Only customers can purchase bonds");
-        }
+//         if (customer.getRole() != UserRole.CUSTOMER) {
+//             throw new ForbiddenException(
+//                     "Only customers can purchase bonds");
+//         }
 
-        /*
-         * IMPORTANT:
-         * Lock the bond row while checking/decreasing inventory.
-         */
-        Bond bond = bondRepository.findByIdForUpdate(
-                request.getBondId()).orElseThrow(
-                        () -> new ResourceNotFoundException(
-                                "Bond not found"));
+//         /*
+//          * IMPORTANT:
+//          * Lock the bond row while checking/decreasing inventory.
+//          */
+//         Bond bond = bondRepository.findByIdForUpdate(
+//                 request.getBondId()).orElseThrow(
+//                         () -> new ResourceNotFoundException(
+//                                 "Bond not found"));
 
-        if (bond.getStatus() != BondStatus.ACTIVE) {
-            throw new BadRequestException(
-                    "Bond is not available for purchase");
-        }
+//         if (bond.getStatus() != BondStatus.ACTIVE) {
+//             throw new BadRequestException(
+//                     "Bond is not available for purchase");
+//         }
 
-        if (bond.getAvailableUnits() < request.getQuantity()) {
-            throw new BadRequestException(
-                    "Not enough bond units available");
-        }
+//         if (bond.getAvailableUnits() < request.getQuantity()) {
+//             throw new BadRequestException(
+//                     "Not enough bond units available");
+//         }
 
-        BigDecimal totalAmount = bond.getSellingPrice()
-                .multiply(
-                        BigDecimal.valueOf(
-                                request.getQuantity()));
+//         BigDecimal totalAmount = bond.getSellingPrice()
+//                 .multiply(
+//                         BigDecimal.valueOf(
+//                                 request.getQuantity()));
 
-        bond.setAvailableUnits(
-                bond.getAvailableUnits()
-                        - request.getQuantity());
+//         bond.setAvailableUnits(
+//                 bond.getAvailableUnits()
+//                         - request.getQuantity());
 
-        if (bond.getAvailableUnits() == 0) {
-            bond.setStatus(BondStatus.SOLD_OUT);
-        }
+//         if (bond.getAvailableUnits() == 0) {
+//             bond.setStatus(BondStatus.SOLD_OUT);
+//         }
 
-        BondOrder order = BondOrder.builder()
-                .orderNumber(generateOrderNumber())
-                .customer(customer)
-                .bond(bond)
-                .quantity(request.getQuantity())
-                .pricePerUnit(bond.getSellingPrice())
-                .totalAmount(totalAmount)
-                .status(BondOrderStatus.PAYMENT_PENDING)
-                .build();
+//         BondOrder order = BondOrder.builder()
+//                 .orderNumber(generateOrderNumber())
+//                 .customer(customer)
+//                 .bond(bond)
+//                 .quantity(request.getQuantity())
+//                 .pricePerUnit(bond.getSellingPrice())
+//                 .totalAmount(totalAmount)
+//                 .status(BondOrderStatus.PAYMENT_PENDING)
+//                 .build();
 
-        return mapToResponse(
-                orderRepository.save(order));
-    }
+//         return mapToResponse(
+//                 orderRepository.save(order));
+//     }
 
     private String generateOrderNumber() {
 

@@ -25,7 +25,7 @@ public class ClerkOutboxProcessor {
     private final ClerkService clerkService;
     private final ObjectMapper objectMapper;
 
-    @Scheduled(fixedDelay = 2000)
+    @Scheduled(fixedDelay = 10000)
     @Transactional
     public void process() {
 

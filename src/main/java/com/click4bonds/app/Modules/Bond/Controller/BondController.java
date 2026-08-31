@@ -10,6 +10,7 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,9 +36,15 @@ public class BondController {
 
     @GetMapping("/{id}")
     public ResponseEntity<BondResponse> getBond(
-            @PathVariable UUID id) {
+            @PathVariable String id) {
 
         return ResponseEntity.ok(
                 bondService.getBond(id));
     }
+
+    // @PostMapping("/{bondId}/calculate-ytm")
+    // public YtmResponse calculateYtm(
+    //         @PathVariable UUID bondId) {
+    //     return bondYtmService.calculateYtm(bondId);
+    // }
 }
