@@ -76,6 +76,10 @@ public class UserService {
         log.info("Soft deleted user {}", clerkUserId);
     }
 
+    public User getUserByClerkId(String clerkUserId) {
+        return getUser(clerkUserId);
+    }
+
     protected User getUser(String clerkUserId) {
         return userRepository.findByClerkUserId(clerkUserId)
                 .orElseThrow(() -> new ResponseStatusException(

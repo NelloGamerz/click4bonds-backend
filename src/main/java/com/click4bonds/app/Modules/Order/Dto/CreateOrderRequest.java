@@ -1,18 +1,23 @@
 package com.click4bonds.app.Modules.Order.Dto;
 
-import java.util.UUID;
+import java.math.BigDecimal;
 
-import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import jakarta.validation.constraints.Positive;
 
-@Data
-public class CreateOrderRequest {
 
-    @NotNull
-    private UUID bondId;
+public record CreateOrderRequest(
 
-    @NotNull
-    @Min(1)
-    private Long quantity;
+        @NotBlank(message = "Bond ISIN is required")
+        String bondIsin,
+
+        @NotNull(message = "Quantity is required")
+        @Positive(message = "Quantity must be greater than 0")
+        Long quantity,
+
+        @NotNull(message = "Price is required")
+        @Positive(message = "Price must be greater than 0")
+        BigDecimal price
+) {
 }
