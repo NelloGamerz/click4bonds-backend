@@ -485,6 +485,10 @@ public class BondService {
                                                 "Bond not found: " + id));
         }
 
+        public Bond findBond(String isin) {
+                return getbondByIs(isin);
+        }
+
         private Bond getbondByIs(String isIn){
                 return bondRepository.findByIsin(isIn)
                                 .orElseThrow(() -> new ResourceNotFoundException(

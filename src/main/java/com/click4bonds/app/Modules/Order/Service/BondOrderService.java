@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondOrderStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Order.Dto.BondOrderResponse;
@@ -18,7 +18,6 @@ import com.click4bonds.app.Modules.Order.Dto.CreateOrderRequest;
 import com.click4bonds.app.Modules.Order.Model.BondOrder;
 import com.click4bonds.app.Modules.Order.Repository.BondOrderRepository;
 import com.click4bonds.app.Modules.User.Model.User;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
 import com.click4bonds.app.Modules.User.Service.UserService;
 
 import lombok.RequiredArgsConstructor;
@@ -29,9 +28,8 @@ import lombok.RequiredArgsConstructor;
 public class BondOrderService {
 
     private final BondOrderRepository orderRepository;
-    private final BondRepository bondRepository;
     private final UserService userService;
-    private final UserRepository userRepository;
+    private final BondService bondService;
 
     // public BondOrderResponse createOrder(
     // String customerId,
@@ -97,16 +95,9 @@ public class BondOrderService {
             String customerId,
             CreateOrderRequest request) {
 
-        // User customer = userRepository
-        //         .findById(customerId)
-        //         .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
 
         User customer = userService.getUserByClerkId(customerId);
-
-        Bond bond = bondRepository
-                .findByIsin(request.bondIsin())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + request.bondIsin()));
+        Bond bond = bondService.findBond(request.bondIsin());
 
         BigDecimal price = bond.getPrice();
 

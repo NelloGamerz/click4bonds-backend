@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Bond.Dto.MaturitySchedule;
@@ -104,7 +105,7 @@ public class MaturityDescriptionParserImpl implements MaturityDescriptionParser 
         while (untilMatcher.find()) {
             BigDecimal percentage = new BigDecimal(untilMatcher.group(1));
             int endYear = Integer.parseInt(untilMatcher.group(2));
-            LocalDate startDate = LocalDate.of(maturityDate.getYear() - 100, 1, 1);
+            LocalDate startDate = LocalDate.of(maturityDate.getYear() - 7, 1, 1);
             LocalDate endDate = LocalDate.of(endYear, 12, 31);
             rules.add(new IpBasedAmortizationRule(percentage, startDate, endDate));
         }

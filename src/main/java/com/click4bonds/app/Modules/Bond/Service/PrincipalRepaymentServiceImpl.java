@@ -5,425 +5,161 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Bond.Dto.MaturitySchedule;
 import com.click4bonds.app.Modules.Bond.Dto.PrincipalRepayment;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
 @Service
-public class PrincipalRepaymentServiceImpl
-        implements PrincipalRepaymentService {
+public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService {
 
     private static final BigDecimal FACE_VALUE = BigDecimal.valueOf(100);
+    private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
+    private static final int CALCULATION_SCALE = 10;
 
-    /*
-     * ------------------------------------------------------------
-     * Pattern:
-     *
-     * 9/11/2024 to 9/11/2033 (10% each year)
-     *
-     * Groups:
-     *
-     * 1 = start date
-     * 2 = end date
-     * 3 = percentage
-     * ------------------------------------------------------------
-     */
-    private static final Pattern SIMPLE_AMORTIZATION = Pattern.compile(
-            "^\\s*"
-                    + "(\\d{1,2}/\\d{1,2}/\\d{4})"
-                    + "\\s+to\\s+"
-                    + "(\\d{1,2}/\\d{1,2}/\\d{4})"
-                    + "\\s*\\("
-                    + "\\s*(\\d+(?:\\.\\d+)?)%"
-                    + "\\s*each\\s+year\\s*\\)"
-                    + "\\s*$",
-            Pattern.CASE_INSENSITIVE);
+    private final MaturityDescriptionParser maturityDescriptionParser;
 
-    /*
-     * ------------------------------------------------------------
-     * Pattern:
-     *
-     * 26-09-2031
-     *
-     * This is a normal maturity bond.
-     * ------------------------------------------------------------
-     */
-    private static final Pattern SIMPLE_MATURITY = Pattern.compile(
-            "^\\s*"
-                    + "\\d{1,2}[-/]\\d{1,2}[-/]\\d{4}"
-                    + "\\s*$");
+    public PrincipalRepaymentServiceImpl(MaturityDescriptionParser maturityDescriptionParser) {
+        this.maturityDescriptionParser = maturityDescriptionParser;
+    }
 
     @Override
     public List<PrincipalRepayment> generateRepayments(
             Bond bond,
             List<LocalDate> couponDates,
             LocalDate calculationDate) {
+        validateInput(bond, couponDates, calculationDate);
 
-        validateInput(
-                bond,
-                couponDates,
-                calculationDate);
-
-        String description = normalize(
-                bond.getMaturityDescription());
-
-        /*
-         * --------------------------------------------------------
-         * No amortization information.
-         *
-         * Treat as normal bond:
-         *
-         * ₹100 returned at maturity.
-         * --------------------------------------------------------
-         */
-        if (description == null
-                || description.isBlank()) {
-
-            return generateNormalMaturityRepayment(
-                    bond,
-                    couponDates);
+        MaturitySchedule schedule = maturityDescriptionParser.parse(
+                bond.getMaturityDescription(), bond.getMaturityDate());
+        if (schedule.perpetual()) {
+            return List.of();
+        }
+        if (schedule.maturityDate() == null) {
+            throw new IllegalArgumentException("Maturity date is required");
+        }
+        if (schedule.amortizationRules().isEmpty()) {
+            return maturityRepayment(schedule.maturityDate(), calculationDate);
         }
 
-        /*
-         * --------------------------------------------------------
-         * Simple amortization
-         *
-         * Example:
-         *
-         * 9/11/2024 to 9/11/2033 (10% each year)
-         * --------------------------------------------------------
-         */
-        Matcher matcher = SIMPLE_AMORTIZATION.matcher(description);
+        Map<LocalDate, List<AmortizationRule>> rulesByDate = buildScheduledRules(
+                schedule.amortizationRules(), couponDates, schedule.maturityDate());
+        validateOverlappingRules(rulesByDate);
 
-        if (matcher.matches()) {
-
-            return generateSimpleAmortization(
-                    bond,
-                    couponDates,
-                    matcher);
-        }
-
-        /*
-         * --------------------------------------------------------
-         * Normal maturity date
-         * --------------------------------------------------------
-         */
-        if (SIMPLE_MATURITY.matcher(description).matches()) {
-
-            return generateNormalMaturityRepayment(
-                    bond,
-                    couponDates);
-        }
-
-        /*
-         * We intentionally don't guess.
-         */
-        throw new IllegalArgumentException(
-                "Unsupported maturity description: "
-                        + description);
-    }
-
-    /*
-     * ============================================================
-     * NORMAL BOND
-     * ============================================================
-     */
-
-    private List<PrincipalRepayment> generateNormalMaturityRepayment(
-            Bond bond,
-            List<LocalDate> couponDates) {
-
-        LocalDate maturityDate = bond.getMaturityDate();
-
-        List<PrincipalRepayment> result = new ArrayList<>();
-
-        /*
-         * Only add maturity if it is present
-         * in the generated coupon schedule.
-         */
-        if (couponDates.contains(maturityDate)) {
-
-            result.add(
-                    new PrincipalRepayment(
-                            maturityDate,
-                            FACE_VALUE,
-                            BigDecimal.ZERO));
-        }
-
-        return result;
-    }
-
-    /*
-     * ============================================================
-     * SIMPLE AMORTIZATION
-     * ============================================================
-     */
-
-    private List<PrincipalRepayment> generateSimpleAmortization(
-            Bond bond,
-            List<LocalDate> couponDates,
-            Matcher matcher) {
-
-        LocalDate startDate = parseDate(matcher.group(1));
-
-        LocalDate endDate = parseDate(matcher.group(2));
-
-        BigDecimal percentage = new BigDecimal(matcher.group(3));
-
-        validatePercentage(percentage);
-
-        List<PrincipalRepayment> result = new ArrayList<>();
-
+        List<PrincipalRepayment> repayments = new ArrayList<>();
         BigDecimal remainingPrincipal = FACE_VALUE;
-
-        /*
-         * Find coupon dates between
-         * amortization start and end.
-         */
-        for (LocalDate couponDate : couponDates) {
-
-            if (couponDate.isBefore(startDate)) {
-                continue;
+        for (LocalDate date : rulesByDate.keySet().stream().sorted().toList()) {
+            BigDecimal repaymentAmount = scheduledAmount(rulesByDate.get(date))
+                    .min(remainingPrincipal);
+            if (date.equals(schedule.maturityDate())) {
+                repaymentAmount = remainingPrincipal;
             }
-
-            if (couponDate.isAfter(endDate)) {
-                continue;
+            remainingPrincipal = remainingPrincipal.subtract(repaymentAmount);
+            if (date.isAfter(calculationDate) && repaymentAmount.signum() > 0) {
+                repayments.add(new PrincipalRepayment(date, repaymentAmount, remainingPrincipal));
             }
-
-            /*
-             * Principal repayment:
-             *
-             * 100 × 10% = 10
-             */
-            BigDecimal repayment = FACE_VALUE
-                    .multiply(percentage)
-                    .divide(
-                            BigDecimal.valueOf(100),
-                            10,
-                            RoundingMode.HALF_UP);
-
-            /*
-             * Never repay more than
-             * the remaining principal.
-             */
-            repayment = repayment.min(
-                    remainingPrincipal);
-
-            remainingPrincipal = remainingPrincipal.subtract(
-                    repayment);
-
-            result.add(
-                    new PrincipalRepayment(
-                            couponDate,
-                            repayment,
-                            remainingPrincipal));
-
-            /*
-             * Principal is fully repaid.
-             */
-            if (remainingPrincipal
-                    .compareTo(BigDecimal.ZERO) == 0) {
-
+            if (remainingPrincipal.signum() == 0) {
                 break;
             }
         }
 
-        /*
-         * Safety:
-         *
-         * If the amortization percentages do not
-         * completely repay ₹100, the final maturity
-         * date should repay the remainder.
-         */
-        if (remainingPrincipal
-                .compareTo(BigDecimal.ZERO) > 0) {
+        if (remainingPrincipal.signum() > 0 && schedule.maturityDate().isAfter(calculationDate)) {
+            repayments.add(new PrincipalRepayment(
+                    schedule.maturityDate(), remainingPrincipal, BigDecimal.ZERO));
+        }
+        return consolidateAndSort(repayments);
+    }
 
-            LocalDate maturityDate = bond.getMaturityDate();
-
-            boolean maturityAlreadyExists = result.stream()
-                    .anyMatch(
-                            repayment -> repayment.date()
-                                    .equals(maturityDate));
-
-            if (maturityAlreadyExists) {
-
-                /*
-                 * Add remaining principal to the
-                 * existing maturity repayment.
-                 */
-                // result = addRemainingToMaturity(
-                // result,
-                // remainingPrincipal);
-
-                result = addRemainingToMaturity(
-                        result,
-                        maturityDate,
-                        remainingPrincipal);
-
-            } else if (couponDates.contains(
-                    maturityDate)) {
-
-                result.add(
-                        new PrincipalRepayment(
-                                maturityDate,
-                                remainingPrincipal,
-                                BigDecimal.ZERO));
+    private Map<LocalDate, List<AmortizationRule>> buildScheduledRules(
+            List<AmortizationRule> rules,
+            List<LocalDate> couponDates,
+            LocalDate maturityDate) {
+        Map<LocalDate, List<AmortizationRule>> rulesByDate = new HashMap<>();
+        for (AmortizationRule rule : rules) {
+            if (rule instanceof IpBasedAmortizationRule) {
+                for (LocalDate couponDate : new HashSet<>(couponDates)) {
+                    if (isWithin(couponDate, rule.startDate(), rule.endDate())
+                            && !couponDate.isAfter(maturityDate)) {
+                        rulesByDate.computeIfAbsent(couponDate, ignored -> new ArrayList<>()).add(rule);
+                    }
+                }
+            } else if (rule instanceof FixedFrequencyAmortizationRule fixedRule) {
+                for (LocalDate date = fixedRule.startDate();
+                        !date.isAfter(fixedRule.endDate()) && !date.isAfter(maturityDate);
+                        date = nextDate(date, fixedRule.frequency())) {
+                    rulesByDate.computeIfAbsent(date, ignored -> new ArrayList<>()).add(rule);
+                }
             }
         }
+        return rulesByDate;
+    }
 
-        return result.stream()
-                .sorted(
-                        Comparator.comparing(
-                                PrincipalRepayment::date))
+    private void validateOverlappingRules(Map<LocalDate, List<AmortizationRule>> rulesByDate) {
+        for (Map.Entry<LocalDate, List<AmortizationRule>> entry : rulesByDate.entrySet()) {
+            if (entry.getValue().size() > 1) {
+                throw new IllegalArgumentException(
+                        "Multiple amortization rules apply on " + entry.getKey());
+            }
+        }
+    }
+
+    private BigDecimal scheduledAmount(List<AmortizationRule> rules) {
+        return FACE_VALUE.multiply(rules.get(0).percentage())
+                .divide(HUNDRED, CALCULATION_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private LocalDate nextDate(LocalDate date, CouponFrequency frequency) {
+        return switch (frequency) {
+            case MONTHLY -> date.plusMonths(1);
+            case QUARTERLY -> date.plusMonths(3);
+            case HALF_YEARLY -> date.plusMonths(6);
+            case YEARLY -> date.plusYears(1);
+            case AT_MATURITY -> date.plusYears(1);
+        };
+    }
+
+    private boolean isWithin(LocalDate date, LocalDate startDate, LocalDate endDate) {
+        return !date.isBefore(startDate) && !date.isAfter(endDate);
+    }
+
+    private List<PrincipalRepayment> maturityRepayment(
+            LocalDate maturityDate, LocalDate calculationDate) {
+        if (!maturityDate.isAfter(calculationDate)) {
+            return List.of();
+        }
+        return List.of(new PrincipalRepayment(maturityDate, FACE_VALUE, BigDecimal.ZERO));
+    }
+
+    private List<PrincipalRepayment> consolidateAndSort(List<PrincipalRepayment> repayments) {
+        Map<LocalDate, PrincipalRepayment> consolidated = new HashMap<>();
+        for (PrincipalRepayment repayment : repayments) {
+            consolidated.merge(repayment.date(), repayment, (existing, incoming) ->
+                    new PrincipalRepayment(
+                            existing.date(),
+                            existing.principalAmount().add(incoming.principalAmount()),
+                            incoming.remainingPrincipal()));
+        }
+        return consolidated.values().stream()
+                .sorted(Comparator.comparing(PrincipalRepayment::date))
                 .toList();
     }
 
-    /*
-     * ============================================================
-     * HELPERS
-     * ============================================================
-     */
-
-    // private List<PrincipalRepayment> addRemainingToMaturity(
-    // List<PrincipalRepayment> repayments,
-    // BigDecimal remaining
-    // ) {
-
-    // List<PrincipalRepayment> result =
-    // new ArrayList<>();
-
-    // for (PrincipalRepayment repayment :
-    // repayments) {
-
-    // if (repayment.date().equals(
-    // repayment.date()
-    // )) {
-
-    // /*
-    // * This branch is intentionally handled
-    // * below using maturity comparison.
-    // */
-    // }
-
-    // result.add(repayment);
-    // }
-
-    // return result;
-    // }
-
-    private List<PrincipalRepayment> addRemainingToMaturity(
-            List<PrincipalRepayment> repayments,
-            LocalDate maturityDate,
-            BigDecimal remaining) {
-
-        List<PrincipalRepayment> result = new ArrayList<>();
-
-        for (PrincipalRepayment repayment : repayments) {
-
-            if (repayment.date().equals(maturityDate)) {
-
-                result.add(
-                        new PrincipalRepayment(
-                                repayment.date(),
-                                repayment.principalAmount()
-                                        .add(remaining),
-                                BigDecimal.ZERO));
-
-            } else {
-
-                result.add(repayment);
-            }
-        }
-
-        return result;
-    }
-
-    private LocalDate parseDate(
-            String value) {
-
-        String[] parts = value.split("[/-]");
-
-        if (parts.length != 3) {
-
-            throw new IllegalArgumentException(
-                    "Invalid maturity date: "
-                            + value);
-        }
-
-        int day = Integer.parseInt(parts[0]);
-
-        int month = Integer.parseInt(parts[1]);
-
-        int year = Integer.parseInt(parts[2]);
-
-        return LocalDate.of(
-                year,
-                month,
-                day);
-    }
-
-    private String normalize(
-            String value) {
-
-        if (value == null) {
-            return null;
-        }
-
-        return value
-                .trim()
-                .replaceAll("\\s+", " ");
-    }
-
-    private void validatePercentage(
-            BigDecimal percentage) {
-
-        if (percentage.compareTo(
-                BigDecimal.ZERO) <= 0) {
-
-            throw new IllegalArgumentException(
-                    "Amortization percentage must be positive");
-        }
-
-        if (percentage.compareTo(
-                BigDecimal.valueOf(100)) > 0) {
-
-            throw new IllegalArgumentException(
-                    "Amortization percentage cannot exceed 100");
-        }
-    }
-
-    private void validateInput(
-            Bond bond,
-            List<LocalDate> couponDates,
-            LocalDate calculationDate) {
-
+    private void validateInput(Bond bond, List<LocalDate> couponDates, LocalDate calculationDate) {
         if (bond == null) {
-
-            throw new IllegalArgumentException(
-                    "Bond cannot be null");
+            throw new IllegalArgumentException("Bond cannot be null");
         }
-
         if (couponDates == null) {
-
-            throw new IllegalArgumentException(
-                    "Coupon dates cannot be null");
+            throw new IllegalArgumentException("Coupon dates cannot be null");
         }
-
         if (calculationDate == null) {
-
-            throw new IllegalArgumentException(
-                    "Calculation date cannot be null");
-        }
-
-        if (bond.getMaturityDate() == null) {
-
-            throw new IllegalArgumentException(
-                    "Maturity date is required");
+            throw new IllegalArgumentException("Calculation date cannot be null");
         }
     }
 }
