@@ -189,6 +189,20 @@ public class BondService {
                                 .map(this::mapToResponse);
         }
 
+        @Transactional(readOnly = true)
+        public Page<BondResponse> getBonds(
+                        String search,
+                        Pageable pageable) {
+
+                if (search == null || search.isBlank()) {
+                        return getBonds(pageable);
+                }
+
+                return bondRepository
+                                .searchBonds(search, pageable)
+                                .map(this::mapToResponse);
+        }
+
         // =========================================================
         // GET ACTIVE BONDS
         // =========================================================
@@ -489,7 +503,7 @@ public class BondService {
                 return getbondByIs(isin);
         }
 
-        private Bond getbondByIs(String isIn){
+        private Bond getbondByIs(String isIn) {
                 return bondRepository.findByIsin(isIn)
                                 .orElseThrow(() -> new ResourceNotFoundException(
                                                 "Bond not found: " + isIn));
