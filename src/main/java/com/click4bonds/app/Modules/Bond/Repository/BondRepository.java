@@ -36,6 +36,16 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
 
     long countByStatus(BondStatus status);
 
+    @Query("""
+                SELECT b
+                FROM Bond b
+                WHERE LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%'))
+                OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
+            """)
+    Page<Bond> searchBonds(
+            @Param("search") String search,
+            Pageable pageable);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
                 SELECT b

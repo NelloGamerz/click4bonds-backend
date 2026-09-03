@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
@@ -66,10 +67,11 @@ public class AdminBondController {
 
         @GetMapping
         public ResponseEntity<Page<BondResponse>> getBonds(
+                        @RequestParam(required = false) String search,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
                 return ResponseEntity.ok(
-                                bondService.getBonds(pageable));
+                                bondService.getBonds(search, pageable));
         }
 
         @GetMapping("/{id}")
