@@ -10,10 +10,7 @@ import org.springframework.stereotype.Service;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
-import lombok.RequiredArgsConstructor;
-
 @Service
-@RequiredArgsConstructor
 public class AccruedInterestServiceImpl implements AccruedInterestService {
 
     private static final BigDecimal FACE_VALUE = BigDecimal.valueOf(100);
@@ -23,8 +20,8 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
 
     private final CouponScheduleService couponScheduleService;
 
-    public AccruedInterestServiceImpl(CouponDateGenerator couponDateGenerator) {
-        this(new CouponScheduleService(couponDateGenerator));
+    public AccruedInterestServiceImpl(CouponScheduleService couponScheduleService) {
+        this.couponScheduleService = couponScheduleService;
     }
 
     @Override

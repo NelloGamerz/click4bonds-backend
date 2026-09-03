@@ -24,14 +24,6 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
     private final CouponCalculationService couponCalculationService;
     private final AccruedInterestService accruedInterestService;
 
-    public BondCashFlowServiceImpl(
-            CouponDateGenerator couponDateGenerator,
-            PrincipalRepaymentService principalRepaymentService,
-            CouponCalculationService couponCalculationService) {
-        this(couponDateGenerator, principalRepaymentService, couponCalculationService,
-                new AccruedInterestServiceImpl(couponDateGenerator));
-    }
-
     @Override
     public List<XirrCalculator.CashFlow> generateCashFlows(
             Bond bond,

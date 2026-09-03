@@ -38,7 +38,7 @@ class BondCashFlowServiceImplTest {
                 couponDateGenerator,
                 principalRepaymentService,
                 couponCalculationService,
-                new AccruedInterestServiceImpl(new CouponDateGenerator()));
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -136,7 +136,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -186,7 +187,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -234,7 +236,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -275,7 +278,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -344,7 +348,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -409,7 +414,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -459,7 +465,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -507,7 +514,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -579,7 +587,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
 
@@ -621,7 +630,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
         System.out.println("Generated cash flows: " + flows);
@@ -651,7 +661,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
         System.out.println("Generated cash flows: " + flows);
@@ -695,7 +706,8 @@ class BondCashFlowServiceImplTest {
         BondCashFlowServiceImpl service = new BondCashFlowServiceImpl(
                 couponDateGenerator,
                 principalRepaymentService,
-                couponCalculationService);
+                couponCalculationService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(couponDateGenerator)));
 
         List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
         System.out.println("Generated cash flows: " + flows);
@@ -715,7 +727,8 @@ class BondCashFlowServiceImplTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
-                new CouponCalculationServiceImpl());
+                new CouponCalculationServiceImpl(),
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -740,7 +753,8 @@ class BondCashFlowServiceImplTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
-                new CouponCalculationServiceImpl());
+                new CouponCalculationServiceImpl(),
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -768,7 +782,8 @@ class BondCashFlowServiceImplTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
-                new CouponCalculationServiceImpl());
+                new CouponCalculationServiceImpl(),
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -796,7 +811,8 @@ class BondCashFlowServiceImplTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
-                new CouponCalculationServiceImpl());
+                new CouponCalculationServiceImpl(),
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
@@ -824,7 +840,8 @@ class BondCashFlowServiceImplTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
-                new CouponCalculationServiceImpl());
+                new CouponCalculationServiceImpl(),
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,

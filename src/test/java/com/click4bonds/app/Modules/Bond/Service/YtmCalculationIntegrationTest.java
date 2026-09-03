@@ -56,7 +56,7 @@ class YtmCalculationIntegrationTest {
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
                 new CouponCalculationServiceImpl(),
-                new AccruedInterestServiceImpl(new CouponDateGenerator()));
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         XirrCalculator xirrCalculator = new XirrCalculator();
 
@@ -112,7 +112,7 @@ class YtmCalculationIntegrationTest {
                 new CouponDateGenerator(),
                 new PrincipalRepaymentServiceImpl(new MaturityDescriptionParserImpl()),
                 new CouponCalculationServiceImpl(),
-                new AccruedInterestServiceImpl(new CouponDateGenerator()));
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
 
         java.util.List<XirrCalculator.CashFlow> flows = service.generateCashFlows(bond, CALCULATION_DATE);
         assertEquals(java.util.List.of(

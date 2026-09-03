@@ -653,7 +653,7 @@ class BondCashFlowXirrInteractionTest {
                 new PrincipalRepaymentServiceImpl(
                         new MaturityDescriptionParserImpl()),
                 new CouponCalculationServiceImpl(),
-                new AccruedInterestServiceImpl(new CouponDateGenerator()));
+                new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator())));
     }
 
     private BondCashFlowService mockedService(
@@ -697,7 +697,8 @@ class BondCashFlowXirrInteractionTest {
         return new BondCashFlowServiceImpl(
                 dateGenerator,
                 principalService,
-                couponService);
+                couponService,
+                new AccruedInterestServiceImpl(new CouponScheduleService(dateGenerator)));
     }
 
     private Bond bondAtPrice(String price) {

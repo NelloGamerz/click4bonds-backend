@@ -836,7 +836,7 @@ class YtmCalculationServiceTest {
                 new PrincipalRepaymentServiceImpl(new MaturityDescriptionParserImpl());
         CouponCalculationService realCouponCalculationService = new CouponCalculationServiceImpl();
         AccruedInterestService realAccruedInterestService =
-                new AccruedInterestServiceImpl(realCouponDateGenerator);
+                new AccruedInterestServiceImpl(new CouponScheduleService(realCouponDateGenerator));
         BondCashFlowService realBondCashFlowService = new BondCashFlowServiceImpl(
                 realCouponDateGenerator,
                 realPrincipalRepaymentService,

@@ -14,7 +14,8 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 class AccruedInterestServiceImplTest {
 
     private static final LocalDate CALCULATION_DATE = LocalDate.of(2026, 9, 3);
-    private final AccruedInterestService service = new AccruedInterestServiceImpl(new CouponDateGenerator());
+    private final AccruedInterestService service =
+            new AccruedInterestServiceImpl(new CouponScheduleService(new CouponDateGenerator()));
 
     @Test
     void calculatesAnnualAccruedInterest() {
