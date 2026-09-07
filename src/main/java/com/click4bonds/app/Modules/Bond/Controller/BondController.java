@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
+import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 
 import lombok.RequiredArgsConstructor;
@@ -44,7 +45,15 @@ public class BondController {
 
     // @PostMapping("/{bondId}/calculate-ytm")
     // public YtmResponse calculateYtm(
-    //         @PathVariable UUID bondId) {
-    //     return bondYtmService.calculateYtm(bondId);
+    // @PathVariable UUID bondId) {
+    // return bondYtmService.calculateYtm(bondId);
     // }
+
+    @GetMapping("/{isin}/issuer")
+    public ResponseEntity<IssuerResponse> getIssuerByIsin(
+            @PathVariable String isin) {
+
+        return ResponseEntity.ok(
+                bondService.getIssuerByIsin(isin));
+    }
 }
