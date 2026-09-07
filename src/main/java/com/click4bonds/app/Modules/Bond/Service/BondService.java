@@ -192,14 +192,15 @@ public class BondService {
         @Transactional(readOnly = true)
         public Page<BondResponse> getBonds(
                         String search,
+                        Boolean isFlashNews,
                         Pageable pageable) {
 
-                if (search == null || search.isBlank()) {
+                if ((search == null || search.isBlank()) && isFlashNews == null) {
                         return getBonds(pageable);
                 }
 
                 return bondRepository
-                                .searchBonds(search, pageable)
+                                .searchBonds(search, isFlashNews, pageable)
                                 .map(this::mapToResponse);
         }
 
@@ -372,6 +373,11 @@ public class BondService {
                 if (request.getLotSizeType() != null) {
                         bond.setLotSizeType(
                                         request.getLotSizeType());
+                }
+
+                if (request.getIsFlashNews() != null) {
+                        bond.setIsFlashNews(
+                                        request.getIsFlashNews());
                 }
 
                 // -----------------------------------------------------
@@ -596,6 +602,9 @@ public class BondService {
 
                                 .lotSizeType(
                                                 bond.getLotSizeType())
+
+                                .isFlashNews(
+                                                bond.getIsFlashNews())
 
                                 // Status
                                 .status(

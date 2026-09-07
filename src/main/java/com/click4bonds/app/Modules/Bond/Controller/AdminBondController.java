@@ -24,8 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
+import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
@@ -71,7 +71,7 @@ public class AdminBondController {
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
                 return ResponseEntity.ok(
-                                bondService.getBonds(search, pageable));
+                                bondService.getBonds(search, null, pageable));
         }
 
         @GetMapping("/{id}")

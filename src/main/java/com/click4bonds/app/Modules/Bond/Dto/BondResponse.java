@@ -267,6 +267,7 @@ public class BondResponse {
     private BigDecimal lotSize;
 
     private LotSizeType lotSizeType;
+    private Boolean isFlashNews;
 
     // =========================
     // STATUS

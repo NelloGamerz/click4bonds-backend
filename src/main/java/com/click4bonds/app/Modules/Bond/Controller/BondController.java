@@ -27,10 +27,11 @@ public class BondController {
     @GetMapping
     public ResponseEntity<Page<BondResponse>> getBonds(
             @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean isFlashNews,
             @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
         return ResponseEntity.ok(
-                bondService.getBonds(search, pageable));
+                bondService.getBonds(search, isFlashNews, pageable));
     }
 
     @GetMapping("/{id}")

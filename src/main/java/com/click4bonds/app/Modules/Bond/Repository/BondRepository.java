@@ -17,40 +17,67 @@ import jakarta.persistence.LockModeType;
 
 public interface BondRepository extends JpaRepository<Bond, UUID> {
 
-    Optional<Bond> findByIsin(String isin);
+        Optional<Bond> findByIsin(String isin);
 
-    boolean existsByIsin(String isin);
+        boolean existsByIsin(String isin);
 
-    Page<Bond> findByStatus(
-            BondStatus status,
-            Pageable pageable);
+        Page<Bond> findByStatus(
+                        BondStatus status,
+                        Pageable pageable);
 
-    Page<Bond> findByNameContainingIgnoreCase(
-            String name,
-            Pageable pageable);
+        Page<Bond> findByNameContainingIgnoreCase(
+                        String name,
+                        Pageable pageable);
 
-    Page<Bond> findByStatusAndNameContainingIgnoreCase(
-            BondStatus status,
-            String name,
-            Pageable pageable);
+        Page<Bond> findByStatusAndNameContainingIgnoreCase(
+                        BondStatus status,
+                        String name,
+                        Pageable pageable);
 
-    long countByStatus(BondStatus status);
+        long countByStatus(BondStatus status);
 
-    @Query("""
-                SELECT b
-                FROM Bond b
-                WHERE LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%'))
-                OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
-            """)
-    Page<Bond> searchBonds(
-            @Param("search") String search,
-            Pageable pageable);
+        // @Query("""
+        // SELECT b
+        // FROM Bond b
+        // WHERE LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%'))
+        // OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
+        // """)
+        // Page<Bond> searchBonds(
+        // @Param("search") String search,
+        // @Param("isFlashNews") Boolean isFlashNews,
+        // Pageable pageable);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("""
-                SELECT b
-                FROM Bond b
-                WHERE b.id = :id
-            """)
-    Optional<Bond> findByIdForUpdate(@Param("id") UUID id);
+        // @Query("""
+        // SELECT b
+        // FROM Bond b
+        // WHERE (:search IS NULL OR :search = ''
+        // OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%')))
+        // AND (:isFlashNews IS NULL OR b.isFlashNews = :isFlashNews)
+        // """)
+        // Page<Bond> searchBonds(
+        // @Param("search") String search,
+        // @Param("isFlashNews") Boolean isFlashNews,
+        // Pageable pageable);
+
+        @Query("""
+                            SELECT b
+                            FROM Bond b
+                            WHERE (:search IS NULL OR :search = ''
+                                   OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%')))
+                              AND (:isFlashNews IS NULL
+                                   OR :isFlashNews = false
+                                   OR b.isFlashNews = true)
+                        """)
+        Page<Bond> searchBonds(
+                        @Param("search") String search,
+                        @Param("isFlashNews") Boolean isFlashNews,
+                        Pageable pageable);
+
+        @Lock(LockModeType.PESSIMISTIC_WRITE)
+        @Query("""
+                            SELECT b
+                            FROM Bond b
+                            WHERE b.id = :id
+                        """)
+        Optional<Bond> findByIdForUpdate(@Param("id") UUID id);
 }

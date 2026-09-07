@@ -15,8 +15,23 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.User.Model.User;
 
-import jakarta.persistence.*;
-import lombok.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "bonds", indexes = {
@@ -265,6 +280,10 @@ public class Bond {
     @Column(nullable = false, length = 30)
     @Builder.Default
     private BondStatus status = BondStatus.DRAFT;
+
+    @Column(name = "is_flash_news", nullable = false)
+    @Builder.Default
+    private Boolean isFlashNews = false;
 
     // =========================
     // AUDIT
