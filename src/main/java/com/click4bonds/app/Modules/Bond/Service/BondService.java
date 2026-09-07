@@ -172,9 +172,9 @@ public class BondService {
         // =========================================================
 
         @Transactional(readOnly = true)
-        public BondResponse getBond(String id) {
+        public BondResponse getBond(String isin) {
 
-                Bond bond = getbondByIs(id);
+                Bond bond = getbondByIs(isin);
 
                 return mapToResponse(bond);
         }

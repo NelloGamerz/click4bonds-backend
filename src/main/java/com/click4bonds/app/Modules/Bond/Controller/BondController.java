@@ -35,12 +35,12 @@ public class BondController {
                 bondService.getBonds(search, isFlashNews, pageable));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{isin}")
     public ResponseEntity<BondResponse> getBond(
-            @PathVariable String id) {
+            @PathVariable String isin) {
 
         return ResponseEntity.ok(
-                bondService.getBond(id));
+                bondService.getBond(isin));
     }
 
     // @PostMapping("/{bondId}/calculate-ytm")

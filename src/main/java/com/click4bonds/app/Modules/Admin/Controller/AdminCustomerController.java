@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,32 +25,32 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import org.springframework.data.domain.Sort;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/admin/customers")
+@RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminCustomerController {
 
         private final AdminUserService adminUserService;
 
-        @GetMapping
-        public ResponseEntity<Page<User>> getCustomers(
+        @GetMapping("/users")
+        public ResponseEntity<Page<User>> getUsers(
+                        @RequestParam(required = false) UserRole role,
                         @RequestParam(required = false) String search,
-
                         @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
 
                 return ResponseEntity.ok(
-                                adminUserService.getCustomers(
+                                adminUserService.getUsers(
+                                                role,
                                                 search,
                                                 pageable));
         }
 
-        @PatchMapping("/{id}/status")
+        @PatchMapping("/customers/{id}/status")
         public ResponseEntity<User> updateStatus(
                         @PathVariable UUID id,
                         @RequestParam UserStatus status) {
@@ -60,7 +61,7 @@ public class AdminCustomerController {
                                                 status));
         }
 
-        @PatchMapping("/{id}/role")
+        @PatchMapping("/customers/{id}/role")
         public ResponseEntity<User> updateRole(
                         @PathVariable UUID id,
                         @RequestParam UserRole role) throws JsonProcessingException {
@@ -71,7 +72,7 @@ public class AdminCustomerController {
                                                 role));
         }
 
-        @GetMapping("/contact-inquiries")
+        @GetMapping("/customers/contact-inquiries")
         public ResponseEntity<Page<ContactInquiryAdminResponse>> getContactInquiries(
                         @RequestParam(required = false) ContactInquiryStatus status,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -80,7 +81,7 @@ public class AdminCustomerController {
                                 adminUserService.getContactInquiries(status, pageable));
         }
 
-        @PatchMapping("/contact-inquiries/{inquiryId}/status")
+        @PatchMapping("/customers/contact-inquiries/{inquiryId}/status")
         public ContactInquiryAdminResponse updateContactInquiryStatus(
                         @PathVariable UUID inquiryId,
                         @Valid @RequestBody UpdateContactInquiryStatusRequest request) {

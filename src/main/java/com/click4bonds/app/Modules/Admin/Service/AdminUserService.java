@@ -35,28 +35,20 @@ public class AdminUserService {
         private final ContactInquiryService contactInquiryService;
 
         @Transactional(readOnly = true)
-        public Page<User> getCustomers(
+        public Page<User> getUsers(
+                        UserRole role,
                         String search,
                         Pageable pageable) {
 
                 if (search == null || search.isBlank()) {
-                        return userRepository.findByRole(
-                                        UserRole.CUSTOMER,
+                        return userRepository.findUsers(
+                                        role,
                                         pageable);
                 }
 
                 return userRepository.searchUsers(
-                                UserRole.CUSTOMER,
+                                role,
                                 search,
-                                pageable);
-        }
-
-        @Transactional(readOnly = true)
-        public Page<User> getEmployees(
-                        Pageable pageable) {
-
-                return userRepository.findByRole(
-                                UserRole.EMPLOYEE,
                                 pageable);
         }
 
