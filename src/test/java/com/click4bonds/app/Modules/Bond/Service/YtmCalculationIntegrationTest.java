@@ -69,8 +69,9 @@ class YtmCalculationIntegrationTest {
                 xirrCalculator,
                 bondRepository);
 
-        // Calculate YTM
-        BigDecimal calculatedYtm = ytmService.calculateYtm(bond);
+        // Calculate YTM deterministically on the fixed 2026-09-03 date so the
+        // expected 10.04% holds on any execution day.
+        BigDecimal calculatedYtm = ytmService.calculateYtm(bond, CALCULATION_DATE);
 
         // Print results
         System.out.println("\nCash Flow Count: " + 12);

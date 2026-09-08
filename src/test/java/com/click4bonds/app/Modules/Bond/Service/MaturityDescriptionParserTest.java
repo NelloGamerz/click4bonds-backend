@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.click4bonds.app.Modules.Bond.Dto.MaturitySchedule;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 
 class MaturityDescriptionParserTest {
 
@@ -493,5 +494,126 @@ class MaturityDescriptionParserTest {
                                 exception.getMessage()
                                                 .contains(
                                                                 "Unsupported maturity description"));
+        }
+
+        // ============================================================
+        // INLINE FIXED-FREQUENCY AMORTIZATION
+        // ============================================================
+
+        @Test
+        void shouldParseInlineAnnualEachYearAmortization() {
+                assertInlineRule(
+                                "31/12/2030 (20% each year)",
+                                LocalDate.of(2030, 12, 31),
+                                "20",
+                                CouponFrequency.YEARLY,
+                                LocalDate.of(2026, 12, 31));
+        }
+
+        @Test
+        void shouldParseInlineAnnualYearlyAmortization() {
+                assertInlineRule(
+                                "31/12/2030 (20% yearly)",
+                                LocalDate.of(2030, 12, 31),
+                                "20",
+                                CouponFrequency.YEARLY,
+                                LocalDate.of(2026, 12, 31));
+        }
+
+        @Test
+        void shouldParseInlineAnnualAmortization() {
+                assertInlineRule(
+                                "31/12/2030 (20% annual)",
+                                LocalDate.of(2030, 12, 31),
+                                "20",
+                                CouponFrequency.YEARLY,
+                                LocalDate.of(2026, 12, 31));
+        }
+
+        @Test
+        void shouldParseInlineQuarterlyAmortization() {
+                assertInlineRule(
+                                "31/12/2027 (10% quarterly)",
+                                LocalDate.of(2027, 12, 31),
+                                "10",
+                                CouponFrequency.QUARTERLY,
+                                LocalDate.of(2025, 9, 30));
+        }
+
+        @Test
+        void shouldParseInlineMonthlyAmortization() {
+                assertInlineRule(
+                                "31/12/2027 (5% monthly)",
+                                LocalDate.of(2027, 12, 31),
+                                "5",
+                                CouponFrequency.MONTHLY,
+                                LocalDate.of(2026, 5, 31));
+        }
+
+        @Test
+        void shouldParseInlineHalfYearlyAmortization() {
+                assertInlineRule(
+                                "31/12/2031 (10% half-yearly)",
+                                LocalDate.of(2031, 12, 31),
+                                "10",
+                                CouponFrequency.HALF_YEARLY,
+                                LocalDate.of(2027, 6, 30));
+        }
+
+        @Test
+        void shouldParseInlineWithDashDateSeparator() {
+                assertInlineRule(
+                                "31-12-2031 (10% half yearly)",
+                                LocalDate.of(2031, 12, 31),
+                                "10",
+                                CouponFrequency.HALF_YEARLY,
+                                LocalDate.of(2027, 6, 30));
+        }
+
+        private void assertInlineRule(
+                        String description,
+                        LocalDate expectedMaturity,
+                        String expectedPercentage,
+                        CouponFrequency expectedFrequency,
+                        LocalDate expectedStart) {
+
+                MaturitySchedule result = parser.parse(
+                                description,
+                                expectedMaturity);
+
+                System.out.println();
+                System.out.println("============================================================");
+                System.out.println("INLINE FIXED-FREQUENCY AMORTIZATION");
+                System.out.println("============================================================");
+                System.out.println("Input Description : " + description);
+                System.out.println("Maturity Date     : " + result.maturityDate());
+                System.out.println("Perpetual         : " + result.perpetual());
+                System.out.println("Amortizing        : " + result.isAmortizing());
+                System.out.println("Rules Count       : " + result.amortizationRules().size());
+
+                for (AmortizationRule rule : result.amortizationRules()) {
+                        System.out.println("  Rule Type  : " + rule.getClass().getSimpleName());
+                        System.out.println("  Percentage : " + rule.percentage());
+                        System.out.println("  Start Date : " + rule.startDate());
+                        System.out.println("  End Date   : " + rule.endDate());
+                        System.out.println("  Frequency  : "
+                                        + (rule instanceof FixedFrequencyAmortizationRule fixedRule
+                                                        ? fixedRule.frequency()
+                                                        : "N/A"));
+                }
+
+                assertEquals(expectedMaturity, result.maturityDate());
+                assertFalse(result.perpetual());
+                assertTrue(result.isAmortizing());
+                assertEquals(1, result.amortizationRules().size());
+
+                AmortizationRule rule = result.amortizationRules().get(0);
+
+                assertInstanceOf(FixedFrequencyAmortizationRule.class, rule);
+                assertEquals(new BigDecimal(expectedPercentage), rule.percentage());
+                assertEquals(expectedStart, rule.startDate());
+                assertEquals(expectedMaturity, rule.endDate());
+                assertEquals(expectedFrequency,
+                                ((FixedFrequencyAmortizationRule) rule).frequency());
         }
 }
