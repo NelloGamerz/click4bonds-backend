@@ -30,14 +30,14 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/users")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
-public class AdminCustomerController {
+public class AdminUserController {
 
         private final AdminUserService adminUserService;
 
-        @GetMapping("/users")
+        @GetMapping()
         public ResponseEntity<Page<User>> getUsers(
                         @RequestParam(required = false) UserRole role,
                         @RequestParam(required = false) String search,
@@ -50,7 +50,7 @@ public class AdminCustomerController {
                                                 pageable));
         }
 
-        @PatchMapping("/customers/{id}/status")
+        @PatchMapping("/{id}/status")
         public ResponseEntity<User> updateStatus(
                         @PathVariable UUID id,
                         @RequestParam UserStatus status) {
@@ -61,7 +61,7 @@ public class AdminCustomerController {
                                                 status));
         }
 
-        @PatchMapping("/customers/{id}/role")
+        @PatchMapping("/{id}/role")
         public ResponseEntity<User> updateRole(
                         @PathVariable UUID id,
                         @RequestParam UserRole role) throws JsonProcessingException {
@@ -72,7 +72,7 @@ public class AdminCustomerController {
                                                 role));
         }
 
-        @GetMapping("/customers/contact-inquiries")
+        @GetMapping("/contact-inquiries")
         public ResponseEntity<Page<ContactInquiryAdminResponse>> getContactInquiries(
                         @RequestParam(required = false) ContactInquiryStatus status,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -81,7 +81,7 @@ public class AdminCustomerController {
                                 adminUserService.getContactInquiries(status, pageable));
         }
 
-        @PatchMapping("/customers/contact-inquiries/{inquiryId}/status")
+        @PatchMapping("/contact-inquiries/{inquiryId}/status")
         public ContactInquiryAdminResponse updateContactInquiryStatus(
                         @PathVariable UUID inquiryId,
                         @Valid @RequestBody UpdateContactInquiryStatusRequest request) {
