@@ -10,8 +10,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.click4bonds.app.Modules.Common.Dto.ApiError;
+import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
+import com.click4bonds.app.Modules.OTP.Exception.InvalidOtpException;
+import com.click4bonds.app.Modules.OTP.Exception.OtpMaxAttemptsExceededException;
+import com.click4bonds.app.Modules.OTP.Exception.OtpResendCooldownException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -116,6 +121,115 @@ public class GlobalExceptionHandler {
                                                 new ApiError(
                                                                 "CONFLICT",
                                                                 "A contact request has already been submitted for this email address."));
+        }
+
+        /**
+         * Handles failures of the configured email provider.
+         *
+         * The provider's own error type and message are never exposed to the
+         * caller; they are logged with the request.
+         */
+        @ExceptionHandler(EmailSendException.class)
+        public ResponseEntity<ApiError> handleEmailSendFailure(
+                        EmailSendException ex) {
+
+                log.error(
+                                "Email could not be sent: {}",
+                                ex.getMessage(),
+                                ex);
+
+                return ResponseEntity
+                                .status(HttpStatus.BAD_GATEWAY)
+                                .body(
+                                                new ApiError(
+                                                                "EMAIL_SEND_FAILED",
+                                                                "We could not send the email right now. Please try again later."));
+        }
+
+        /**
+         * Handles a submitted OTP that is wrong, unknown or expired.
+         *
+         * <p>Declared explicitly on purpose. An {@code @ExceptionHandler} always
+         * wins over the {@code @ResponseStatus} declared on the exception class,
+         * so without this method — and the two below — the catch-all handler at
+         * the bottom of this class would turn every OTP rejection into a 500.</p>
+         */
+        @ExceptionHandler(InvalidOtpException.class)
+        public ResponseEntity<ApiError> handleInvalidOtp(
+                        InvalidOtpException ex) {
+
+                log.warn("OTP verification rejected: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .badRequest()
+                                .body(
+                                                new ApiError(
+                                                                "INVALID_OTP",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles an OTP requested again before the resend cooldown elapsed.
+         */
+        @ExceptionHandler(OtpResendCooldownException.class)
+        public ResponseEntity<ApiError> handleOtpResendCooldown(
+                        OtpResendCooldownException ex) {
+
+                log.warn("OTP request rejected: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .status(HttpStatus.TOO_MANY_REQUESTS)
+                                .body(
+                                                new ApiError(
+                                                                "OTP_RESEND_COOLDOWN",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles an OTP destroyed after too many failed verifications.
+         */
+        @ExceptionHandler(OtpMaxAttemptsExceededException.class)
+        public ResponseEntity<ApiError> handleOtpMaxAttempts(
+                        OtpMaxAttemptsExceededException ex) {
+
+                log.warn("OTP request rejected: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .status(HttpStatus.TOO_MANY_REQUESTS)
+                                .body(
+                                                new ApiError(
+                                                                "OTP_MAX_ATTEMPTS_EXCEEDED",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Honours the status carried by a {@link ResponseStatusException}.
+         *
+         * <p>Without this, the catch-all handler would report a deliberately
+         * raised 404 or 403 as a 500 — the same precedence rule described on
+         * {@link #handleInvalidOtp} applies to these as well.</p>
+         */
+        @ExceptionHandler(ResponseStatusException.class)
+        public ResponseEntity<ApiError> handleResponseStatus(
+                        ResponseStatusException ex) {
+
+                log.warn(
+                                "Request rejected with {}: {}",
+                                ex.getStatusCode(),
+                                ex.getReason());
+
+                HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+
+                return ResponseEntity
+                                .status(ex.getStatusCode())
+                                .body(
+                                                new ApiError(
+                                                                status == null
+                                                                                ? "ERROR"
+                                                                                : status.name(),
+                                                                ex.getReason() == null
+                                                                                ? "Request could not be completed"
+                                                                                : ex.getReason()));
         }
 
         /**
