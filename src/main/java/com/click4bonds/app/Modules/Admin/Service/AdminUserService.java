@@ -15,9 +15,12 @@ import com.click4bonds.app.Modules.Common.Repository.OutboxEventRepository;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.Service.ContactInquiryService;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
+import com.click4bonds.app.Modules.User.Dto.UserResponse;
+import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Model.UserVerification;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
 
@@ -35,21 +38,23 @@ public class AdminUserService {
         private final ContactInquiryService contactInquiryService;
 
         @Transactional(readOnly = true)
-        public Page<User> getUsers(
+        public Page<UserResponse> getUsers(
                         UserRole role,
                         String search,
                         Pageable pageable) {
 
+                Page<User> users;
+
                 if (search == null || search.isBlank()) {
-                        return userRepository.findUsers(
+                        users = userRepository.findUsers(role, pageable);
+                } else {
+                        users = userRepository.searchUsers(
                                         role,
+                                        search,
                                         pageable);
                 }
 
-                return userRepository.searchUsers(
-                                role,
-                                search,
-                                pageable);
+                return users.map(this::toUserResponse);
         }
 
         public User updateUserStatus(
@@ -122,6 +127,41 @@ public class AdminUserService {
                 return contactInquiryService.updateStatus(
                                 inquiryId,
                                 status);
+        }
+
+        private UserResponse toUserResponse(User user) {
+
+                UserVerification verification = user.getVerification();
+
+                return UserResponse.builder()
+                                .id(user.getId())
+                                .clerkUserId(user.getClerkUserId())
+                                .email(user.getEmail())
+                                .mobileNumber(user.getMobileNumber())
+                                .firstName(user.getFirstName())
+                                .lastName(user.getLastName())
+                                .profileImage(user.getProfileImage())
+                                .onboardingStep(user.getOnboardingStep())
+                                .role(user.getRole())
+                                .status(user.getStatus())
+                                .createdAt(user.getCreatedAt())
+                                .updatedAt(user.getUpdatedAt())
+                                .verification(
+                                                verification == null
+                                                                ? null
+                                                                : UserVerificationResponse.builder()
+                                                                                .id(verification.getId())
+                                                                                .emailStatus(verification
+                                                                                                .getEmailStatus())
+                                                                                .phoneStatus(verification
+                                                                                                .getPhoneStatus())
+                                                                                .panStatus(verification.getPanStatus())
+                                                                                .bankAccountStatus(verification
+                                                                                                .getBankAccountStatus())
+                                                                                .createdAt(verification.getCreatedAt())
+                                                                                .updatedAt(verification.getUpdatedAt())
+                                                                                .build())
+                                .build();
         }
 
 }

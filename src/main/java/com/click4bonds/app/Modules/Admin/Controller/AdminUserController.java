@@ -21,6 +21,7 @@ import com.click4bonds.app.Modules.Admin.Dto.UpdateContactInquiryStatusRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminUserService;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
+import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
@@ -37,8 +38,8 @@ public class AdminUserController {
 
         private final AdminUserService adminUserService;
 
-        @GetMapping()
-        public ResponseEntity<Page<User>> getUsers(
+        @GetMapping
+        public ResponseEntity<Page<UserResponse>> getUsers(
                         @RequestParam(required = false) UserRole role,
                         @RequestParam(required = false) String search,
                         @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
