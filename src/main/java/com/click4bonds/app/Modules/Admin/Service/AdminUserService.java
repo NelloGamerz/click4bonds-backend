@@ -12,10 +12,11 @@ import com.click4bonds.app.Modules.Common.Enums.OutboxStatus;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Common.Model.OutboxEvent;
 import com.click4bonds.app.Modules.Common.Repository.OutboxEventRepository;
+import com.click4bonds.app.Modules.Admin.Dto.AdminUserDetailsResponse;
+import com.click4bonds.app.Modules.Admin.Dto.AdminUserSummaryResponse;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.Service.ContactInquiryService;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
-import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
@@ -38,7 +39,7 @@ public class AdminUserService {
         private final ContactInquiryService contactInquiryService;
 
         @Transactional(readOnly = true)
-        public Page<UserResponse> getUsers(
+        public Page<AdminUserSummaryResponse> getUsers(
                         UserRole role,
                         String search,
                         Pageable pageable) {
@@ -54,7 +55,17 @@ public class AdminUserService {
                                         pageable);
                 }
 
-                return users.map(this::toUserResponse);
+                return users.map(this::toUserSummaryResponse);
+        }
+
+        @Transactional(readOnly = true)
+        public AdminUserDetailsResponse getUserDetails(UUID userId) {
+
+                User user = userRepository.findById(userId)
+                                .orElseThrow(() -> new ResourceNotFoundException(
+                                                "User not found"));
+
+                return toUserDetailsResponse(user);
         }
 
         public User updateUserStatus(
@@ -129,11 +140,25 @@ public class AdminUserService {
                                 status);
         }
 
-        private UserResponse toUserResponse(User user) {
+        private AdminUserSummaryResponse toUserSummaryResponse(User user) {
+
+                return AdminUserSummaryResponse.builder()
+                                .id(user.getId())
+                                .clerkUserId(user.getClerkUserId())
+                                .firstName(user.getFirstName())
+                                .lastName(user.getLastName())
+                                .email(user.getEmail())
+                                .role(user.getRole())
+                                .status(user.getStatus())
+                                .updatedAt(user.getUpdatedAt())
+                                .build();
+        }
+
+        private AdminUserDetailsResponse toUserDetailsResponse(User user) {
 
                 UserVerification verification = user.getVerification();
 
-                return UserResponse.builder()
+                return AdminUserDetailsResponse.builder()
                                 .id(user.getId())
                                 .clerkUserId(user.getClerkUserId())
                                 .email(user.getEmail())

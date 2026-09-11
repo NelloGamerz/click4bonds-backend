@@ -17,11 +17,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.click4bonds.app.Modules.Admin.Dto.AdminUserDetailsResponse;
+import com.click4bonds.app.Modules.Admin.Dto.AdminUserSummaryResponse;
 import com.click4bonds.app.Modules.Admin.Dto.UpdateContactInquiryStatusRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminUserService;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
 import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
-import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
@@ -39,7 +40,7 @@ public class AdminUserController {
         private final AdminUserService adminUserService;
 
         @GetMapping
-        public ResponseEntity<Page<UserResponse>> getUsers(
+        public ResponseEntity<Page<AdminUserSummaryResponse>> getUsers(
                         @RequestParam(required = false) UserRole role,
                         @RequestParam(required = false) String search,
                         @ParameterObject @PageableDefault(size = 20) Pageable pageable) {
@@ -49,6 +50,14 @@ public class AdminUserController {
                                                 role,
                                                 search,
                                                 pageable));
+        }
+
+        @GetMapping("/{id}/details")
+        public ResponseEntity<AdminUserDetailsResponse> getUserDetails(
+                        @PathVariable UUID id) {
+
+                return ResponseEntity.ok(
+                                adminUserService.getUserDetails(id));
         }
 
         @PatchMapping("/{id}/status")
