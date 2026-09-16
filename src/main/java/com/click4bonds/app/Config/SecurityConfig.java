@@ -36,6 +36,13 @@ public class SecurityConfig {
                                                                 "/api/v1/contact-inquiries")
                                                 .permitAll()
 
+                                                // Analytics smoke test. The controller behind
+                                                // this path only exists under the dev profile, so
+                                                // in any other environment the rule matches
+                                                // nothing and the path 404s.
+                                                .requestMatchers(HttpMethod.POST, "/api/analytics/test")
+                                                .permitAll()
+
                                                 // Public bond endpoints
                                                 // .requestMatchers(
                                                 // HttpMethod.GET,

@@ -82,15 +82,9 @@
             <artifactId>dotenv-java</artifactId>
             <version>3.2.0</version>
         </dependency>
-        <!--
-            Must be the Boot starter, not bare org.springframework.kafka:spring-kafka.
-            Boot 4 ships Kafka auto-configuration in its own module, so without the
-            starter there is no KafkaTemplate/ProducerFactory/ConsumerFactory/KafkaAdmin
-            bean and every spring.kafka.* property in the YAML is silently ignored.
-        -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-kafka</artifactId>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
         </dependency>
         <dependency>
             <groupId>com.clickhouse</groupId>
