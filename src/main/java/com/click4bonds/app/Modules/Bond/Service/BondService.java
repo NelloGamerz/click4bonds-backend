@@ -1,7 +1,6 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.apache.coyote.BadRequestException;
 import org.springframework.data.domain.Page;
@@ -223,11 +222,11 @@ public class BondService {
         // =========================================================
 
         public BondResponse updateBond(
-                        UUID bondId,
+                        String isin,
                         UpdateBondRequest request)
                         throws BadRequestException {
 
-                Bond bond = getEntity(bondId);
+                Bond bond = getbondByIs(isin);
 
                 // -----------------------------------------------------
                 // Matured bond cannot be modified
@@ -393,10 +392,10 @@ public class BondService {
         // ACTIVATE
         // =========================================================
 
-        public BondResponse activateBond(UUID bondId)
+        public BondResponse activateBond(String isin)
                         throws BadRequestException {
 
-                Bond bond = getEntity(bondId);
+                Bond bond = getbondByIs(isin);
 
                 // -----------------------------------------------------
                 // Validate current state
@@ -437,10 +436,10 @@ public class BondService {
         // SUSPEND
         // =========================================================
 
-        public BondResponse suspendBond(UUID bondId)
+        public BondResponse suspendBond(String isin)
                         throws BadRequestException {
 
-                Bond bond = getEntity(bondId);
+                Bond bond = getbondByIs(isin);
 
                 if (bond.getStatus() == BondStatus.MATURED) {
                         throw new BadRequestException(
@@ -462,10 +461,10 @@ public class BondService {
         // CANCEL
         // =========================================================
 
-        public void cancelBond(UUID bondId)
+        public void cancelBond(String isin)
                         throws BadRequestException {
 
-                Bond bond = getEntity(bondId);
+                Bond bond = getbondByIs(isin);
 
                 if (bond.getStatus() == BondStatus.MATURED) {
                         throw new BadRequestException(
@@ -498,21 +497,31 @@ public class BondService {
         // INTERNAL ENTITY LOOKUP
         // =========================================================
 
-        private Bond getEntity(UUID id) {
-
-                return bondRepository.findById(id)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Bond not found: " + id));
-        }
-
         public Bond findBond(String isin) {
                 return getbondByIs(isin);
         }
 
-        private Bond getbondByIs(String isIn) {
-                return bondRepository.findByIsin(isIn)
+        /**
+         * Looks a bond up by its ISIN.
+         *
+         * ISINs are stored upper-cased, so the input is normalized
+         * first — that way an ISIN typed in lower case in a path
+         * variable still resolves.
+         */
+        private Bond getbondByIs(String isin) {
+
+                String normalizedIsin = normalizeIsin(isin);
+
+                return bondRepository.findByIsin(normalizedIsin)
                                 .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Bond not found: " + isIn));
+                                                "Bond not found with ISIN: " + normalizedIsin));
+        }
+
+        private String normalizeIsin(String isin) {
+
+                return isin == null
+                                ? null
+                                : isin.trim().toUpperCase();
         }
 
         // =========================================================

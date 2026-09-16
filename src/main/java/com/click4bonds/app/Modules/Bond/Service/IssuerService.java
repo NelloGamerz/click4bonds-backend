@@ -1,11 +1,15 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,12 +17,14 @@ import com.click4bonds.app.Modules.Bond.Dto.BondIssuerBulkItem;
 import com.click4bonds.app.Modules.Bond.Dto.BulkIssuerError;
 import com.click4bonds.app.Modules.Bond.Dto.BulkIssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CreateIssuerRequest;
+import com.click4bonds.app.Modules.Bond.Dto.IssuerPageResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateIssuerRequest;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
+import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 
@@ -39,20 +45,29 @@ public class IssuerService {
     private final IssuerMapper issuerMapper;
     private final IssuerBulkWriter issuerBulkWriter;
 
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 100;
+
+    /**
+     * Separates the name from the id inside a cursor. A name may
+     * contain it, so decoding splits on the last occurrence.
+     */
+    private static final char CURSOR_SEPARATOR = '|';
+
     // =========================================================
     // ADD ISSUER TO BOND
     // =========================================================
 
     @Transactional
     public IssuerResponse addIssuerToBond(
-            UUID bondId,
+            String isin,
             CreateIssuerRequest request) {
 
-        Bond bond = getBond(bondId);
+        Bond bond = getBondByIsin(isin);
 
         if (bond.getIssuer() != null) {
             throw new ConflictException(
-                    "Bond already has an issuer: " + bondId
+                    "Bond already has an issuer: " + isin
                             + ". Use PATCH to update it.");
         }
 
@@ -74,16 +89,16 @@ public class IssuerService {
 
     @Transactional
     public IssuerResponse updateIssuer(
-            UUID bondId,
+            String isin,
             UpdateIssuerRequest request) {
 
-        Bond bond = getBond(bondId);
+        Bond bond = getBondByIsin(isin);
 
         Issuer issuer = bond.getIssuer();
 
         if (issuer == null) {
             throw new ResourceNotFoundException(
-                    "Bond has no issuer yet: " + bondId);
+                    "Bond has no issuer yet: " + isin);
         }
 
         issuerMapper.applyUpdate(issuer, request);
@@ -98,38 +113,173 @@ public class IssuerService {
     // GET ISSUER OF BOND
     // =========================================================
 
+    /**
+     * The issuer attached to the bond with the given ISIN.
+     */
     @Transactional(readOnly = true)
-    public IssuerResponse getIssuerByBondId(UUID bondId) {
+    public IssuerResponse getIssuerByIsin(String isin) {
 
-        Bond bond = getBond(bondId);
+        Bond bond = getBondByIsin(isin);
 
         Issuer issuer = bond.getIssuer();
 
         if (issuer == null) {
             throw new ResourceNotFoundException(
-                    "Bond has no issuer yet: " + bondId);
+                    "Issuer not found for bond with ISIN: " + bond.getIsin());
         }
 
         return issuerMapper.toResponse(issuer);
     }
 
+    // =========================================================
+    // LIST ISSUERS (CURSOR PAGINATION)
+    // =========================================================
+
+    /**
+     * Lists issuers ordered by name, optionally filtered by a
+     * case-insensitive substring of the name.
+     *
+     * @param search optional name fragment. NULL or blank returns
+     *               every issuer.
+     * @param cursor opaque cursor from the previous page's
+     *               {@code nextCursor}. NULL for the first page.
+     * @param size   page size. Clamped to [1, 100], default 20.
+     */
     @Transactional(readOnly = true)
-    public IssuerResponse getIssuerByIsin(String isin) {
+    public IssuerPageResponse getIssuers(
+            String search,
+            String cursor,
+            Integer size) {
 
-        String normalizedIsin = isin.trim().toUpperCase();
+        int pageSize = resolvePageSize(size);
 
-        Bond bond = bondRepository.findByIsin(normalizedIsin)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + normalizedIsin));
+        String pattern = buildSearchPattern(search);
 
-        Issuer issuer = bond.getIssuer();
+        // One extra row tells us whether another page exists,
+        // without a second count query.
+        Pageable limit = PageRequest.of(0, pageSize + 1);
 
-        if (issuer == null) {
-            throw new ResourceNotFoundException(
-                    "Issuer not found for bond with ISIN: " + normalizedIsin);
+        List<Issuer> rows;
+
+        if (cursor == null || cursor.isBlank()) {
+
+            rows = issuerRepository.findPageBySearch(
+                    pattern,
+                    limit);
+
+        } else {
+
+            Cursor decoded = decodeCursor(cursor);
+
+            rows = issuerRepository.findPageBySearchAfter(
+                    pattern,
+                    decoded.name(),
+                    decoded.id(),
+                    limit);
         }
 
-        return issuerMapper.toResponse(issuer);
+        boolean hasNext = rows.size() > pageSize;
+
+        List<Issuer> page = hasNext
+                ? rows.subList(0, pageSize)
+                : rows;
+
+        return IssuerPageResponse.builder()
+                .items(
+                        page.stream()
+                                .map(issuerMapper::toResponse)
+                                .toList())
+                .size(page.size())
+                .hasNext(hasNext)
+                .nextCursor(hasNext
+                        ? encodeCursor(page.get(page.size() - 1))
+                        : null)
+                .build();
+    }
+
+    /**
+     * The (name, id) of the last row of a page.
+     *
+     * {@code name} is stored lower-cased because the query orders
+     * and compares on {@code LOWER(name)}.
+     */
+    private record Cursor(String name, UUID id) {
+    }
+
+    private int resolvePageSize(Integer size) {
+
+        if (size == null || size < 1) {
+            return DEFAULT_PAGE_SIZE;
+        }
+
+        return Math.min(size, MAX_PAGE_SIZE);
+    }
+
+    /**
+     * Builds the LIKE pattern for the name search.
+     *
+     * An empty search becomes "%", matching every name. %, _ and
+     * the escape character itself are escaped so that a search for
+     * e.g. "50%" looks for a literal percent sign.
+     */
+    private String buildSearchPattern(String search) {
+
+        if (search == null || search.isBlank()) {
+            return "%";
+        }
+
+        String escaped = search.trim()
+                .toLowerCase()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+
+        return "%" + escaped + "%";
+    }
+
+    private String encodeCursor(Issuer issuer) {
+
+        String raw = issuer.getName().toLowerCase()
+                + CURSOR_SEPARATOR
+                + issuer.getId();
+
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(
+                        raw.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private Cursor decodeCursor(String cursor) {
+
+        String raw;
+
+        try {
+
+            raw = new String(
+                    Base64.getUrlDecoder().decode(cursor),
+                    StandardCharsets.UTF_8);
+
+        } catch (IllegalArgumentException ex) {
+
+            throw new BadRequestException("Invalid cursor");
+        }
+
+        int separator = raw.lastIndexOf(CURSOR_SEPARATOR);
+
+        if (separator < 0) {
+            throw new BadRequestException("Invalid cursor");
+        }
+
+        try {
+
+            return new Cursor(
+                    raw.substring(0, separator),
+                    UUID.fromString(raw.substring(separator + 1)));
+
+        } catch (IllegalArgumentException ex) {
+
+            throw new BadRequestException("Invalid cursor");
+        }
     }
 
     // =========================================================
@@ -310,10 +460,21 @@ public class IssuerService {
     // INTERNAL ENTITY LOOKUP
     // =========================================================
 
-    private Bond getBond(UUID id) {
+    /**
+     * Looks a bond up by its ISIN.
+     *
+     * ISINs are stored upper-cased, so the input is normalized
+     * first — that way an ISIN typed in lower case in a path
+     * variable still resolves.
+     */
+    private Bond getBondByIsin(String isin) {
 
-        return bondRepository.findById(id)
+        String normalizedIsin = isin == null
+                ? null
+                : isin.trim().toUpperCase();
+
+        return bondRepository.findByIsin(normalizedIsin)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found: " + id));
+                        "Bond not found with ISIN: " + normalizedIsin));
     }
 }

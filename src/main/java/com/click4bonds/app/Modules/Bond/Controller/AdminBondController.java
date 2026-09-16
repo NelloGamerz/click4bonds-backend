@@ -1,7 +1,6 @@
 package com.click4bonds.app.Modules.Bond.Controller;
 
 import java.util.List;
-import java.util.UUID;
 
 import org.apache.coyote.BadRequestException;
 import org.springdoc.core.annotations.ParameterObject;
@@ -30,6 +29,7 @@ import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BulkIssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.CreateIssuerRequest;
+import com.click4bonds.app.Modules.Bond.Dto.IssuerPageResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateIssuerRequest;
@@ -40,8 +40,14 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Admin bond and issuer endpoints.
+ *
+ * Mapped at /api/admin so that bonds and issuers can live under
+ * separate paths: /api/admin/bonds/** and /api/admin/issuers.
+ */
 @RestController
-@RequestMapping("/api/admin/bonds")
+@RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @PreAuthorize("hasRole('ADMIN')")
 public class AdminBondController {
@@ -49,7 +55,7 @@ public class AdminBondController {
         private final BondService bondService;
         private final IssuerService issuerService;
 
-        @PostMapping
+        @PostMapping("/bonds")
         public ResponseEntity<BondResponse> createBond(
                         @Valid @RequestBody CreateBondRequest request,
                         @AuthenticationPrincipal Jwt jwt) throws BadRequestException {
@@ -64,7 +70,7 @@ public class AdminBondController {
                                                                 adminId));
         }
 
-        @PatchMapping("/prices")
+        @PatchMapping("/bonds/prices")
         public ResponseEntity<List<BondResponse>> updatePrices(
                         @Valid @RequestBody @NotEmpty List<@Valid BondPriceUpdateRequest> requests) throws BadRequestException {
 
@@ -72,7 +78,7 @@ public class AdminBondController {
                                 bondService.updatePrices(requests));
         }
 
-        @GetMapping
+        @GetMapping("/bonds")
         public ResponseEntity<Page<BondResponse>> getBonds(
                         @RequestParam(required = false) String search,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
@@ -81,44 +87,44 @@ public class AdminBondController {
                                 bondService.getBonds(search, null, pageable));
         }
 
-        @GetMapping("/{id}")
+        @GetMapping("/bonds/{isin}")
         public ResponseEntity<BondResponse> getBond(
-                        @PathVariable String id) {
+                        @PathVariable String isin) {
 
                 return ResponseEntity.ok(
-                                bondService.getBond(id));
+                                bondService.getBond(isin));
         }
 
-        @PatchMapping("/{id}")
+        @PatchMapping("/bonds/{isin}")
         public ResponseEntity<BondResponse> updateBond(
-                        @PathVariable UUID id,
+                        @PathVariable String isin,
                         @Valid @RequestBody UpdateBondRequest request) throws BadRequestException {
 
                 return ResponseEntity.ok(
-                                bondService.updateBond(id, request));
+                                bondService.updateBond(isin, request));
         }
 
-        @PatchMapping("/{id}/activate")
+        @PatchMapping("/bonds/{isin}/activate")
         public ResponseEntity<BondResponse> activateBond(
-                        @PathVariable UUID id) throws BadRequestException {
+                        @PathVariable String isin) throws BadRequestException {
 
                 return ResponseEntity.ok(
-                                bondService.activateBond(id));
+                                bondService.activateBond(isin));
         }
 
-        @PatchMapping("/{id}/suspend")
+        @PatchMapping("/bonds/{isin}/suspend")
         public ResponseEntity<BondResponse> suspendBond(
-                        @PathVariable UUID id) throws BadRequestException {
+                        @PathVariable String isin) throws BadRequestException {
 
                 return ResponseEntity.ok(
-                                bondService.suspendBond(id));
+                                bondService.suspendBond(isin));
         }
 
-        @DeleteMapping("/{id}")
+        @DeleteMapping("/bonds/{isin}")
         public ResponseEntity<Void> cancelBond(
-                        @PathVariable UUID id) throws BadRequestException {
+                        @PathVariable String isin) throws BadRequestException {
 
-                bondService.cancelBond(id);
+                bondService.cancelBond(isin);
 
                 return ResponseEntity.noContent().build();
         }
@@ -128,43 +134,70 @@ public class AdminBondController {
         // =========================================================
 
         /**
+         * Lists all issuers, cursor paginated, with an optional
+         * search over the issuer name.
+         *
+         * The first page is fetched without {@code cursor}. Pass the
+         * {@code nextCursor} of a response back as {@code cursor} to
+         * fetch the following page; {@code nextCursor} is NULL on
+         * the last page. {@code hasNext} tells the caller up front.
+         *
+         * @param search case-insensitive substring of the name.
+         *               NULL or blank returns every issuer.
+         * @param cursor opaque cursor from the previous page.
+         * @param size   page size, 1-100. Defaults to 20.
+         */
+        @GetMapping("/issuers")
+        public ResponseEntity<IssuerPageResponse> getIssuers(
+                        @RequestParam(required = false) String search,
+                        @RequestParam(required = false) String cursor,
+                        @RequestParam(required = false) Integer size) {
+
+                return ResponseEntity.ok(
+                                issuerService.getIssuers(
+                                                search,
+                                                cursor,
+                                                size));
+        }
+
+        /**
          * Attaches a brand new issuer to a bond.
          *
          * Fails if the bond already has an issuer.
          */
-        @PostMapping("/{id}/issuer")
+        @PostMapping("/bonds/{isin}/issuer")
         public ResponseEntity<IssuerResponse> addIssuer(
-                        @PathVariable UUID id,
+                        @PathVariable String isin,
                         @Valid @RequestBody CreateIssuerRequest request) {
 
                 return ResponseEntity
                                 .status(HttpStatus.CREATED)
                                 .body(
                                                 issuerService.addIssuerToBond(
-                                                                id,
+                                                                isin,
                                                                 request));
         }
 
         /**
          * Partially updates the issuer already attached to a bond.
          */
-        @PatchMapping("/{id}/issuer")
+        @PatchMapping("/bonds/{isin}/issuer")
         public ResponseEntity<IssuerResponse> updateIssuer(
-                        @PathVariable UUID id,
+                        @PathVariable String isin,
                         @Valid @RequestBody UpdateIssuerRequest request) {
 
                 return ResponseEntity.ok(
                                 issuerService.updateIssuer(
-                                                id,
+                                                isin,
                                                 request));
         }
 
-        @GetMapping("/{id}/issuer")
+        @GetMapping("/bonds/{isin}/issuer")
         public ResponseEntity<IssuerResponse> getIssuer(
-                        @PathVariable UUID id) {
+                        @PathVariable String isin) {
 
                 return ResponseEntity.ok(
-                                issuerService.getIssuerByBondId(id));
+                                issuerService.getIssuerByIsin(isin));
         }
 
         /**
@@ -174,7 +207,7 @@ public class AdminBondController {
          * bad row is reported in {@code errors} while the rest are
          * still saved.
          */
-        @PostMapping("/issuers/bulk")
+        @PostMapping("/bonds/issuers/bulk")
         public ResponseEntity<BulkIssuerResponse> bulkUpsertIssuers(
                         @Valid @RequestBody @NotEmpty List<@Valid BondIssuerBulkItem> items) {
 
