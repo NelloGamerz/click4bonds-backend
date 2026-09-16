@@ -12,11 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
-import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
@@ -527,66 +525,6 @@ public class BondService {
                 bond.setAnnualYtm(null);
                 bond.setYtc(null);
                 bond.setYtmCalculatedAt(null);
-        }
-
-        @Transactional(readOnly = true)
-        public IssuerResponse getIssuerByIsin(String isin) {
-
-                String normalizedIsin = isin.trim().toUpperCase();
-
-                Bond bond = bondRepository.findByIsin(normalizedIsin)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "Bond not found with ISIN: " + normalizedIsin));
-
-                Issuer issuer = bond.getIssuer();
-
-                if (issuer == null) {
-                        throw new ResourceNotFoundException(
-                                        "Issuer not found for bond with ISIN: " + normalizedIsin);
-                }
-
-                return mapToIssuerResponse(issuer);
-        }
-
-        private IssuerResponse mapToIssuerResponse(Issuer issuer) {
-
-                return IssuerResponse.builder()
-
-                                .id(issuer.getId())
-
-                                // Basic information
-                                .name(issuer.getName())
-                                .shortName(issuer.getShortName())
-                                .issuerCode(issuer.getIssuerCode())
-                                .issuerType(issuer.getIssuerType())
-                                .sector(issuer.getSector())
-
-                                // Regulatory identification
-                                .cin(issuer.getCin())
-                                .pan(issuer.getPan())
-                                .lei(issuer.getLei())
-
-                                // About issuer
-                                .description(issuer.getDescription())
-                                .website(issuer.getWebsite())
-
-                                // Address
-                                .registeredAddress(issuer.getRegisteredAddress())
-                                .corporateAddress(issuer.getCorporateAddress())
-                                .city(issuer.getCity())
-                                .state(issuer.getState())
-                                .country(issuer.getCountry())
-                                .pincode(issuer.getPincode())
-
-                                // Contact
-                                .contactEmail(issuer.getContactEmail())
-                                .contactPhone(issuer.getContactPhone())
-
-                                // Audit
-                                .createdAt(issuer.getCreatedAt())
-                                .updatedAt(issuer.getUpdatedAt())
-
-                                .build();
         }
 
         // =========================================================

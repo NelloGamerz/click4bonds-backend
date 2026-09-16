@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.IssuerService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 public class BondController {
 
     private final BondService bondService;
+    private final IssuerService issuerService;
 
     @GetMapping
     public ResponseEntity<Page<BondResponse>> getBonds(
@@ -54,6 +56,6 @@ public class BondController {
             @PathVariable String isin) {
 
         return ResponseEntity.ok(
-                bondService.getIssuerByIsin(isin));
+                issuerService.getIssuerByIsin(isin));
     }
 }
