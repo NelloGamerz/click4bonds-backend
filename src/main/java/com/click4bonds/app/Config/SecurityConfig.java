@@ -29,6 +29,7 @@ public class SecurityConfig {
                                                                 "/public/**",
                                                                 "/api/webhooks/clerk",
                                                                 "/actuator/health",
+                                                                "/actuator/health/**",
                                                                 "/swagger-ui/**",
                                                                 "/swagger-ui.html",
                                                                 "/v3/api-docs/**",
@@ -40,8 +41,8 @@ public class SecurityConfig {
                                                 // this path only exists under the dev profile, so
                                                 // in any other environment the rule matches
                                                 // nothing and the path 404s.
-                                                .requestMatchers(HttpMethod.POST, "/api/analytics/test")
-                                                .permitAll()
+                                                // .requestMatchers(HttpMethod.POST, "/api/analytics/test")
+                                                // .permitAll()
 
                                                 // Public bond endpoints
                                                 // .requestMatchers(
