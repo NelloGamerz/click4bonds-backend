@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.User.Service;
 
+import com.click4bonds.app.Modules.Sms.service.SmsService;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
@@ -62,6 +63,7 @@ public class VerificationService {
     private final UserService userService;
     private final UserVerificationService userVerificationService;
     private final OtpProperties otpProperties;
+    private final SmsService smsService;
 
     /**
      * Issues an email verification code and delivers it.
@@ -157,7 +159,9 @@ public class VerificationService {
         }
 
         // Issuing a code proves nothing: the statuses are left untouched.
-        otpService.generateOtp(OtpType.SMS, normalizedPhone);
+//        otpService.generateOtp(OtpType.SMS, normalizedPhone);
+        String otp = otpService.generateOtp(OtpType.SMS, normalizedPhone);
+        smsService.sendOtp(normalizedPhone, otp);
 
         return new VerificationResponse(PHONE_OTP_GENERATED);
     }
