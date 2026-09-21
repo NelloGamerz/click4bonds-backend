@@ -97,6 +97,9 @@ public class BondService {
                 .couponFrequency(request.getCouponFrequency())
                 .ipDateDescription(request.getIpDateDescription())
 
+                // Record date rule (source of truth for coupon entitlement)
+                .recordDateDescription(request.getRecordDateDescription())
+
                 // Maturity
                 .maturityType(request.getMaturityType())
                 .maturityDate(request.getMaturityDate())
@@ -306,6 +309,15 @@ public class BondService {
         if (request.getIpDateDescription() != null) {
             bond.setIpDateDescription(
                     request.getIpDateDescription());
+        }
+
+        // -----------------------------------------------------
+        // Record date rule (source of truth for entitlement)
+        // -----------------------------------------------------
+
+        if (request.getRecordDateDescription() != null) {
+            bond.setRecordDateDescription(
+                    request.getRecordDateDescription());
         }
 
         // -----------------------------------------------------
@@ -590,6 +602,10 @@ public class BondService {
 
                 .ipDateDescription(
                         bond.getIpDateDescription())
+
+                // Record date rule (source of truth for coupon entitlement)
+                .recordDateDescription(
+                        bond.getRecordDateDescription())
 
                 // Maturity
                 .maturityType(

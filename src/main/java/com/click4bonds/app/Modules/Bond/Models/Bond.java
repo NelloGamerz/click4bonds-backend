@@ -85,7 +85,7 @@ public class Bond {
 
     /**
      * Category/group from Excel.
-     *
+     * <p>
      * Examples:
      * High Level SDL below 5 lakh Qtm
      * Category 1 ( Gsec/ SDL )
@@ -103,7 +103,7 @@ public class Bond {
 
     /**
      * Stored as percentage.
-     *
+     * <p>
      * Example:
      * 7.20 = 7.20%
      */
@@ -116,7 +116,7 @@ public class Bond {
 
     /**
      * Original IP date text from Excel.
-     *
+     * <p>
      * Examples:
      * 09/02-09/08
      * 15/10 Ann
@@ -127,12 +127,52 @@ public class Bond {
     private String ipDateDescription;
 
     // =========================
+    // RECORD DATE
+    // =========================
+
+    /**
+     * Original record-date rule from Excel/source.
+     * <p>
+     * IMPORTANT - this description is the SOURCE OF TRUTH for record dates.
+     * <p>
+     * A record date is NOT stored on the bond. It is derived per coupon payment
+     * date by {@code RecordDateParser}, because a bond with MONTHLY / QUARTERLY /
+     * HALF_YEARLY / YEARLY coupons has a different record date for every coupon
+     * it pays. Storing a single date here would be wrong for all but one of them.
+     * <p>
+     * The number of days is always read from this text. There is no default
+     * offset: a description saying 7 days means 7, saying 10 means 10, and a
+     * description that cannot be interpreted raises
+     * {@code UnsupportedRecordDateDescriptionException} rather than silently
+     * assuming 15 days.
+     * <p>
+     * Supported today (see {@code RelativeDaysRecordDateRule}):
+     * <p>
+     * "15 days prior to interest payment date"
+     * <p>
+     * "2 days before coupon"
+     * <p>
+     * "15 days prior"
+     * <p>
+     * Absent / blank / "NA" / "N/A" / "Not Applicable" means the bond has no
+     * record-date rule; those bonds keep their exact historical YTM behaviour.
+     * <p>
+     * A description that carries meaning the parser does not model (for example
+     * "21st of every month", "20/09/2026", or "3 days prior to the last working
+     * day") is rejected. Such wording needs a new {@code RecordDateRule}
+     * implementation before it can be used.
+     */
+    @Column(length = 255)
+    private String recordDateDescription;
+
+
+    // =========================
     // MATURITY
     // =========================
 
     /**
      * Normalized maturity date.
-     *
+     * <p>
      * Example:
      * 9/Aug/27 -> 2027-08-09
      */
@@ -140,12 +180,12 @@ public class Bond {
 
     /**
      * Original maturity text from Excel.
-     *
+     * <p>
      * Required because maturity can contain
      * amortization/special redemption information.
-     *
+     * <p>
      * Examples:
-     *
+     * <p>
      * 26-09-2031
      * 26-09-2031 (2.5% on Each IP till 2027...)
      * 9/11/2024 to 9/11/2033 (10% each year)
@@ -166,7 +206,7 @@ public class Bond {
     /**
      * We intentionally DO NOT use separate putDate/callDate
      * as the Excel column contains:
-     *
+     * <p>
      * NA
      * blank
      * date
@@ -181,7 +221,7 @@ public class Bond {
 
     /**
      * Current market/selling price.
-     *
+     * <p>
      * Can be NULL because Excel may contain blank.
      */
     @Column(precision = 19, scale = 2)
@@ -193,10 +233,10 @@ public class Bond {
 
     /**
      * IMPORTANT:
-     *
+     * <p>
      * These are NOT imported from Excel.
      * They are calculated internally.
-     *
+     * <p>
      * Do not expose them in public APIs unless
      * explicitly required by the organization.
      */
@@ -217,7 +257,7 @@ public class Bond {
 
     /**
      * Original Excel value.
-     *
+     * <p>
      * Examples:
      * 3 Lakh
      * 1.50 Lakh
@@ -229,10 +269,10 @@ public class Bond {
 
     /**
      * Normalized value in INR lakhs.
-     *
+     * <p>
      * 3 Lakh -> 3.00
      * 1.50 Lakh -> 1.50
-     *
+     * <p>
      * NULL when value is "Any", "1 Bonds", etc.
      */
     @Column(precision = 19, scale = 2)
@@ -244,7 +284,7 @@ public class Bond {
 
     /**
      * Original Excel value.
-     *
+     * <p>
      * Examples:
      * Demat
      * SGL
@@ -257,12 +297,12 @@ public class Bond {
 
     /**
      * Numeric lot size when available.
-     *
+     * <p>
      * 1000 Lot -> 1000
      * 775 Lot -> 775
      * 10 Lakh Lot -> 1000000
      * 1 Crore Lot -> 10000000
-     *
+     * <p>
      * NULL for DEMAT / SGL.
      */
     @Column(precision = 19, scale = 4)

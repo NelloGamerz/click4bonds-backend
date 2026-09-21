@@ -175,6 +175,20 @@ public class BondResponse {
     private String ipDateDescription;
 
     // =========================
+    // RECORD DATE
+    // =========================
+
+    /**
+     * The record-date rule as supplied by the source.
+     *
+     * <p>
+     * Record dates are derived from this text per coupon payment date and are
+     * not returned as a single value, because a bond with recurring coupons has
+     * a different record date for every payment.
+     */
+    private String recordDateDescription;
+
+    // =========================
     // MATURITY
     // =========================
 

@@ -65,6 +65,22 @@ public class UpdateBondRequest {
     private String ipDateDescription;
 
     // =========================
+    // RECORD DATE
+    // =========================
+
+    /**
+     * The record-date rule as supplied by the source.
+     *
+     * Examples:
+     *
+     * 15 days prior to interest payment date
+     * 2 days before coupon
+     * NA
+     */
+    @Size(max = 255)
+    private String recordDateDescription;
+
+    // =========================
     // MATURITY
     // =========================
 
