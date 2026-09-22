@@ -39,7 +39,13 @@ import com.click4bonds.app.Modules.User.Model.UserVerification;
  */
 final class VerificationTestSupport {
 
-    static final String CLERK_ID = "user_clerk_1";
+    /**
+     * The signed-in user's identifier, as the token subject carries it: the
+     * string form of {@code User.id}. Tests pass this where a real request
+     * would pass {@code jwt.getSubject()}.
+     */
+    static final String USER_ID = "11111111-1111-1111-1111-111111111111";
+
     static final String EMAIL = "user@example.com";
     static final String PHONE = "+919876543210";
     static final String OTP = "483920";
@@ -81,11 +87,15 @@ final class VerificationTestSupport {
                 "http://localhost:3000");
     }
 
-    static User user(String clerkId, String email, String mobileNumber) {
+    /**
+     * @param userId identifier string, which is also what the account's
+     *               {@code id} becomes — the two are the same thing, which is
+     *               what makes the token subject resolvable
+     */
+    static User user(String userId, String email, String mobileNumber) {
 
         return User.builder()
-                .id(UUID.randomUUID())
-                .clerkUserId(clerkId)
+                .id(UUID.fromString(userId))
                 .email(email)
                 .mobileNumber(mobileNumber)
                 .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
@@ -127,8 +137,9 @@ final class VerificationTestSupport {
      */
     static final class FakeUserService extends UserService {
 
-        private final Map<String, User> byClerkId = new HashMap<>();
+        private final Map<String, User> byId = new HashMap<>();
         private final Set<String> claimedMobileNumbers = new HashSet<>();
+        private final Set<String> claimedEmails = new HashSet<>();
 
         FakeUserService() {
             super(null, null);
@@ -136,10 +147,14 @@ final class VerificationTestSupport {
 
         FakeUserService register(User user) {
 
-            byClerkId.put(user.getClerkUserId(), user);
+            byId.put(user.getId().toString(), user);
 
             if (user.getMobileNumber() != null) {
                 claimedMobileNumbers.add(user.getMobileNumber());
+            }
+
+            if (user.getEmail() != null) {
+                claimedEmails.add(user.getEmail());
             }
 
             return this;
@@ -153,16 +168,36 @@ final class VerificationTestSupport {
             return this;
         }
 
-        @Override
-        public User getUserByClerkId(String clerkUserId) {
+        /** Marks an address as already owned by some other account. */
+        FakeUserService emailTakenBySomeoneElse(String email) {
 
-            User user = byClerkId.get(clerkUserId);
+            claimedEmails.add(email);
+
+            return this;
+        }
+
+        @Override
+        public User getUserById(String userId) {
+
+            User user = byId.get(userId);
 
             if (user == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
             }
 
             return user;
+        }
+
+        @Override
+        public void updateEmail(User user, String email) {
+
+            user.setEmail(email);
+            claimedEmails.add(email);
+        }
+
+        @Override
+        public boolean isEmailClaimed(String email) {
+            return claimedEmails.contains(email);
         }
 
         @Override

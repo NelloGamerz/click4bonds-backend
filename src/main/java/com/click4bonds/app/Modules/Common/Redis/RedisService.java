@@ -62,4 +62,24 @@ public interface RedisService {
      * @return {@code true} when this call created the key
      */
     boolean setIfAbsent(String key, Object value, Duration ttl);
+
+    /**
+     * Atomically increments the counter under {@code key} and returns its new
+     * value, applying {@code ttl} when the counter is created.
+     *
+     * <p>This is the primitive behind "at most N times per window": counting
+     * has to be atomic, because a read-then-write would let two concurrent
+     * callers both observe the same count and each decide they were the last
+     * one allowed.</p>
+     *
+     * <p>The TTL is set only on creation, so a window is fixed from the first
+     * event rather than pushed forward by every subsequent one. A caller that
+     * wants a sliding window would have to re-arm it explicitly.</p>
+     *
+     * @param ttl window length; when {@code null}, zero or negative the counter
+     *            is created without expiry
+     * @return the counter's value after incrementing; it is never zero, so a
+     *         return of {@code 1} means this call opened the window
+     */
+    long increment(String key, Duration ttl);
 }

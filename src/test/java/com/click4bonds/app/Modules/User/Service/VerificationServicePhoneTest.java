@@ -61,7 +61,7 @@
 //                properties);
 //
 //        user = VerificationTestSupport.user(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                null);
 //
@@ -75,7 +75,7 @@
 //    void shouldGenerateAndStoreTheCodeWithoutSendingIt() {
 //
 //        VerificationResponse response =
-//                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertEquals(VerificationService.PHONE_OTP_GENERATED, response.message());
 //        assertTrue(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -90,7 +90,7 @@
 //    void shouldNotPutTheCodeInTheResponse() {
 //
 //        VerificationResponse response =
-//                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertFalse(response.message().contains(VerificationTestSupport.OTP));
 //        assertFalse(redis.exists(VerificationTestSupport.EMAIL_KEY),
@@ -100,7 +100,7 @@
 //    @Test
 //    void shouldNotChangeAnyVerificationStatusWhenACodeIsIssued() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertEquals(VerificationStatus.NOT_STARTED, verification.getPhoneStatus());
 //        assertNull(user.getMobileNumber(), "A number is only bound once it is proven");
@@ -109,7 +109,7 @@
 //    @Test
 //    void shouldAcceptANumberWrittenWithSeparators() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, "+91 98765-43210");
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, "+91 98765-43210");
 //
 //        assertTrue(redis.exists(VerificationTestSupport.SMS_KEY));
 //    }
@@ -121,7 +121,7 @@
 //
 //        assertThrows(ConflictException.class,
 //                () -> service.sendPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE));
 //
 //        assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -134,7 +134,7 @@
 //
 //        assertThrows(ForbiddenException.class,
 //                () -> service.sendPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE));
 //
 //        assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -144,17 +144,17 @@
 //    void shouldRejectAMalformedNumber() {
 //
 //        assertThrows(BadRequestException.class,
-//                () -> service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, "12345"));
+//                () -> service.sendPhoneOtp(VerificationTestSupport.USER_ID, "12345"));
 //    }
 //
 //    @Test
 //    void shouldEnforceTheResendCooldownImposedByTheOtpModule() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertThrows(OtpResendCooldownException.class,
 //                () -> service.sendPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE));
 //    }
 //
@@ -165,7 +165,7 @@
 //        verification.setPhoneStatus(VerificationStatus.VERIFIED);
 //
 //        VerificationResponse response =
-//                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertEquals(VerificationService.PHONE_ALREADY_VERIFIED, response.message());
 //        assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -176,10 +176,10 @@
 //    @Test
 //    void shouldBindTheNumberAndMarkThePhoneVerifiedOnTheCorrectCode() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        VerificationResponse response = service.verifyPhoneOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.PHONE,
 //                VerificationTestSupport.OTP);
 //
@@ -194,9 +194,9 @@
 //
 //        user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //        service.verifyPhoneOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.PHONE,
 //                VerificationTestSupport.OTP);
 //
@@ -206,11 +206,11 @@
 //    @Test
 //    void shouldLeaveTheAccountUntouchedOnAWrongCode() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        "999999"));
 //
@@ -221,13 +221,13 @@
 //    @Test
 //    void shouldLeaveTheAccountUntouchedOnAnExpiredCode() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        redis.advance(Duration.ofMinutes(16));
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        VerificationTestSupport.OTP));
 //
@@ -238,9 +238,9 @@
 //    @Test
 //    void shouldNotAcceptAConsumedCodeTwice() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //        service.verifyPhoneOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.PHONE,
 //                VerificationTestSupport.OTP);
 //
@@ -248,7 +248,7 @@
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        VerificationTestSupport.OTP));
 //    }
@@ -256,19 +256,19 @@
 //    @Test
 //    void shouldStopAcceptingCodesOnceTheAttemptLimitIsReached() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        for (int attempt = 0; attempt < 4; attempt++) {
 //            assertThrows(InvalidOtpException.class,
 //                    () -> service.verifyPhoneOtp(
-//                            VerificationTestSupport.CLERK_ID,
+//                            VerificationTestSupport.USER_ID,
 //                            VerificationTestSupport.PHONE,
 //                            "999999"));
 //        }
 //
 //        assertThrows(OtpMaxAttemptsExceededException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        "999999"));
 //
@@ -279,13 +279,13 @@
 //    @Test
 //    void shouldRefuseANumberRegisteredToAnotherAccountAtVerificationToo() {
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        userService.alreadyTakenBySomeoneElse(VerificationTestSupport.PHONE);
 //
 //        assertThrows(ConflictException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        VerificationTestSupport.OTP));
 //
@@ -297,7 +297,7 @@
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        VerificationTestSupport.OTP));
 //
@@ -379,7 +379,7 @@ class VerificationServicePhoneTest {
                 smsService);
 
         user = VerificationTestSupport.user(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 null);
 
@@ -393,7 +393,7 @@ class VerificationServicePhoneTest {
     void shouldGenerateStoreAndSendTheCodeBySms() {
 
         VerificationResponse response =
-                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertEquals(VerificationService.PHONE_OTP_GENERATED, response.message());
         assertTrue(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -411,7 +411,7 @@ class VerificationServicePhoneTest {
     void shouldNotPutTheCodeInTheResponse() {
 
         VerificationResponse response =
-                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertFalse(response.message().contains(VerificationTestSupport.OTP));
         assertFalse(redis.exists(VerificationTestSupport.EMAIL_KEY),
@@ -421,7 +421,7 @@ class VerificationServicePhoneTest {
     @Test
     void shouldNotChangeAnyVerificationStatusWhenACodeIsIssued() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertEquals(VerificationStatus.NOT_STARTED, verification.getPhoneStatus());
         assertNull(user.getMobileNumber(), "A number is only bound once it is proven");
@@ -430,7 +430,7 @@ class VerificationServicePhoneTest {
     @Test
     void shouldAcceptANumberWrittenWithSeparatorsAndSendToTheNormalizedNumber() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, "+91 98765-43210");
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, "+91 98765-43210");
 
         assertTrue(redis.exists(VerificationTestSupport.SMS_KEY));
 
@@ -447,7 +447,7 @@ class VerificationServicePhoneTest {
 
         assertThrows(ConflictException.class,
                 () -> service.sendPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE));
 
         assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -461,7 +461,7 @@ class VerificationServicePhoneTest {
 
         assertThrows(ForbiddenException.class,
                 () -> service.sendPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE));
 
         assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -472,7 +472,7 @@ class VerificationServicePhoneTest {
     void shouldRejectAMalformedNumber() {
 
         assertThrows(BadRequestException.class,
-                () -> service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, "12345"));
+                () -> service.sendPhoneOtp(VerificationTestSupport.USER_ID, "12345"));
 
         verifyNoInteractions(smsService);
     }
@@ -480,11 +480,11 @@ class VerificationServicePhoneTest {
     @Test
     void shouldEnforceTheResendCooldownImposedByTheOtpModule() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertThrows(OtpResendCooldownException.class,
                 () -> service.sendPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE));
 
         // Only the first request may cost an SMS.
@@ -500,7 +500,7 @@ class VerificationServicePhoneTest {
         verification.setPhoneStatus(VerificationStatus.VERIFIED);
 
         VerificationResponse response =
-                service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+                service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertEquals(VerificationService.PHONE_ALREADY_VERIFIED, response.message());
         assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -512,10 +512,10 @@ class VerificationServicePhoneTest {
     @Test
     void shouldBindTheNumberAndMarkThePhoneVerifiedOnTheCorrectCode() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         VerificationResponse response = service.verifyPhoneOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
@@ -528,9 +528,9 @@ class VerificationServicePhoneTest {
     @Test
     void shouldNotSendAnotherSmsWhenACodeIsVerified() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
         service.verifyPhoneOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
@@ -545,9 +545,9 @@ class VerificationServicePhoneTest {
 
         user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
         service.verifyPhoneOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
@@ -557,11 +557,11 @@ class VerificationServicePhoneTest {
     @Test
     void shouldLeaveTheAccountUntouchedOnAWrongCode() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         "999999"));
 
@@ -572,13 +572,13 @@ class VerificationServicePhoneTest {
     @Test
     void shouldLeaveTheAccountUntouchedOnAnExpiredCode() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         redis.advance(Duration.ofMinutes(16));
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         VerificationTestSupport.OTP));
 
@@ -589,9 +589,9 @@ class VerificationServicePhoneTest {
     @Test
     void shouldNotAcceptAConsumedCodeTwice() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
         service.verifyPhoneOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
@@ -599,7 +599,7 @@ class VerificationServicePhoneTest {
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         VerificationTestSupport.OTP));
     }
@@ -607,19 +607,19 @@ class VerificationServicePhoneTest {
     @Test
     void shouldStopAcceptingCodesOnceTheAttemptLimitIsReached() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         for (int attempt = 0; attempt < 4; attempt++) {
             assertThrows(InvalidOtpException.class,
                     () -> service.verifyPhoneOtp(
-                            VerificationTestSupport.CLERK_ID,
+                            VerificationTestSupport.USER_ID,
                             VerificationTestSupport.PHONE,
                             "999999"));
         }
 
         assertThrows(OtpMaxAttemptsExceededException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         "999999"));
 
@@ -630,13 +630,13 @@ class VerificationServicePhoneTest {
     @Test
     void shouldRefuseANumberRegisteredToAnotherAccountAtVerificationToo() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         userService.alreadyTakenBySomeoneElse(VerificationTestSupport.PHONE);
 
         assertThrows(ConflictException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         VerificationTestSupport.OTP));
 
@@ -648,7 +648,7 @@ class VerificationServicePhoneTest {
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         VerificationTestSupport.OTP));
 

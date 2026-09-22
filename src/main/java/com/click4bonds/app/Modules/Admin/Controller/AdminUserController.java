@@ -26,7 +26,6 @@ import com.click4bonds.app.Modules.ContactUS.enums.ContactInquiryStatus;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
-import com.fasterxml.jackson.core.JsonProcessingException;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -74,7 +73,7 @@ public class AdminUserController {
         @PatchMapping("/{id}/role")
         public ResponseEntity<User> updateRole(
                         @PathVariable UUID id,
-                        @RequestParam UserRole role) throws JsonProcessingException {
+                        @RequestParam UserRole role) {
 
                 return ResponseEntity.ok(
                                 adminUserService.updateUserRole(

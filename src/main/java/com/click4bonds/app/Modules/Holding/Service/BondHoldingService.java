@@ -23,24 +23,24 @@ public class BondHoldingService {
 
     @Transactional(readOnly = true)
     public Page<BondHolding> getMyHoldings(
-            String customerId,
+            UUID customerId,
             Pageable pageable) {
 
-        return holdingRepository.findByCustomer_ClerkUserId(
+        return holdingRepository.findByCustomer_Id(
                 customerId,
                 pageable);
     }
 
     @Transactional(readOnly = true)
     public BondHolding getHolding(
-            String customerId,
+            UUID customerId,
             UUID holdingId) {
 
         BondHolding holding = holdingRepository.findById(holdingId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Holding not found"));
 
-        if (!holding.getCustomer().getClerkUserId().equals(customerId)) {
+        if (!holding.getCustomer().getId().equals(customerId)) {
             throw new ForbiddenException(
                     "You cannot access this holding");
         }

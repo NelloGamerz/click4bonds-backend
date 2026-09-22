@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.apache.coyote.BadRequestException;
 import org.springdoc.core.annotations.ParameterObject;
@@ -60,7 +61,10 @@ public class AdminBondController {
                         @Valid @RequestBody CreateBondRequest request,
                         @AuthenticationPrincipal Jwt jwt) throws BadRequestException {
 
-                String adminId = jwt.getSubject();
+                // The filter has already rejected any token whose subject is not
+                // a user identifier, so this cannot fail on an authenticated
+                // request.
+                UUID adminId = UUID.fromString(jwt.getSubject());
 
                 return ResponseEntity
                                 .status(HttpStatus.CREATED)

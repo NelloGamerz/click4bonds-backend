@@ -61,7 +61,7 @@
 //                properties);
 //
 //        user = VerificationTestSupport.user(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                null);
 //
@@ -74,7 +74,7 @@
 //    @Test
 //    void shouldStoreTheCodeInRedisUnderTheEmailNamespace() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
 //        assertFalse(redis.exists(VerificationTestSupport.SMS_KEY),
@@ -84,7 +84,7 @@
 //    @Test
 //    void shouldDeliverTheCodeToTheUsersOwnAddress() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        EmailRequest sent = provider.lastSent();
 //
@@ -97,7 +97,7 @@
 //    @Test
 //    void shouldStateTheConfiguredExpiryInTheEmail() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        int configured = VerificationTestSupport.otpProperties().getExpiryMinutes();
 //
@@ -109,7 +109,7 @@
 //    void shouldNotPutTheCodeInTheResponse() {
 //
 //        VerificationResponse response =
-//                service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//                service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertEquals(VerificationService.EMAIL_OTP_SENT, response.message());
 //        assertFalse(response.message().contains(VerificationTestSupport.OTP),
@@ -119,7 +119,7 @@
 //    @Test
 //    void shouldNotChangeAnyVerificationStatusWhenACodeIsIssued() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus(),
 //                "Issuing a code is not evidence of anything");
@@ -129,7 +129,7 @@
 //    @Test
 //    void shouldAcceptAnyCasingOfTheUsersOwnAddress() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, "User@Example.COM");
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, "User@Example.COM");
 //
 //        assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
 //    }
@@ -139,7 +139,7 @@
 //
 //        assertThrows(ForbiddenException.class,
 //                () -> service.sendEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        "someone.else@example.com"));
 //
 //        assertTrue(provider.sent().isEmpty(), "Nothing may be sent to a foreign address");
@@ -150,7 +150,7 @@
 //    void shouldRejectAMalformedAddress() {
 //
 //        assertThrows(BadRequestException.class,
-//                () -> service.sendEmailOtp(VerificationTestSupport.CLERK_ID, "not-an-email"));
+//                () -> service.sendEmailOtp(VerificationTestSupport.USER_ID, "not-an-email"));
 //
 //        assertTrue(provider.sent().isEmpty());
 //    }
@@ -158,11 +158,11 @@
 //    @Test
 //    void shouldEnforceTheResendCooldownImposedByTheOtpModule() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertThrows(OtpResendCooldownException.class,
 //                () -> service.sendEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL));
 //
 //        assertEquals(1, provider.sent().size(), "A throttled request must not send anything");
@@ -171,11 +171,11 @@
 //    @Test
 //    void shouldLetTheCooldownElapse() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        redis.advance(Duration.ofSeconds(61));
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertEquals(2, provider.sent().size());
 //    }
@@ -186,7 +186,7 @@
 //        verification.setEmailStatus(VerificationStatus.VERIFIED);
 //
 //        VerificationResponse response =
-//                service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//                service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertEquals(VerificationService.EMAIL_ALREADY_VERIFIED, response.message());
 //        assertTrue(provider.sent().isEmpty(), "No further code may be issued");
@@ -198,10 +198,10 @@
 //    @Test
 //    void shouldMarkTheEmailVerifiedOnTheCorrectCode() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        VerificationResponse response = service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -212,9 +212,9 @@
 //    @Test
 //    void shouldAdvanceOnboardingToThePhoneStep() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -226,9 +226,9 @@
 //
 //        user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -240,11 +240,11 @@
 //    @Test
 //    void shouldLeaveTheAccountUntouchedOnAWrongCode() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL,
 //                        "999999"));
 //
@@ -255,13 +255,13 @@
 //    @Test
 //    void shouldLeaveTheAccountUntouchedOnAnExpiredCode() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        redis.advance(Duration.ofMinutes(16));
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL,
 //                        VerificationTestSupport.OTP));
 //
@@ -272,9 +272,9 @@
 //    @Test
 //    void shouldNotAcceptAConsumedCodeTwice() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -283,7 +283,7 @@
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL,
 //                        VerificationTestSupport.OTP));
 //    }
@@ -291,19 +291,19 @@
 //    @Test
 //    void shouldStopAcceptingCodesOnceTheAttemptLimitIsReached() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        for (int attempt = 0; attempt < 4; attempt++) {
 //            assertThrows(InvalidOtpException.class,
 //                    () -> service.verifyEmailOtp(
-//                            VerificationTestSupport.CLERK_ID,
+//                            VerificationTestSupport.USER_ID,
 //                            VerificationTestSupport.EMAIL,
 //                            "999999"));
 //        }
 //
 //        assertThrows(OtpMaxAttemptsExceededException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL,
 //                        "999999"));
 //
@@ -314,11 +314,11 @@
 //    @Test
 //    void shouldRefuseToRedeemAnAddressTheUserDoesNotOwn() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertThrows(ForbiddenException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        "someone.else@example.com",
 //                        VerificationTestSupport.OTP));
 //
@@ -328,14 +328,14 @@
 //    @Test
 //    void shouldNotResetAVerifiedEmailWhenAnotherCodeIsRequested() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
 //        redis.advance(Duration.ofSeconds(61));
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertEquals(VerificationStatus.VERIFIED, verification.getEmailStatus(),
 //                "Issuing a code must never undo a verification");
@@ -413,7 +413,7 @@ class VerificationServiceEmailTest {
                 smsService);
 
         user = VerificationTestSupport.user(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 null);
 
@@ -426,7 +426,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldStoreTheCodeInRedisUnderTheEmailNamespace() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
         assertFalse(redis.exists(VerificationTestSupport.SMS_KEY),
@@ -436,7 +436,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldDeliverTheCodeToTheUsersOwnAddress() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         EmailRequest sent = provider.lastSent();
 
@@ -449,7 +449,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldNotSendAnSmsWhenAnEmailCodeIsIssued() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         verifyNoInteractions(smsService);
     }
@@ -457,7 +457,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldStateTheConfiguredExpiryInTheEmail() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         int configured = VerificationTestSupport.otpProperties().getExpiryMinutes();
 
@@ -469,7 +469,7 @@ class VerificationServiceEmailTest {
     void shouldNotPutTheCodeInTheResponse() {
 
         VerificationResponse response =
-                service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+                service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertEquals(VerificationService.EMAIL_OTP_SENT, response.message());
         assertFalse(response.message().contains(VerificationTestSupport.OTP),
@@ -479,7 +479,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldNotChangeAnyVerificationStatusWhenACodeIsIssued() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus(),
                 "Issuing a code is not evidence of anything");
@@ -489,7 +489,7 @@ class VerificationServiceEmailTest {
     @Test
     void shouldAcceptAnyCasingOfTheUsersOwnAddress() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, "User@Example.COM");
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, "User@Example.COM");
 
         assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
     }
@@ -499,7 +499,7 @@ class VerificationServiceEmailTest {
 
         assertThrows(ForbiddenException.class,
                 () -> service.sendEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         "someone.else@example.com"));
 
         assertTrue(provider.sent().isEmpty(), "Nothing may be sent to a foreign address");
@@ -510,7 +510,7 @@ class VerificationServiceEmailTest {
     void shouldRejectAMalformedAddress() {
 
         assertThrows(BadRequestException.class,
-                () -> service.sendEmailOtp(VerificationTestSupport.CLERK_ID, "not-an-email"));
+                () -> service.sendEmailOtp(VerificationTestSupport.USER_ID, "not-an-email"));
 
         assertTrue(provider.sent().isEmpty());
     }
@@ -518,11 +518,11 @@ class VerificationServiceEmailTest {
     @Test
     void shouldEnforceTheResendCooldownImposedByTheOtpModule() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertThrows(OtpResendCooldownException.class,
                 () -> service.sendEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL));
 
         assertEquals(1, provider.sent().size(), "A throttled request must not send anything");
@@ -531,11 +531,11 @@ class VerificationServiceEmailTest {
     @Test
     void shouldLetTheCooldownElapse() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         redis.advance(Duration.ofSeconds(61));
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertEquals(2, provider.sent().size());
     }
@@ -546,7 +546,7 @@ class VerificationServiceEmailTest {
         verification.setEmailStatus(VerificationStatus.VERIFIED);
 
         VerificationResponse response =
-                service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+                service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertEquals(VerificationService.EMAIL_ALREADY_VERIFIED, response.message());
         assertTrue(provider.sent().isEmpty(), "No further code may be issued");
@@ -558,10 +558,10 @@ class VerificationServiceEmailTest {
     @Test
     void shouldMarkTheEmailVerifiedOnTheCorrectCode() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         VerificationResponse response = service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -572,9 +572,9 @@ class VerificationServiceEmailTest {
     @Test
     void shouldAdvanceOnboardingToThePhoneStep() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -586,9 +586,9 @@ class VerificationServiceEmailTest {
 
         user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -600,11 +600,11 @@ class VerificationServiceEmailTest {
     @Test
     void shouldLeaveTheAccountUntouchedOnAWrongCode() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL,
                         "999999"));
 
@@ -615,13 +615,13 @@ class VerificationServiceEmailTest {
     @Test
     void shouldLeaveTheAccountUntouchedOnAnExpiredCode() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         redis.advance(Duration.ofMinutes(16));
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL,
                         VerificationTestSupport.OTP));
 
@@ -632,9 +632,9 @@ class VerificationServiceEmailTest {
     @Test
     void shouldNotAcceptAConsumedCodeTwice() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -643,7 +643,7 @@ class VerificationServiceEmailTest {
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL,
                         VerificationTestSupport.OTP));
     }
@@ -651,19 +651,19 @@ class VerificationServiceEmailTest {
     @Test
     void shouldStopAcceptingCodesOnceTheAttemptLimitIsReached() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         for (int attempt = 0; attempt < 4; attempt++) {
             assertThrows(InvalidOtpException.class,
                     () -> service.verifyEmailOtp(
-                            VerificationTestSupport.CLERK_ID,
+                            VerificationTestSupport.USER_ID,
                             VerificationTestSupport.EMAIL,
                             "999999"));
         }
 
         assertThrows(OtpMaxAttemptsExceededException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL,
                         "999999"));
 
@@ -674,11 +674,11 @@ class VerificationServiceEmailTest {
     @Test
     void shouldRefuseToRedeemAnAddressTheUserDoesNotOwn() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertThrows(ForbiddenException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         "someone.else@example.com",
                         VerificationTestSupport.OTP));
 
@@ -688,14 +688,14 @@ class VerificationServiceEmailTest {
     @Test
     void shouldNotResetAVerifiedEmailWhenAnotherCodeIsRequested() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
         redis.advance(Duration.ofSeconds(61));
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertEquals(VerificationStatus.VERIFIED, verification.getEmailStatus(),
                 "Issuing a code must never undo a verification");

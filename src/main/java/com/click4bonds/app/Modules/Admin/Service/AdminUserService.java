@@ -7,11 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.click4bonds.app.Modules.Common.Dto.UserRoleChangedEvent;
-import com.click4bonds.app.Modules.Common.Enums.OutboxStatus;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
-import com.click4bonds.app.Modules.Common.Model.OutboxEvent;
-import com.click4bonds.app.Modules.Common.Repository.OutboxEventRepository;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserDetailsResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserSummaryResponse;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
@@ -23,10 +19,8 @@ import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
 
 import lombok.RequiredArgsConstructor;
-import tools.jackson.databind.ObjectMapper;
 
 @Service
 @RequiredArgsConstructor
@@ -34,8 +28,6 @@ import tools.jackson.databind.ObjectMapper;
 public class AdminUserService {
 
         private final UserRepository userRepository;
-        private final OutboxEventRepository outboxEventRepository;
-        private final ObjectMapper objectMapper = new ObjectMapper();
         private final ContactInquiryService contactInquiryService;
 
         @Transactional(readOnly = true)
@@ -81,9 +73,20 @@ public class AdminUserService {
                 return userRepository.save(user);
         }
 
+        /**
+         * Changes a user's role.
+         *
+         * <p>The change is the whole operation. It used to also enqueue an
+         * outbox event so the role could be pushed to the external identity
+         * provider that held the authoritative copy; that provider is gone and
+         * this database is now the only place a role lives, so there is no
+         * second system to notify. Authorization reads the role from here — via
+         * the access token's {@code role} claim — so the change takes effect at
+         * the user's next token refresh.</p>
+         */
         public User updateUserRole(
                         UUID userId,
-                        UserRole role) throws JsonProcessingException {
+                        UserRole role) {
 
                 User user = userRepository.findById(userId)
                                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -95,26 +98,7 @@ public class AdminUserService {
 
                 user.setRole(role);
 
-                User savedUser = userRepository.save(user);
-
-                UserRoleChangedEvent event = new UserRoleChangedEvent(
-                                savedUser.getId(),
-                                savedUser.getClerkUserId(),
-                                savedUser.getRole());
-
-                OutboxEvent outboxEvent = OutboxEvent.builder()
-                                .eventType("USER_ROLE_CHANGED")
-                                .aggregateType("USER")
-                                .aggregateId(savedUser.getId())
-                                .payload(
-                                                objectMapper.writeValueAsString(event))
-                                .status(OutboxStatus.PENDING)
-                                .retryCount(0)
-                                .build();
-
-                outboxEventRepository.save(outboxEvent);
-
-                return savedUser;
+                return userRepository.save(user);
         }
 
         @Transactional(readOnly = true)
@@ -144,7 +128,6 @@ public class AdminUserService {
 
                 return AdminUserSummaryResponse.builder()
                                 .id(user.getId())
-                                .clerkUserId(user.getClerkUserId())
                                 .firstName(user.getFirstName())
                                 .lastName(user.getLastName())
                                 .email(user.getEmail())
@@ -160,7 +143,6 @@ public class AdminUserService {
 
                 return AdminUserDetailsResponse.builder()
                                 .id(user.getId())
-                                .clerkUserId(user.getClerkUserId())
                                 .email(user.getEmail())
                                 .mobileNumber(user.getMobileNumber())
                                 .firstName(user.getFirstName())

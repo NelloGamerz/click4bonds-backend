@@ -32,7 +32,7 @@ public class BondHoldingController {
             @AuthenticationPrincipal Jwt jwt,
             @PageableDefault(size = 20) Pageable pageable) {
 
-        String customerId = jwt.getSubject();
+        UUID customerId = UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
                 holdingService.getMyHoldings(
@@ -45,7 +45,7 @@ public class BondHoldingController {
             @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
 
-        String customerId = jwt.getSubject();
+        UUID customerId = UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
                 holdingService.getHolding(

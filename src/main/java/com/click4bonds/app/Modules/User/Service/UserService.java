@@ -1,13 +1,13 @@
 package com.click4bonds.app.Modules.User.Service;
 
-import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.click4bonds.app.Dto.ClerkWebhookRequest.ClerkUserData;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
@@ -26,77 +26,76 @@ public class UserService {
     private final UserVerificationService userVerificationService;
 
     /**
-     * Creates the local user record for a Clerk signup.
+     * Finds or creates the account behind a phone number.
      *
-     * Also creates the initial verification record for the user.
-     * 
-     * @param data user payload delivered by the Clerk webhook
-     * @return the created user, or an empty optional when the user already
-     *         existed (Clerk retries webhooks, and callers use this to avoid
-     *         repeating side effects such as the welcome email)
+     * <p>Called only once ownership of the number has been proven, because that
+     * proof is what the account's identity rests on. The number is expected in
+     * canonical form — the same shape the OTP module normalises submissions to
+     * — so the lookup and the stored value agree.</p>
+     *
+     * <p>A new account starts as an active customer at the beginning of
+     * onboarding, with no email address: signing in establishes the phone, and
+     * the email step is what comes next. Its phone verification is recorded as
+     * complete, because it is.</p>
+     *
+     * @param mobileNumber canonical phone number that was just verified
+     * @return the existing account, or the one created for this number
      */
-    public Optional<User> createUser(ClerkUserData data) {
+    public User findOrCreateByMobileNumber(String mobileNumber) {
 
-        if (userExists(data.id())) {
-            log.info("User already exists {}", data.id());
-            return Optional.empty();
+        return userRepository.findByMobileNumber(mobileNumber)
+                .orElseGet(() -> createPhoneUser(mobileNumber));
+    }
+
+    /**
+     * @param mobileNumber canonical phone number
+     * @return {@code true} when an account already signs in with this number
+     */
+    public boolean isMobileNumberClaimed(String mobileNumber) {
+        return userRepository.existsByMobileNumber(mobileNumber);
+    }
+
+    /**
+     * Resolves the account a token subject names.
+     *
+     * <p>The subject of an access token is {@code User.id}, and the
+     * authentication filter has already rejected any token whose subject is not
+     * a well-formed identifier — so a malformed value here means the caller was
+     * handed something other than an authenticated subject.</p>
+     *
+     * @param userId subject of the authenticated token
+     * @return the account it names
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User getUserById(String userId) {
+
+        if (userId == null || userId.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, "Not authenticated");
         }
 
-        String email = data.email_addresses()
-                .stream()
-                .findFirst()
-                .orElse(data.email_addresses().getFirst())
-                .email_address();
+        try {
+            return getUser(UUID.fromString(userId));
 
-        User user = User.builder()
-                .clerkUserId(data.id())
-                .email(email)
-                .firstName(data.first_name())
-                .lastName(data.last_name())
-                .profileImage(data.image_url())
-                // .onboardingCompleted(false)
-                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
-                .status(UserStatus.ACTIVE)
-                .build();
-
-        User savedUser = userRepository.save(user);
-        userVerificationService.createVerification(savedUser);
-
-        log.info("Created user {}", data.id());
-
-        return Optional.of(savedUser);
+        } catch (IllegalArgumentException ex) {
+            // Reported as unauthenticated rather than as a bad request: a
+            // subject that is not an identifier means the caller's token is not
+            // one this application issued.
+            throw new ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED, "Not authenticated");
+        }
     }
 
-    public void updateUser(ClerkUserData data) {
+    /**
+     * @param userId account identifier
+     * @return the account it names
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User getUser(UUID userId) {
 
-        User user = getUser(data.id());
-
-        String email = data.email_addresses()
-                .stream()
-                .findFirst()
-                .orElse(data.email_addresses().getFirst())
-                .email_address();
-
-        user.setEmail(email);
-        user.setMobileNumber(null);
-        user.setFirstName(data.first_name());
-        user.setLastName(data.last_name());
-        user.setProfileImage(data.image_url());
-
-        log.info("Updated user {}", data.id());
-    }
-
-    public void softDeleteUser(String clerkUserId) {
-
-        User user = getUser(clerkUserId);
-
-        markDeleted(user);
-
-        log.info("Soft deleted user {}", clerkUserId);
-    }
-
-    public User getUserByClerkId(String clerkUserId) {
-        return getUser(clerkUserId);
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"));
     }
 
     /**
@@ -137,24 +136,50 @@ public class UserService {
     }
 
     /**
-     * @return {@code true} when a user already owns this mobile number
+     * Records the address whose ownership the user has proven.
+     *
+     * <p>Assigned during the email verification step, which may be the first
+     * time the account has an address at all.</p>
+     *
+     * @param user  user the address belongs to
+     * @param email canonical address
      */
-    public boolean isMobileNumberClaimed(String mobileNumber) {
-        return userRepository.existsByMobileNumber(mobileNumber);
+    public void updateEmail(User user, String email) {
+
+        user.setEmail(email);
+
+        log.info("Updated email for user {}", user.getId());
     }
 
-    protected User getUser(String clerkUserId) {
-        return userRepository.findByClerkUserId(clerkUserId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "User not found"));
+    /**
+     * @return {@code true} when another account already owns this address
+     */
+    public boolean isEmailClaimed(String email) {
+        return userRepository.existsByEmail(email);
     }
 
-    protected void markDeleted(User user) {
+    /**
+     * Creates the account a phone number signs in with.
+     *
+     * <p>No welcome email is sent here, and that is not an oversight: there is
+     * no address to send it to yet. The account has one only once the email
+     * verification step completes.</p>
+     */
+    private User createPhoneUser(String mobileNumber) {
 
-        user.setStatus(UserStatus.DELETED);
-    }
+        User user = User.builder()
+                .mobileNumber(mobileNumber)
+                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
+                .role(UserRole.CUSTOMER)
+                .status(UserStatus.ACTIVE)
+                .build();
 
-    protected boolean userExists(String clerkUserId) {
-        return userRepository.existsByClerkUserId(clerkUserId);
+        User saved = userRepository.save(user);
+        userVerificationService.createVerification(saved);
+
+        // The identifier is logged; the number is personal data and is not.
+        log.info("Created user {} from a verified phone number", saved.getId());
+
+        return saved;
     }
 }
