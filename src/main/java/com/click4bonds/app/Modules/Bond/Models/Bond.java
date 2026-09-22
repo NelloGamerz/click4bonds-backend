@@ -313,6 +313,29 @@ public class Bond {
     private LotSizeType lotSizeType;
 
     // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units of this bond still available for purchase.
+     * <p>
+     * This is the single source of truth for inventory. It is decremented by
+     * {@code BondRepository#reserveQuantity}, which is a single conditional
+     * UPDATE so two buyers submitting at the same time can never oversell the
+     * bond — see {@code DealConfirmationWriter}.
+     * <p>
+     * NULL means inventory has not been configured for this bond (true of every
+     * bond imported before this column existed). Such a bond cannot be
+     * purchased; the deal API rejects it with a business error rather than
+     * assuming an unlimited supply. A value of {@code 0} is different: it means
+     * the bond is sold out.
+     * <p>
+     * Reaching zero also flips {@link #status} to {@link BondStatus#SOLD_OUT}.
+     */
+    @Column(name = "remaining_quantity")
+    private Long remainingQuantity;
+
+    // =========================
     // STATUS
     // =========================
 

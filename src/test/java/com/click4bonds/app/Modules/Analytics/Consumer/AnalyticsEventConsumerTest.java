@@ -139,7 +139,7 @@ class AnalyticsEventConsumerTest {
 
         // No Acknowledgment parameter, and the container's ack mode is left at
         // its default, so the offset is committed once this method returns.
-        List<Class<?>> parameters = Arrays.stream(listenerMethod().getParameters())
+        List<? extends Class<?>> parameters = Arrays.stream(listenerMethod().getParameters())
                 .map(Parameter::getType)
                 .toList();
 

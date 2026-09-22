@@ -9,6 +9,7 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
@@ -173,6 +174,21 @@ public class UpdateBondRequest {
     private BigDecimal lotSize;
 
     private LotSizeType lotSizeType;
+
+    // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units available for purchase.
+     *
+     * <p>Optional. When supplied it REPLACES the current inventory — it is not a
+     * delta — so an admin restocking a bond sends the new total. Because every
+     * other field on this request is null-tolerant, a null here leaves the
+     * current inventory untouched.</p>
+     */
+    @Min(0)
+    private Long remainingQuantity;
 
     private Boolean isFlashNews;
 }

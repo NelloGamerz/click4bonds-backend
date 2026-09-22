@@ -284,6 +284,18 @@ public class BondResponse {
     private Boolean isFlashNews;
 
     // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units still available for purchase.
+     *
+     * <p>NULL means inventory has not been configured for this bond, so it
+     * cannot be purchased yet.</p>
+     */
+    private Long remainingQuantity;
+
+    // =========================
     // STATUS
     // =========================
 

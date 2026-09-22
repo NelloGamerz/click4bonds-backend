@@ -128,6 +128,9 @@ public class BondService {
                 .lotSize(request.getLotSize())
                 .lotSizeType(request.getLotSizeType())
 
+                // Inventory
+                .remainingQuantity(request.getRemainingQuantity())
+
                 // Status
                 .status(BondStatus.DRAFT)
 
@@ -399,6 +402,21 @@ public class BondService {
                     request.getLotSizeType());
         }
 
+        // -----------------------------------------------------
+        // Inventory
+        // -----------------------------------------------------
+
+        /*
+         * Absolute value, not a delta: an admin restocking a bond sends the new
+         * total. Status is deliberately left alone — a restocked SOLD_OUT bond
+         * has to be activated through the existing activate endpoint, so the
+         * inventory and the status never disagree silently.
+         */
+        if (request.getRemainingQuantity() != null) {
+            bond.setRemainingQuantity(
+                    request.getRemainingQuantity());
+        }
+
         if (request.getIsFlashNews() != null) {
             bond.setIsFlashNews(
                     request.getIsFlashNews());
@@ -643,6 +661,9 @@ public class BondService {
 
                 .isFlashNews(
                         bond.getIsFlashNews())
+
+                .remainingQuantity(
+                        bond.getRemainingQuantity())
 
                 // Status
                 .status(

@@ -129,6 +129,7 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -333,4 +334,18 @@ public class CreateBondRequest {
     private BigDecimal lotSize;
 
     private LotSizeType lotSizeType;
+
+    // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units available for purchase.
+     *
+     * <p>Optional: omitting it leaves the bond's inventory unconfigured, which
+     * makes the bond unbuyable until an admin sets a value. Use {@code 0} to
+     * create an already sold-out bond.</p>
+     */
+    @Min(0)
+    private Long remainingQuantity;
 }

@@ -2485,7 +2485,7 @@ class YtmCalculationServiceTest {
         bond.setRecordDateDescription(
                 "15 days prior to interest payment date");
 
-        LocalDate calculationDate = LocalDate.of(2026, 9, 22);
+        LocalDate calculationDate = LocalDate.of(2026, 9, 21);
 
         RealCalcContext ctx = buildRealCalcContext(bond);
 
