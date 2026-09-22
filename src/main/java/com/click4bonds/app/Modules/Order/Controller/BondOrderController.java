@@ -64,7 +64,7 @@ public class BondOrderController {
             Pageable pageable
     ) {
 
-        String customerId = jwt.getSubject();
+        UUID customerId = UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
                 orderService.getMyOrders(
@@ -80,7 +80,7 @@ public class BondOrderController {
             @AuthenticationPrincipal Jwt jwt
     ) {
 
-        String customerId = jwt.getSubject();
+        UUID customerId = UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
                 orderService.getOrder(

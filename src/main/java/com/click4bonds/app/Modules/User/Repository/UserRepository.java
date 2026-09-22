@@ -14,15 +14,19 @@ import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 
 public interface UserRepository extends JpaRepository<User, UUID> {
-        Optional<User> findByClerkUserId(String clerkUserId);
-
-        boolean existsByClerkUserId(String clerkUserId);
-
         Optional<User> findByEmail(String email);
 
         boolean existsByEmail(String email);
 
         boolean existsByMobileNumber(String mobileNumber);
+
+        /**
+         * Looks an account up by the number it signs in with.
+         *
+         * @param mobileNumber canonical form, as produced by the OTP module's
+         *                     identifier normaliser
+         */
+        Optional<User> findByMobileNumber(String mobileNumber);
 
         Page<User> findByRole(UserRole role, Pageable pageable);
 

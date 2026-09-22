@@ -88,6 +88,31 @@ public class InMemoryRedisService implements RedisService {
         return created[0];
     }
 
+    @Override
+    public long increment(String key, Duration ttl) {
+
+        long[] result = { 0 };
+
+        store.compute(key, (k, existing) -> {
+
+            // An expired counter is indistinguishable from an absent one, so
+            // this call opens a fresh window — matching Redis, where the key
+            // would already be gone.
+            if (existing == null || isExpired(existing)) {
+                result[0] = 1;
+                return new Entry(1L, expiryFrom(ttl));
+            }
+
+            long next = ((Number) existing.value()).longValue() + 1;
+            result[0] = next;
+
+            // The window is armed on creation and never pushed forward.
+            return new Entry(next, existing.expiresAt());
+        });
+
+        return result[0];
+    }
+
     private Entry liveEntry(String key) {
 
         Entry entry = store.get(key);

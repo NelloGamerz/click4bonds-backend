@@ -26,9 +26,10 @@ import lombok.extern.slf4j.Slf4j;
  * simply does not exist there — the guard is a missing bean rather than a
  * runtime check that could be forgotten.</p>
  *
- * <p>It is also the reason {@code /api/analytics/test} is permitted in
- * {@code SecurityConfig}: the smoke test has to be reachable without a Clerk
- * token to be useful.</p>
+ * <p>It is also the reason {@code /api/analytics/test} would have to be
+ * permitted in {@code SecurityConfig}: a smoke test is only useful if it can be
+ * called without signing in first. That rule is currently commented out along
+ * with the rest of this path's configuration.</p>
  *
  * <p>What the caller should see afterwards:</p>
  *

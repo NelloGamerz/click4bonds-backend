@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Auth.Exception.InvalidSessionException;
+import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
 import com.click4bonds.app.Modules.Common.Dto.ApiError;
 import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
 import com.click4bonds.app.Modules.OTP.Exception.InvalidOtpException;
@@ -199,6 +201,46 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 new ApiError(
                                                                 "OTP_MAX_ATTEMPTS_EXCEEDED",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles a session that could not be resolved.
+         *
+         * <p>Answers 401 rather than 403: the caller's credential is not good
+         * enough, and the remedy is to sign in again — which is exactly what a
+         * client should infer from this status. The same response covers an
+         * absent cookie, an expired session and a revoked one, so it cannot be
+         * used to probe whether a given session identifier exists.</p>
+         */
+        @ExceptionHandler(InvalidSessionException.class)
+        public ResponseEntity<ApiError> handleInvalidSession(
+                        InvalidSessionException ex) {
+
+                log.debug("Session could not be resolved");
+
+                return ResponseEntity
+                                .status(HttpStatus.UNAUTHORIZED)
+                                .body(
+                                                new ApiError(
+                                                                "INVALID_SESSION",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles an OTP request beyond the client address's allowance.
+         */
+        @ExceptionHandler(OtpRateLimitedException.class)
+        public ResponseEntity<ApiError> handleOtpRateLimited(
+                        OtpRateLimitedException ex) {
+
+                log.warn("OTP request rejected: client rate limit reached");
+
+                return ResponseEntity
+                                .status(HttpStatus.TOO_MANY_REQUESTS)
+                                .body(
+                                                new ApiError(
+                                                                "OTP_RATE_LIMITED",
                                                                 ex.getMessage()));
         }
 

@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.util.List;
+import java.util.UUID;
 
 import io.micrometer.observation.annotation.Observed;
 import org.apache.coyote.BadRequestException;
@@ -37,7 +38,7 @@ public class BondService {
 
     public BondResponse createBond(
             CreateBondRequest request,
-            String adminId) throws BadRequestException {
+            UUID adminId) throws BadRequestException {
 
         // -----------------------------------------------------
         // Duplicate ISIN
@@ -70,7 +71,7 @@ public class BondService {
         // Find admin
         // -----------------------------------------------------
 
-        User admin = userRepository.findByClerkUserId(adminId)
+        User admin = userRepository.findById(adminId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Admin not found"));
 

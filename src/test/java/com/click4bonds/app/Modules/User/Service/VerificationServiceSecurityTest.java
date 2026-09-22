@@ -32,7 +32,7 @@
 // */
 //class VerificationServiceSecurityTest {
 //
-//    private static final String OTHER_CLERK_ID = "user_clerk_2";
+//    private static final String OTHER_USER_ID = "22222222-2222-2222-2222-222222222222";
 //    private static final String OTHER_EMAIL = "other@example.com";
 //
 //    private InMemoryRedisService redis;
@@ -66,11 +66,11 @@
 //                properties);
 //
 //        user = VerificationTestSupport.user(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                null);
 //
-//        other = VerificationTestSupport.user(OTHER_CLERK_ID, OTHER_EMAIL, null);
+//        other = VerificationTestSupport.user(OTHER_USER_ID, OTHER_EMAIL, null);
 //
 //        userService.register(user).register(other);
 //        verification = verificationService.register(user);
@@ -92,7 +92,7 @@
 //
 //        assertThrows(ForbiddenException.class,
 //                () -> service.sendEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        OTHER_EMAIL));
 //
 //        assertFalse(redis.exists(OtpKeyFactory.otpKey(OtpType.EMAIL, OTHER_EMAIL)));
@@ -102,11 +102,11 @@
 //    void shouldNotLetAUserRedeemACodeForSomebodyElsesAddress() {
 //
 //        // A code that really is outstanding, for the other account.
-//        service.sendEmailOtp(OTHER_CLERK_ID, OTHER_EMAIL);
+//        service.sendEmailOtp(OTHER_USER_ID, OTHER_EMAIL);
 //
 //        assertThrows(ForbiddenException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        OTHER_EMAIL,
 //                        VerificationTestSupport.OTP));
 //
@@ -122,7 +122,7 @@
 //
 //        assertThrows(ConflictException.class,
 //                () -> service.sendPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE));
 //
 //        assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -132,14 +132,14 @@
 //    @Test
 //    void shouldKeepEachUsersCodesUnderTheirOwnIdentifier() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
-//        service.sendEmailOtp(OTHER_CLERK_ID, OTHER_EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(OTHER_USER_ID, OTHER_EMAIL);
 //
 //        assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
 //        assertTrue(redis.exists(OtpKeyFactory.otpKey(OtpType.EMAIL, OTHER_EMAIL)));
 //
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -153,11 +153,11 @@
 //
 //        user.setMobileNumber(VerificationTestSupport.PHONE);
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyPhoneOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.PHONE,
 //                        VerificationTestSupport.OTP));
 //
@@ -169,11 +169,11 @@
 //
 //        user.setMobileNumber(VerificationTestSupport.PHONE);
 //
-//        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+//        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //
 //        assertThrows(InvalidOtpException.class,
 //                () -> service.verifyEmailOtp(
-//                        VerificationTestSupport.CLERK_ID,
+//                        VerificationTestSupport.USER_ID,
 //                        VerificationTestSupport.EMAIL,
 //                        VerificationTestSupport.OTP));
 //
@@ -183,9 +183,9 @@
 //    @Test
 //    void shouldNeverWriteTheCodeToTheLog() {
 //
-//        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+//        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
-//                VerificationTestSupport.CLERK_ID,
+//                VerificationTestSupport.USER_ID,
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
@@ -242,7 +242,7 @@ import com.click4bonds.app.Modules.User.Model.UserVerification;
  */
 class VerificationServiceSecurityTest {
 
-    private static final String OTHER_CLERK_ID = "user_clerk_2";
+    private static final String OTHER_USER_ID = "22222222-2222-2222-2222-222222222222";
     private static final String OTHER_EMAIL = "other@example.com";
 
     private InMemoryRedisService redis;
@@ -279,11 +279,11 @@ class VerificationServiceSecurityTest {
                 smsService);
 
         user = VerificationTestSupport.user(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 null);
 
-        other = VerificationTestSupport.user(OTHER_CLERK_ID, OTHER_EMAIL, null);
+        other = VerificationTestSupport.user(OTHER_USER_ID, OTHER_EMAIL, null);
 
         userService.register(user).register(other);
         verification = verificationService.register(user);
@@ -305,7 +305,7 @@ class VerificationServiceSecurityTest {
 
         assertThrows(ForbiddenException.class,
                 () -> service.sendEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         OTHER_EMAIL));
 
         assertFalse(redis.exists(OtpKeyFactory.otpKey(OtpType.EMAIL, OTHER_EMAIL)));
@@ -315,11 +315,11 @@ class VerificationServiceSecurityTest {
     void shouldNotLetAUserRedeemACodeForSomebodyElsesAddress() {
 
         // A code that really is outstanding, for the other account.
-        service.sendEmailOtp(OTHER_CLERK_ID, OTHER_EMAIL);
+        service.sendEmailOtp(OTHER_USER_ID, OTHER_EMAIL);
 
         assertThrows(ForbiddenException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         OTHER_EMAIL,
                         VerificationTestSupport.OTP));
 
@@ -335,7 +335,7 @@ class VerificationServiceSecurityTest {
 
         assertThrows(ConflictException.class,
                 () -> service.sendPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE));
 
         assertFalse(redis.exists(VerificationTestSupport.SMS_KEY));
@@ -352,7 +352,7 @@ class VerificationServiceSecurityTest {
 
         assertThrows(ForbiddenException.class,
                 () -> service.sendPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE));
 
         verifyNoInteractions(smsService);
@@ -361,14 +361,14 @@ class VerificationServiceSecurityTest {
     @Test
     void shouldKeepEachUsersCodesUnderTheirOwnIdentifier() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
-        service.sendEmailOtp(OTHER_CLERK_ID, OTHER_EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(OTHER_USER_ID, OTHER_EMAIL);
 
         assertTrue(redis.exists(VerificationTestSupport.EMAIL_KEY));
         assertTrue(redis.exists(OtpKeyFactory.otpKey(OtpType.EMAIL, OTHER_EMAIL)));
 
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -382,11 +382,11 @@ class VerificationServiceSecurityTest {
 
         user.setMobileNumber(VerificationTestSupport.PHONE);
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyPhoneOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.PHONE,
                         VerificationTestSupport.OTP));
 
@@ -401,11 +401,11 @@ class VerificationServiceSecurityTest {
 
         user.setMobileNumber(VerificationTestSupport.PHONE);
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 
         assertThrows(InvalidOtpException.class,
                 () -> service.verifyEmailOtp(
-                        VerificationTestSupport.CLERK_ID,
+                        VerificationTestSupport.USER_ID,
                         VerificationTestSupport.EMAIL,
                         VerificationTestSupport.OTP));
 
@@ -415,9 +415,9 @@ class VerificationServiceSecurityTest {
     @Test
     void shouldNeverWriteTheEmailCodeToTheLog() {
 
-        service.sendEmailOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.EMAIL);
+        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
@@ -427,9 +427,9 @@ class VerificationServiceSecurityTest {
     @Test
     void shouldNeverWriteThePhoneCodeToTheLog() {
 
-        service.sendPhoneOtp(VerificationTestSupport.CLERK_ID, VerificationTestSupport.PHONE);
+        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
         service.verifyPhoneOtp(
-                VerificationTestSupport.CLERK_ID,
+                VerificationTestSupport.USER_ID,
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 

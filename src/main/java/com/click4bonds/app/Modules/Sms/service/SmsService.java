@@ -47,9 +47,17 @@ public class SmsService {
                     .retrieve()
                     .body(String.class);
 
-            log.debug("SMS gateway response: {}", response);
+            // The response is deliberately not logged. Gateways commonly echo
+            // the submitted message back in their receipt, and that message is
+            // the OTP itself — logging it would put the code in the log, which
+            // is the one place it must never appear. Only whether the call
+            // returned anything is recorded.
+            log.debug("SMS gateway responded ({} characters)", response == null ? 0 : response.length());
+
         } catch (RestClientException e) {
-            log.error("Failed to send OTP SMS", e);
+            // The exception is not logged with its cause: a request URL carrying
+            // the OTP and the recipient's number can appear in it.
+            log.error("Failed to send OTP SMS: {}", e.getClass().getSimpleName());
             throw new IllegalStateException("Unable to send OTP right now, please try again");
         }
     }
