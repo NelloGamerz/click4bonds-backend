@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: app
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
+server:
+  port: 8080
+
+email:
+  # Selects the EmailProvider implementation used for every outgoing email.
+  # Supported values: resend | msg91
+  provider: ${EMAIL_PROVIDER:resend}
+
+# Authentication with a phone number and an OTP.
+#
+# Tokens are signed by this application and verified by it; there is no
+# external identity provider. Shared by every profile — the dev profile
+# overrides only the cookie settings that plain HTTP forces to differ.
+auth:
+  jwt:
+    # Key the access tokens are signed with. Required, with no default: the
+    # application refuses to start without it, so a deployment cannot come up
+    # signing tokens with a value everybody can read in this file. At least 32
+    # bytes; generate one with `openssl rand -base64 48`.
+    secret: ${AUTH_JWT_SECRET}
+    # Short on purpose. The refresh session carries a long-lived sign-in, so a
+    # leaked access token is only useful for this window.
+    access-token-ttl: ${AUTH_ACCESS_TOKEN_TTL:15m}
+
+  session:
+    # How long a device stays signed in. This is the Redis session's TTL, and
+    # therefore the refresh cookie's lifetime.
+    ttl: ${AUTH_SESSION_TTL:30d}
+    # __Host- prefixed names are only accepted by browsers on Secure, Path=/
+    # cookies with no Domain, which stops a subdomain overwriting the session
+    # cookie. The dev profile cannot satisfy that over plain HTTP and overrides
+    # this.
+    cookie-name: ${AUTH_COOKIE_NAME:__Host-session}
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
+    # Lax keeps the cookie off cross-site requests, which is what protects the
+    # refresh and logout endpoints against CSRF. The frontend and API share a
+    # registrable domain, so legitimate calls are same-site and still send it.
+    # Setting None removes that protection and is refused unless Secure is on.
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    # Left empty deliberately: the host-only default is narrower than any
+    # explicit domain, and a Domain attribute is incompatible with __Host-.
+    cookie-domain: ${AUTH_COOKIE_DOMAIN:}
+
+  otp:
+    # Caps OTP requests from one client address. The OTP module already has a
+    # per-number resend cooldown; this is what stops a sweep across many
+    # numbers, and what bounds the messaging bill.
+    max-requests-per-window: ${AUTH_OTP_MAX_REQUESTS_PER_WINDOW:10}
+    rate-limit-window: ${AUTH_OTP_RATE_LIMIT_WINDOW:15m}
+
+
+management:
+  metrics:
+    tags:
+      application: clickforbonds
+      environment: ${SPRING_PROFILES_ACTIVE:dev}
+
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
