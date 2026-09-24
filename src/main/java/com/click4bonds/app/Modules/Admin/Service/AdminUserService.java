@@ -84,21 +84,37 @@ public class AdminUserService {
          * the access token's {@code role} claim — so the change takes effect at
          * the user's next token refresh.</p>
          */
-        public User updateUserRole(
-                        UUID userId,
-                        UserRole role) {
+//        public User updateUserRole(
+//                        UUID userId,
+//                        UserRole role) {
+//
+//                User user = userRepository.findById(userId)
+//                                .orElseThrow(() -> new ResourceNotFoundException(
+//                                                "User not found"));
+//
+//                if (user.getRole() == role) {
+//                        return user;
+//                }
+//
+//                user.setRole(role);
+//
+//                return userRepository.save(user);
+//        }
+
+        public AdminUserDetailsResponse updateUserRole(
+                UUID userId,
+                UserRole role) {
 
                 User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "User not found"));
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "User not found"));
 
-                if (user.getRole() == role) {
-                        return user;
+                if (user.getRole() != role) {
+                        user.setRole(role);
+                        user = userRepository.save(user);
                 }
 
-                user.setRole(role);
-
-                return userRepository.save(user);
+                return toUserDetailsResponse(user);
         }
 
         @Transactional(readOnly = true)
