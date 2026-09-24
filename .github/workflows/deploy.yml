@@ -1,3 +1,221 @@
+#name: Build and Deploy Click4Bond
+#
+#on:
+#  push:
+#    branches:
+#      - main
+#
+#env:
+#  IMAGE_NAME: click4bond/click4bond
+#  PLATFORM: linux/arm64
+#
+#jobs:
+#  build-and-deploy:
+#    runs-on: ubuntu-latest
+#
+#    steps:
+#      # ==========================================
+#      # 1. Checkout source code
+#      # ==========================================
+#      - name: Checkout source
+#        uses: actions/checkout@v4
+#
+#      # ==========================================
+#      # 2. Generate systematic Docker version
+#      #
+#      # Example:
+#      # 1.0.1
+#      # 1.0.2
+#      # 1.0.3
+#      # ==========================================
+#      - name: Generate Docker image version
+#        run: |
+#          VERSION="1.0.${{ github.run_number }}"
+#
+#          echo "IMAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+#
+#          echo "======================================"
+#          echo "Docker Image"
+#          echo "${IMAGE_NAME}:${VERSION}"
+#          echo "======================================"
+#
+#      # ==========================================
+#      # 3. Setup Docker Buildx
+#      # ==========================================
+#      - name: Setup Docker Buildx
+#        uses: docker/setup-buildx-action@v3
+#
+#      # ==========================================
+#      # 4. Login to Docker Hub
+#      # ==========================================
+#      - name: Login to Docker Hub
+#        uses: docker/login-action@v3
+#        with:
+#          username: ${{ secrets.DOCKERHUB_USERNAME }}
+#          password: ${{ secrets.DOCKERHUB_TOKEN }}
+#
+#      # ==========================================
+#      # 5. Build and Push Docker Image
+#      # ==========================================
+#      - name: Build and Push Docker Image
+#        uses: docker/build-push-action@v6
+#        with:
+#          context: .
+#          file: ./Dockerfile
+#          platforms: ${{ env.PLATFORM }}
+#          push: true
+#          tags: |
+#            ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
+#            ${{ env.IMAGE_NAME }}:latest
+#          cache-from: type=gha
+#          cache-to: type=gha,mode=max
+#
+#      # ==========================================
+#      # 6. Deploy to Oracle Server
+#      # ==========================================
+#      - name: Deploy to Oracle Server
+#        uses: appleboy/ssh-action@v1.2.2
+#        with:
+#          host: ${{ secrets.SERVER_HOST }}
+#          username: ${{ secrets.SERVER_USER }}
+#          key: ${{ secrets.SERVER_SSH_KEY }}
+#          script: |
+#            set -e
+#
+#            # ==========================================
+#            # Configuration
+#            # ==========================================
+#
+#            APP_DIR="$HOME/click4bond"
+#            IMAGE="click4bond/click4bond:${{ env.IMAGE_VERSION }}"
+#
+#            echo "======================================"
+#            echo "Starting deployment"
+#            echo "======================================"
+#
+#            echo "Server:"
+#            hostname
+#
+#            echo "Application directory:"
+#            echo "$APP_DIR"
+#
+#            echo "Docker image:"
+#            echo "$IMAGE"
+#
+#            echo "======================================"
+#
+#            # ==========================================
+#            # Go to application directory
+#            # ==========================================
+#
+#            cd "$APP_DIR"
+#
+#            # ==========================================
+#            # Verify docker-compose.yml exists
+#            # ==========================================
+#
+#            if [ ! -f docker-compose.yml ]; then
+#              echo "ERROR: docker-compose.yml not found!"
+#              exit 1
+#            fi
+#
+#            # ==========================================
+#            # Verify .env exists
+#            # ==========================================
+#
+#            if [ ! -f .env ]; then
+#              echo "ERROR: .env file not found!"
+#              exit 1
+#            fi
+#
+#            # ==========================================
+#            # Pull exact application image
+#            # ==========================================
+#
+#            echo "Pulling Docker image..."
+#            docker pull "$IMAGE"
+#
+#            # ==========================================
+#            # Deploy ONLY Spring Boot application
+#            #
+#            # --no-deps prevents restarting:
+#            # Redis
+#            # Kafka
+#            # PostgreSQL
+#            # ClickHouse
+#            # Grafana
+#            # Prometheus
+#            # etc.
+#            # ==========================================
+#
+#            echo "Deploying application..."
+#            APP_IMAGE="$IMAGE" docker compose up -d --no-deps app
+#
+#            # ==========================================
+#            # Show application status
+#            # ==========================================
+#
+#            echo "======================================"
+#            echo "Application status"
+#            echo "======================================"
+#
+#            APP_IMAGE="$IMAGE" docker compose ps app
+#
+#            # ==========================================
+#            # Wait for health check
+#            # ==========================================
+#
+#            echo "======================================"
+#            echo "Waiting for application health..."
+#            echo "======================================"
+#
+#            for i in {1..30}; do
+#              STATUS=$(docker inspect \
+#                --format='{{.State.Health.Status}}' \
+#                clickforbonds-app 2>/dev/null || echo "starting")
+#
+#              echo "Health status: $STATUS"
+#
+#              if [ "$STATUS" = "healthy" ]; then
+#                echo "======================================"
+#                echo "Application is healthy!"
+#                echo "======================================"
+#
+#                echo "Deployment successful."
+#                echo "Version: ${{ env.IMAGE_VERSION }}"
+#
+#                exit 0
+#              fi
+#
+#              sleep 5
+#            done
+#
+#            # ==========================================
+#            # Deployment failed
+#            # ==========================================
+#
+#            echo "======================================"
+#            echo "Application failed health check"
+#            echo "======================================"
+#
+#            echo "Container status:"
+#            docker ps -a --filter "name=clickforbonds-app"
+#
+#            echo "======================================"
+#            echo "Application logs"
+#            echo "======================================"
+#
+#            docker logs clickforbonds-app || true
+#
+#            echo "======================================"
+#            echo "Compose status"
+#            echo "======================================"
+#
+#            APP_IMAGE="$IMAGE" docker compose ps app
+#
+#            exit 1
+
+
 name: Build and Deploy Click4Bond
 
 on:
@@ -47,6 +265,9 @@ jobs:
 
       # ==========================================
       # 4. Login to Docker Hub
+      #
+      # Required because the Docker Hub repository
+      # is PRIVATE.
       # ==========================================
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -62,11 +283,18 @@ jobs:
         with:
           context: .
           file: ./Dockerfile
+
+          # Oracle server architecture
           platforms: ${{ env.PLATFORM }}
+
+          # Push image to PRIVATE Docker Hub repo
           push: true
+
           tags: |
             ${{ env.IMAGE_NAME }}:${{ env.IMAGE_VERSION }}
             ${{ env.IMAGE_NAME }}:latest
+
+          # GitHub Actions cache
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -79,6 +307,7 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+
           script: |
             set -e
 
@@ -129,10 +358,29 @@ jobs:
             fi
 
             # ==========================================
+            # Login to PRIVATE Docker Hub repository
+            #
+            # DOCKERHUB_TOKEN should be a Docker Hub
+            # Access Token with read permission.
+            # ==========================================
+
+            echo "Logging into Docker Hub..."
+
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | \
+              docker login \
+                --username "${{ secrets.DOCKERHUB_USERNAME }}" \
+                --password-stdin
+
+            echo "Docker Hub login successful."
+
+            # ==========================================
             # Pull exact application image
             # ==========================================
 
+            echo "======================================"
             echo "Pulling Docker image..."
+            echo "======================================"
+
             docker pull "$IMAGE"
 
             # ==========================================
@@ -148,7 +396,10 @@ jobs:
             # etc.
             # ==========================================
 
+            echo "======================================"
             echo "Deploying application..."
+            echo "======================================"
+
             APP_IMAGE="$IMAGE" docker compose up -d --no-deps app
 
             # ==========================================
@@ -170,6 +421,7 @@ jobs:
             echo "======================================"
 
             for i in {1..30}; do
+
               STATUS=$(docker inspect \
                 --format='{{.State.Health.Status}}' \
                 clickforbonds-app 2>/dev/null || echo "starting")
@@ -177,6 +429,7 @@ jobs:
               echo "Health status: $STATUS"
 
               if [ "$STATUS" = "healthy" ]; then
+
                 echo "======================================"
                 echo "Application is healthy!"
                 echo "======================================"
