@@ -200,10 +200,11 @@ public class AdminBondController {
 
         @GetMapping("/bonds/{isin}/issuer")
         public ResponseEntity<IssuerResponse> getIssuer(
-                        @PathVariable String isin) {
-
+                        @PathVariable String isin,
+                        @AuthenticationPrincipal Jwt jwt) {
+                UUID userId = jwt != null ? UUID.fromString(jwt.getSubject()) : null;
                 return ResponseEntity.ok(
-                                issuerService.getIssuerByIsin(isin));
+                                issuerService.getIssuerByIsin(isin, userId));
         }
 
         /**
