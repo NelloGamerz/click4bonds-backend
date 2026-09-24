@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.User.Service;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -177,12 +178,67 @@ public class UserService {
      * @param role   role to check
      * @return {@code true} when the user exists and has the requested role
      */
+//    public boolean hasRole(UUID userId, UserRole role) {
+//
+//        if (userId == null || role == null) {
+//            return false;
+//        }
+//
+//        return userRepository.findRoleByUserId(userId).map(userRole -> userRole == role).orElse(false);
+//    }
+//    public boolean hasRole(UUID userId, UserRole role) {
+//
+//        if (userId == null || role == null) {
+//            log.warn(
+//                    "hasRole called with null value: userId={}, role={}",
+//                    userId,
+//                    role
+//            );
+//            return false;
+//        }
+//
+//        Optional<UserRole> result = userRepository.findRoleByUserId(userId);
+//
+//        log.info(
+//                "Role lookup: userId={}, requestedRole={}, databaseRole={}",
+//                userId,
+//                role,
+//                result.orElse(null)
+//        );
+//
+//        boolean matches = result
+//                .map(userRole -> userRole == role)
+//                .orElse(false);
+//
+//        log.info(
+//                "Role result: userId={}, requestedRole={}, databaseRole={}, matches={}",
+//                userId,
+//                role,
+//                result.orElse(null),
+//                matches
+//        );
+//
+//        return matches;
+//    }
     public boolean hasRole(UUID userId, UserRole role) {
 
         if (userId == null || role == null) {
+            log.warn("Role check skipped: userId={}, requestedRole={}", userId, role);
             return false;
         }
 
-        return userRepository.findRoleByUserId(userId).map(userRole -> userRole == role).orElse(false);
+        log.info("Looking up user role: userId={}, requestedRole={}", userId, role);
+
+        Optional<UserRole> roleResult = userRepository.findRoleByUserId(userId);
+
+        log.info("Role lookup result: userId={}, requestedRole={}, databaseRole={}, present={}", userId, role, roleResult.orElse(null), roleResult.isPresent());
+
+        boolean matches = roleResult.map(userRole -> userRole == role).orElse(false);
+
+        log.info("Role check result: userId={}, requestedRole={}, databaseRole={}, matches={}", userId, role, roleResult.orElse(null), matches);
+
+        return matches;
     }
+
+
 }

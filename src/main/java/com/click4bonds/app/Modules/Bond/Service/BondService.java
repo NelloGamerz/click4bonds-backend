@@ -9,6 +9,7 @@ import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import io.micrometer.observation.annotation.Observed;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.coyote.BadRequestException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class BondService {
 
     private final BondRepository bondRepository;
@@ -182,28 +184,96 @@ public class BondService {
             name = "bond.get",
             contextualName = "bond-get-by-isin"
     )
-    public BondResponse getBond(String isin, UUID userId) {
+//    public BondResponse getBond(String isin, UUID userId) {
+//
+//        Bond bond = getbondByIs(isin);
+//
+//        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+//
+//            analyticsService.track(
+//                    AnalyticsEventType.BOND_VIEW,
+//                    userId,
+//                    null,
+//                    bond.getId(),
+//                    "WEB",
+//                    "BOND_DETAILS",
+//                    Map.of(
+//                            "source", "bond-details",
+//                            "action", "view"
+//                    )
+//            );
+//        }
+//
+//        return mapToResponse(bond);
+//    }
 
-        Bond bond = getbondByIs(isin);
+        public BondResponse getBond(String isin, UUID userId) {
 
-        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+            log.info("Fetching bond: isin={}, userId={}", isin, userId);
 
-            analyticsService.track(
-                    AnalyticsEventType.BOND_VIEW,
-                    userId,
-                    null,
-                    bond.getId(),
-                    "WEB",
-                    "BOND_DETAILS",
-                    Map.of(
-                            "source", "bond-details",
-                            "action", "view"
-                    )
+            Bond bond = getbondByIs(isin);
+
+            log.info(
+                    "Bond fetched successfully: isin={}, bondId={}",
+                    isin,
+                    bond.getId()
             );
-        }
 
-        return mapToResponse(bond);
-    }
+            if (userId != null) {
+
+                boolean isCustomer = userService.hasRole(userId, UserRole.CUSTOMER);
+
+                log.info(
+                        "Analytics role check: userId={}, role={}, isCustomer={}",
+                        userId,
+                        UserRole.CUSTOMER,
+                        isCustomer
+                );
+
+                if (isCustomer) {
+
+                    log.info(
+                            "Tracking BOND_VIEW analytics event: userId={}, bondId={}, source=WEB, page=BOND_DETAILS",
+                            userId,
+                            bond.getId()
+                    );
+
+                    analyticsService.track(
+                            AnalyticsEventType.BOND_VIEW,
+                            userId,
+                            null,
+                            bond.getId(),
+                            "WEB",
+                            "BOND_DETAILS",
+                            Map.of(
+                                    "source", "bond-details",
+                                    "action", "view"
+                            )
+                    );
+
+                    log.info(
+                            "BOND_VIEW analytics event submitted: userId={}, bondId={}",
+                            userId,
+                            bond.getId()
+                    );
+                } else {
+
+                    log.info(
+                            "Skipping BOND_VIEW analytics: user is not a CUSTOMER. userId={}",
+                            userId
+                    );
+                }
+
+            } else {
+
+                log.info(
+                        "Skipping BOND_VIEW analytics: userId is null, isin={}",
+                        isin
+                );
+            }
+
+            return mapToResponse(bond);
+        }
 
     // =========================================================
     // GET ALL BONDS
