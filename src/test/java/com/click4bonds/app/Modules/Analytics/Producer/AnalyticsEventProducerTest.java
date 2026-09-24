@@ -79,9 +79,9 @@ class AnalyticsEventProducerTest {
         return new AnalyticsEvent(
                 UUID.randomUUID(),
                 type,
-                1L,
+                UUID.randomUUID(),
                 "session-1",
-                7L,
+                UUID.randomUUID(),
                 Instant.now(),
                 "WEB",
                 "BOND_DETAILS",

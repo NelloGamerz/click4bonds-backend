@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.Analytics.Producer;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +25,7 @@ import lombok.RequiredArgsConstructor;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AnalyticsEventProducer {
 
     private final KafkaTemplate<String, AnalyticsEvent> kafkaTemplate;
@@ -33,11 +35,38 @@ public class AnalyticsEventProducer {
      *
      * @param event the event to publish; keyed by its own id
      */
+//    public void publish(AnalyticsEvent event) {
+//
+//        kafkaTemplate.send(
+//                KafkaConfig.ANALYTICS_TOPIC,
+//                event.eventId().toString(),
+//                event);
+//    }
     public void publish(AnalyticsEvent event) {
 
         kafkaTemplate.send(
-                KafkaConfig.ANALYTICS_TOPIC,
-                event.eventId().toString(),
-                event);
+                        KafkaConfig.ANALYTICS_TOPIC,
+                        event.eventId().toString(),
+                        event)
+                .whenComplete((result, exception) -> {
+
+                    if (exception != null) {
+                        log.error(
+                                "Failed to publish analytics event {} to Kafka topic {}",
+                                event.eventId(),
+                                KafkaConfig.ANALYTICS_TOPIC,
+                                exception);
+
+                        return;
+                    }
+
+                    log.info(
+                            "Published analytics event {} to Kafka topic {} partition={} offset={}",
+                            event.eventId(),
+                            result.getRecordMetadata().topic(),
+                            result.getRecordMetadata().partition(),
+                            result.getRecordMetadata().offset());
+                });
     }
+
 }

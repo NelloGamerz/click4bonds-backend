@@ -299,9 +299,9 @@ class AnalyticsBatchServiceTest {
         return new AnalyticsEvent(
                 UUID.randomUUID(),
                 AnalyticsEventType.BOND_VIEW,
-                1L,
+                UUID.randomUUID(),
                 "session-1",
-                7L,
+                UUID.randomUUID(),
                 Instant.now(),
                 "WEB",
                 "BOND_DETAILS",

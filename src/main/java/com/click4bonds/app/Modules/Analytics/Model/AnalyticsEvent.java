@@ -51,11 +51,11 @@ public record AnalyticsEvent(
 
         AnalyticsEventType eventType,
 
-        Long userId,
+        UUID userId,
 
         String sessionId,
 
-        Long bondId,
+        UUID bondId,
 
         Instant eventTime,
 

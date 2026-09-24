@@ -63,9 +63,9 @@ public class AnalyticsService {
      */
     public void track(
             AnalyticsEventType eventType,
-            Long userId,
+            UUID userId,
             String sessionId,
-            Long bondId,
+            UUID bondId,
             String source,
             String page,
             Map<String, Object> metadata) {

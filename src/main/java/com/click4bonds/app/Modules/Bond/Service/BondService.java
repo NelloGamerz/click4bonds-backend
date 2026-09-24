@@ -1,8 +1,13 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Service.UserService;
 import io.micrometer.observation.annotation.Observed;
 import org.apache.coyote.BadRequestException;
 import org.springframework.data.domain.Page;
@@ -31,6 +36,8 @@ public class BondService {
 
     private final BondRepository bondRepository;
     private final UserRepository userRepository;
+    private final UserService userService;
+    private final AnalyticsService analyticsService;
 
     // =========================================================
     // CREATE
@@ -175,9 +182,25 @@ public class BondService {
             name = "bond.get",
             contextualName = "bond-get-by-isin"
     )
-    public BondResponse getBond(String isin) {
+    public BondResponse getBond(String isin, UUID userId) {
 
         Bond bond = getbondByIs(isin);
+
+        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+
+            analyticsService.track(
+                    AnalyticsEventType.BOND_VIEW,
+                    userId,
+                    null,
+                    bond.getId(),
+                    "WEB",
+                    "BOND_DETAILS",
+                    Map.of(
+                            "source", "bond-details",
+                            "action", "view"
+                    )
+            );
+        }
 
         return mapToResponse(bond);
     }

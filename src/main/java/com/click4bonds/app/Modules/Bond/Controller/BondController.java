@@ -6,6 +6,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -18,6 +20,8 @@ import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.IssuerService;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/bonds")
@@ -39,10 +43,14 @@ public class BondController {
 
     @GetMapping("/{isin}")
     public ResponseEntity<BondResponse> getBond(
-            @PathVariable String isin) {
+            @PathVariable String isin,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        UUID userId = jwt != null
+                    ? UUID.fromString(jwt.getSubject()): null;
 
         return ResponseEntity.ok(
-                bondService.getBond(isin));
+                bondService.getBond(isin, userId));
     }
 
     // @PostMapping("/{bondId}/calculate-ytm")
