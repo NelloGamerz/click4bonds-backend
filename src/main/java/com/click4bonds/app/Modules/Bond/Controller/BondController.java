@@ -125,9 +125,10 @@ public class BondController {
 
     @GetMapping("/{isin}/issuer")
     public ResponseEntity<IssuerResponse> getIssuerByIsin(
-            @PathVariable String isin) {
-
+            @PathVariable String isin,
+            @AuthenticationPrincipal Jwt jwt) {
+        UUID userId = jwt != null ? UUID.fromString(jwt.getSubject()) : null;
         return ResponseEntity.ok(
-                issuerService.getIssuerByIsin(isin));
+                issuerService.getIssuerByIsin(isin, userId));
     }
 }
