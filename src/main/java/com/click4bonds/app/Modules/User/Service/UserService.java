@@ -43,8 +43,7 @@ public class UserService {
      */
     public User findOrCreateByMobileNumber(String mobileNumber) {
 
-        return userRepository.findByMobileNumber(mobileNumber)
-                .orElseGet(() -> createPhoneUser(mobileNumber));
+        return userRepository.findByMobileNumber(mobileNumber).orElseGet(() -> createPhoneUser(mobileNumber));
     }
 
     /**
@@ -70,8 +69,7 @@ public class UserService {
     public User getUserById(String userId) {
 
         if (userId == null || userId.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED, "Not authenticated");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
         }
 
         try {
@@ -81,8 +79,7 @@ public class UserService {
             // Reported as unauthenticated rather than as a bad request: a
             // subject that is not an identifier means the caller's token is not
             // one this application issued.
-            throw new ResponseStatusException(
-                    HttpStatus.UNAUTHORIZED, "Not authenticated");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
         }
     }
 
@@ -93,9 +90,7 @@ public class UserService {
      */
     public User getUser(UUID userId) {
 
-        return userRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "User not found"));
+        return userRepository.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     /**
@@ -111,10 +106,7 @@ public class UserService {
 
         user.setOnboardingStep(onboardingStep);
 
-        log.info(
-                "Updated onboarding step for user {} to {}",
-                user.getId(),
-                onboardingStep);
+        log.info("Updated onboarding step for user {} to {}", user.getId(), onboardingStep);
     }
 
     /**
@@ -167,12 +159,7 @@ public class UserService {
      */
     private User createPhoneUser(String mobileNumber) {
 
-        User user = User.builder()
-                .mobileNumber(mobileNumber)
-                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
-                .role(UserRole.CUSTOMER)
-                .status(UserStatus.ACTIVE)
-                .build();
+        User user = User.builder().mobileNumber(mobileNumber).onboardingStep(OnboardingStep.EMAIL_VERIFICATION).role(UserRole.CUSTOMER).status(UserStatus.ACTIVE).build();
 
         User saved = userRepository.save(user);
         userVerificationService.createVerification(saved);
@@ -181,5 +168,21 @@ public class UserService {
         log.info("Created user {} from a verified phone number", saved.getId());
 
         return saved;
+    }
+
+    /**
+     * Checks whether the user with the given identifier has the requested role.
+     *
+     * @param userId user identifier
+     * @param role   role to check
+     * @return {@code true} when the user exists and has the requested role
+     */
+    public boolean hasRole(UUID userId, UserRole role) {
+
+        if (userId == null || role == null) {
+            return false;
+        }
+
+        return userRepository.findRoleByUserId(userId).map(userRole -> userRole == role).orElse(false);
     }
 }

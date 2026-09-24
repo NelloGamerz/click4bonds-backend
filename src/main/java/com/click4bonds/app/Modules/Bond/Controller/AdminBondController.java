@@ -93,10 +93,12 @@ public class AdminBondController {
 
         @GetMapping("/bonds/{isin}")
         public ResponseEntity<BondResponse> getBond(
-                        @PathVariable String isin) {
+                        @PathVariable String isin,
+                        @AuthenticationPrincipal Jwt jwt) {
 
+                UUID userId = UUID.fromString(jwt.getSubject());
                 return ResponseEntity.ok(
-                                bondService.getBond(isin));
+                                bondService.getBond(isin, userId));
         }
 
         @PatchMapping("/bonds/{isin}")

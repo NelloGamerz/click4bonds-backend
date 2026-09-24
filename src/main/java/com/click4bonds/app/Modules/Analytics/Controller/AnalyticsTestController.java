@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.Analytics.Controller;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -70,9 +71,9 @@ public class AnalyticsTestController {
      */
     @PostMapping
     public ResponseEntity<Map<String, Object>> publishTestEvent(
-            @RequestParam(required = false) Long userId,
+            @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) String sessionId,
-            @RequestParam(required = false) Long bondId) {
+            @RequestParam(required = false) UUID bondId) {
 
         String testSessionId = (sessionId != null) ? sessionId : "analytics-smoke-test";
 
