@@ -36,7 +36,8 @@ import com.click4bonds.app.Modules.User.Model.User;
 class DealConfirmationServiceTest {
 
     private static final String ISIN = "INE123A01016";
-    private static final String CLERK_ID = "user_2abc";
+    private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID OTHER_USER_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
     private static final String KEY = "key-1";
 
     @Mock
@@ -69,13 +70,13 @@ class DealConfirmationServiceTest {
         givenWriterCreatesDeal();
 
         DealConfirmationService.Result result =
-                service.createDeal(CLERK_ID, request(), null);
+                service.createDeal(USER_ID, request(), null);
 
         assertFalse(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
 
         verify(dealConfirmationRepository, never())
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(any(), any());
+                .findByCustomer_IdAndIdempotencyKey(any(), any());
     }
 
     @Test
@@ -88,12 +89,12 @@ class DealConfirmationServiceTest {
         givenWriterCreatesDeal();
 
         DealConfirmationService.Result result =
-                service.createDeal(CLERK_ID, request(), "   ");
+                service.createDeal(USER_ID, request(), "   ");
 
         assertFalse(result.replayed());
 
         verify(dealConfirmationRepository, never())
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(any(), any());
+                .findByCustomer_IdAndIdempotencyKey(any(), any());
     }
 
     // ============================================================
@@ -106,11 +107,11 @@ class DealConfirmationServiceTest {
         DealConfirmation original = deal("DC-20260922-000001");
 
         when(dealConfirmationRepository
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(CLERK_ID, KEY))
+                .findByCustomer_IdAndIdempotencyKey(USER_ID, KEY))
                 .thenReturn(Optional.of(original));
 
         DealConfirmationService.Result result =
-                service.createDeal(CLERK_ID, request(), KEY);
+                service.createDeal(USER_ID, request(), KEY);
 
         assertTrue(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
@@ -128,10 +129,10 @@ class DealConfirmationServiceTest {
         DealConfirmation original = deal("DC-20260922-000001");
 
         when(dealConfirmationRepository
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(CLERK_ID, KEY))
+                .findByCustomer_IdAndIdempotencyKey(USER_ID, KEY))
                 .thenReturn(Optional.of(original));
 
-        service.createDeal(CLERK_ID, request(), KEY);
+        service.createDeal(USER_ID, request(), KEY);
 
         verify(documentService, never()).generate(any());
     }
@@ -145,15 +146,15 @@ class DealConfirmationServiceTest {
          * arguments it is called with.
          */
         when(dealConfirmationRepository
-                .findByCustomer_ClerkUserIdAndIdempotencyKey("someone_else", KEY))
+                .findByCustomer_IdAndIdempotencyKey(OTHER_USER_ID, KEY))
                 .thenReturn(Optional.empty());
 
         givenWriterCreatesDeal();
 
-        service.createDeal("someone_else", request(), KEY);
+        service.createDeal(OTHER_USER_ID, request(), KEY);
 
         verify(dealConfirmationRepository)
-                .findByCustomer_ClerkUserIdAndIdempotencyKey("someone_else", KEY);
+                .findByCustomer_IdAndIdempotencyKey(OTHER_USER_ID, KEY);
     }
 
     // ============================================================
@@ -171,16 +172,16 @@ class DealConfirmationServiceTest {
          */
         DealConfirmation winner = deal("DC-20260922-000001");
 
-        when(writer.create(eq(CLERK_ID), any(), eq(KEY)))
+        when(writer.create(eq(USER_ID), any(), eq(KEY)))
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
 
         when(dealConfirmationRepository
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(CLERK_ID, KEY))
+                .findByCustomer_IdAndIdempotencyKey(USER_ID, KEY))
                 .thenReturn(Optional.empty())
                 .thenReturn(Optional.of(winner));
 
         DealConfirmationService.Result result =
-                service.createDeal(CLERK_ID, request(), KEY);
+                service.createDeal(USER_ID, request(), KEY);
 
         assertTrue(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
@@ -189,15 +190,15 @@ class DealConfirmationServiceTest {
     @Test
     void aConstraintViolationWithNoKeyIsNotSwallowed() {
 
-        when(writer.create(eq(CLERK_ID), any(), any()))
+        when(writer.create(eq(USER_ID), any(), any()))
                 .thenThrow(new DataIntegrityViolationException("duplicate key"));
 
         assertThrows(
                 DataIntegrityViolationException.class,
-                () -> service.createDeal(CLERK_ID, request(), null));
+                () -> service.createDeal(USER_ID, request(), null));
 
         verify(dealConfirmationRepository, never())
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(any(), any());
+                .findByCustomer_IdAndIdempotencyKey(any(), any());
     }
 
     // ============================================================
@@ -209,7 +210,7 @@ class DealConfirmationServiceTest {
 
         givenWriterCreatesDeal();
 
-        service.createDeal(CLERK_ID, request(), null);
+        service.createDeal(USER_ID, request(), null);
 
         verify(documentService).generate(any(DealConfirmationDocumentData.class));
     }
@@ -228,7 +229,7 @@ class DealConfirmationServiceTest {
                 .thenThrow(new IllegalStateException("template missing"));
 
         DealConfirmationService.Result result =
-                service.createDeal(CLERK_ID, request(), null);
+                service.createDeal(USER_ID, request(), null);
 
         assertEquals("DC-20260922-000001", result.response().getDealReference());
         assertFalse(result.replayed());
@@ -263,8 +264,7 @@ class DealConfirmationServiceTest {
     private DealConfirmation deal(String reference) {
 
         User customer = User.builder()
-                .id(UUID.randomUUID())
-                .clerkUserId(CLERK_ID)
+                .id(USER_ID)
                 .email("customer@example.com")
                 .build();
 

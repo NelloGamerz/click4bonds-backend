@@ -69,7 +69,7 @@ import com.click4bonds.app.Modules.User.Service.UserService;
 class DealConfirmationConcurrencyTest {
 
     private static final String ISIN = "INE123A01016";
-    private static final String CLERK_ID = "user_2abc";
+    private static final UUID userId = UUID.randomUUID();
 
     @Mock
     private DealConfirmationRepository dealConfirmationRepository;
@@ -154,7 +154,7 @@ class DealConfirmationConcurrencyTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(CLERK_ID, request(100L, 11L), null)); // 1100 units
+                () -> writer.create(userId, request(100L, 11L), null)); // 1100 units
 
         assertEquals(1000L, inventory.remaining(), "a rejected request reserves nothing");
         assertEquals(0, inventory.reservationsGranted());
@@ -189,7 +189,7 @@ class DealConfirmationConcurrencyTest {
 
             try {
                 writer.create(
-                        CLERK_ID,
+                        userId,
                         new CreateDealConfirmationRequest(ISIN, quantityPerLot, numberOfLots),
                         null);
 
@@ -207,7 +207,7 @@ class DealConfirmationConcurrencyTest {
 
     private void stubCustomer() {
 
-        lenient().when(userService.getUserByClerkId(CLERK_ID))
+        lenient().when(userService.getUser(userId))
                 .thenReturn(customer());
     }
 
@@ -231,7 +231,6 @@ class DealConfirmationConcurrencyTest {
 
         return User.builder()
                 .id(UUID.randomUUID())
-                .clerkUserId(CLERK_ID)
                 .email("customer@example.com")
                 .status(UserStatus.ACTIVE)
                 .build();

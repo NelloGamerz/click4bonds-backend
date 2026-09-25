@@ -53,7 +53,7 @@ two values and a persisted deal is always `CREATED` first.
 POST /api/deal-confirmations
   │  body: { isin, quantityPerLot, numberOfLots }
   │  header: Idempotency-Key (optional)
-  │  principal: JWT subject → clerkUserId
+  │  principal: JWT subject → User.id (UUID)
   v
 DealConfirmationController.createDealConfirmation          (not transactional)
   │

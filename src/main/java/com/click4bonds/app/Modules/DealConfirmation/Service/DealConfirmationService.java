@@ -13,6 +13,8 @@ import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationR
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.UUID;
+
 /**
  * Entry point for buying a bond.
  *
@@ -49,12 +51,12 @@ public class DealConfirmationService {
     /**
      * Creates a deal, or replays the one an identical earlier request created.
      *
-     * @param clerkUserId    authenticated customer, from the JWT
+     * @param userId    authenticated customer, from the JWT
      * @param request        bond and quantities
      * @param idempotencyKey client-supplied key, or null when the client sent none
      */
     public Result createDeal(
-            String clerkUserId,
+            UUID userId,
             CreateDealConfirmationRequest request,
             String idempotencyKey) {
 
@@ -62,7 +64,7 @@ public class DealConfirmationService {
 
         if (key != null) {
 
-            DealConfirmation existing = findByIdempotencyKey(clerkUserId, key);
+            DealConfirmation existing = findByIdempotencyKey(userId, key);
 
             if (existing != null) {
 
@@ -79,7 +81,7 @@ public class DealConfirmationService {
 
         try {
 
-            created = writer.create(clerkUserId, request, key);
+            created = writer.create(userId, request, key);
 
         } catch (DataIntegrityViolationException duplicate) {
 
@@ -92,7 +94,7 @@ public class DealConfirmationService {
              */
             DealConfirmation existing = key == null
                     ? null
-                    : findByIdempotencyKey(clerkUserId, key);
+                    : findByIdempotencyKey(userId, key);
 
             if (existing == null) {
                 throw duplicate;
@@ -178,10 +180,10 @@ public class DealConfirmationService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
-    private DealConfirmation findByIdempotencyKey(String clerkUserId, String key) {
+    private DealConfirmation findByIdempotencyKey(UUID userId, String key) {
 
         return dealConfirmationRepository
-                .findByCustomer_ClerkUserIdAndIdempotencyKey(clerkUserId, key)
+                .findByCustomer_IdAndIdempotencyKey(userId, key)
                 .orElse(null);
     }
 }

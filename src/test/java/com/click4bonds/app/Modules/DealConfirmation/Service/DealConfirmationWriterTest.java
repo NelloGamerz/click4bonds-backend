@@ -45,7 +45,7 @@ import com.click4bonds.app.Modules.User.Service.UserService;
 class DealConfirmationWriterTest {
 
     private static final String ISIN = "INE123A01016";
-    private static final String CLERK_ID = "user_2abc";
+    private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Mock
     private DealConfirmationRepository dealConfirmationRepository;
@@ -87,7 +87,7 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.create(CLERK_ID, request(100L, 5L), null);
+                writer.create(USER_ID, request(100L, 5L), null);
 
         assertEquals("DC-20260922-000001", created.response().getDealReference());
         assertEquals(ISIN, created.response().getIsin());
@@ -120,7 +120,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000001");
         givenSaveReturnsItsArgument();
 
-        writer.create(CLERK_ID, request(100L, 5L), "key-1");
+        writer.create(USER_ID, request(100L, 5L), "key-1");
 
         Mockito.verify(dealConfirmationRepository).save(
                 Mockito.argThat(deal -> "key-1".equals(deal.getIdempotencyKey())));
@@ -137,7 +137,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000002");
         givenSaveReturnsItsArgument();
 
-        writer.create(CLERK_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(100L, 5L), null);
 
         assertEquals(0L, reserved.getRemainingQuantity());
         assertEquals(BondStatus.SOLD_OUT, reserved.getStatus());
@@ -156,7 +156,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000003");
         givenSaveReturnsItsArgument();
 
-        writer.create(CLERK_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(100L, 5L), null);
 
         assertEquals(BondStatus.ACTIVE, bond.getStatus());
 
@@ -176,7 +176,7 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.create(CLERK_ID, request(100L, 5L), null);
+                writer.create(USER_ID, request(100L, 5L), null);
 
         /*
          * An unknown price must not be recorded as a free purchase.
@@ -197,7 +197,7 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         writer.create(
-                CLERK_ID,
+                USER_ID,
                 new CreateDealConfirmationRequest("ine123a01016", 100L, 5L),
                 null);
 
@@ -214,7 +214,7 @@ class DealConfirmationWriterTest {
         assertThrows(
                 BadRequestException.class,
                 () -> writer.create(
-                        CLERK_ID,
+                        USER_ID,
                         request(Long.MAX_VALUE, 2L),
                         null));
 
@@ -236,7 +236,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ResourceNotFoundException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -254,7 +254,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -272,7 +272,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -288,7 +288,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -310,7 +310,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         // The row was never even asked to give up units.
         Mockito.verify(bondRepository, Mockito.never())
@@ -337,7 +337,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
@@ -359,7 +359,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000006");
         givenSaveReturnsItsArgument();
 
-        writer.create(CLERK_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(100L, 5L), null);
 
         InOrder order = Mockito.inOrder(bondRepository, dealConfirmationRepository);
 
@@ -382,7 +382,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         /*
          * The exception escapes the @Transactional boundary, which is what makes
@@ -403,12 +403,12 @@ class DealConfirmationWriterTest {
         User suspended = customer();
         suspended.setStatus(UserStatus.SUSPENDED);
 
-        Mockito.when(userService.getUserByClerkId(CLERK_ID))
+        Mockito.when(userService.getUser(USER_ID))
                 .thenReturn(suspended);
 
         assertThrows(
                 ForbiddenException.class,
-                () -> writer.create(CLERK_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(100L, 5L), null));
 
         Mockito.verifyNoInteractions(bondRepository);
     }
@@ -436,8 +436,7 @@ class DealConfirmationWriterTest {
     private User customer() {
 
         return User.builder()
-                .id(UUID.randomUUID())
-                .clerkUserId(CLERK_ID)
+                .id(USER_ID)
                 .email("customer@example.com")
                 .firstName("Test")
                 .lastName("Customer")
@@ -446,7 +445,7 @@ class DealConfirmationWriterTest {
     }
 
     private void givenActiveCustomer() {
-        Mockito.when(userService.getUserByClerkId(CLERK_ID))
+        Mockito.when(userService.getUser(USER_ID))
                 .thenReturn(customer());
     }
 

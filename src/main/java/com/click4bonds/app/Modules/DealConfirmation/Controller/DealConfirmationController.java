@@ -1,5 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Controller;
 
+import java.util.UUID;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -59,7 +61,7 @@ public class DealConfirmationController {
             @AuthenticationPrincipal Jwt jwt) {
 
         DealConfirmationService.Result result = dealConfirmationService.createDeal(
-                jwt.getSubject(),
+                UUID.fromString(jwt.getSubject()),
                 request,
                 idempotencyKey);
 

@@ -16,6 +16,10 @@ public interface DealConfirmationRepository
     /**
      * Used to replay a retried request instead of buying the bond twice.
      *
+     * <p>{@code userId} is {@link com.click4bonds.app.Modules.User.Model.User#getId()},
+     * the user's canonical id and the only identifier this application uses —
+     * there is no second, external-provider key to resolve through.</p>
+     *
      * <p>Scoped to the customer on purpose: two customers may legitimately pick
      * the same key, and one customer must never be handed another's deal.</p>
      *
@@ -24,7 +28,7 @@ public interface DealConfirmationRepository
      * load.</p>
      */
     @EntityGraph(attributePaths = { "bond", "customer" })
-    Optional<DealConfirmation> findByCustomer_ClerkUserIdAndIdempotencyKey(
-            String clerkUserId,
+    Optional<DealConfirmation> findByCustomer_IdAndIdempotencyKey(
+            UUID userId,
             String idempotencyKey);
 }

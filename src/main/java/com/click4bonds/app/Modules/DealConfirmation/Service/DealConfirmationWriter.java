@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,7 +61,7 @@ public class DealConfirmationWriter {
     /**
      * Validates the request, reserves the units and persists the deal.
      *
-     * @param clerkUserId  authenticated customer, from the JWT
+     * @param userId  authenticated customer, from the JWT
      * @param request      requested bond and quantities
      * @param idempotencyKey optional client key, stored on the deal so a retry
      *                        can be recognised; may be null
@@ -73,7 +74,7 @@ public class DealConfirmationWriter {
      */
     @Transactional
     public CreatedDeal create(
-            String clerkUserId,
+            UUID userId,
             CreateDealConfirmationRequest request,
             String idempotencyKey) {
 
@@ -95,7 +96,7 @@ public class DealConfirmationWriter {
          * before any inventory is touched. This entity is referenced, never
          * modified, so it does not matter that the reservation below detaches it.
          */
-        User customer = getPurchasableCustomer(clerkUserId);
+        User customer = getPurchasableCustomer(userId);
 
         Bond bond = bondRepository.findByIsin(isin)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -168,9 +169,9 @@ public class DealConfirmationWriter {
     // VALIDATION
     // =========================================================
 
-    private User getPurchasableCustomer(String clerkUserId) {
+    private User getPurchasableCustomer(UUID userId) {
 
-        User customer = userService.getUserByClerkId(clerkUserId);
+        User customer = userService.getUser(userId);
 
         if (customer.getStatus() != UserStatus.ACTIVE) {
             throw new ForbiddenException(
