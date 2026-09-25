@@ -1,13 +1,13 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
+import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Service.UserService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,18 +32,21 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Issuer operations for a bond.
- *
+ * <p>
  * A bond owns at most one issuer, while the same issuer row can be
  * shared by several bonds.
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class IssuerService {
 
     private final IssuerRepository issuerRepository;
     private final BondRepository bondRepository;
     private final IssuerMapper issuerMapper;
     private final IssuerBulkWriter issuerBulkWriter;
+    private final UserService userService;
+    private final AnalyticsService analyticsService;
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -116,16 +119,61 @@ public class IssuerService {
     /**
      * The issuer attached to the bond with the given ISIN.
      */
+//    @Transactional(readOnly = true)
+//    public IssuerResponse getIssuerByIsin(String isin) {
+//
+//        Bond bond = getBondByIsin(isin);
+//
+//        Issuer issuer = bond.getIssuer();
+//
+//        if (issuer == null) {
+//            throw new ResourceNotFoundException(
+//                    "Issuer not found for bond with ISIN: " + bond.getIsin());
+//        }
+//
+//        return issuerMapper.toResponse(issuer);
+//    }
     @Transactional(readOnly = true)
-    public IssuerResponse getIssuerByIsin(String isin) {
+    public IssuerResponse getIssuerByIsin(String isin, UUID userId) {
+
+        log.debug(
+                "Fetching issuer for bond with ISIN: {}",
+                isin);
 
         Bond bond = getBondByIsin(isin);
 
         Issuer issuer = bond.getIssuer();
 
         if (issuer == null) {
+
+            log.warn(
+                    "Issuer not found for bond with ISIN: {} and bondId: {}",
+                    bond.getIsin(),
+                    bond.getId());
+
             throw new ResourceNotFoundException(
                     "Issuer not found for bond with ISIN: " + bond.getIsin());
+        }
+
+        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+
+            log.debug(
+                    "Tracking issuer view analytics for userId: {} and bondId: {}",
+                    userId,
+                    bond.getId());
+
+            analyticsService.track(
+                    AnalyticsEventType.BOND_VIEW,
+                    userId,
+                    null,
+                    bond.getId(),
+                    "WEB",
+                    "ISSUER_DETAILS",
+                    Map.of(
+                            "source", "bond-details",
+                            "action", "view-issuer"
+                    )
+            );
         }
 
         return issuerMapper.toResponse(issuer);
@@ -199,7 +247,7 @@ public class IssuerService {
 
     /**
      * The (name, id) of the last row of a page.
-     *
+     * <p>
      * {@code name} is stored lower-cased because the query orders
      * and compares on {@code LOWER(name)}.
      */
@@ -217,7 +265,7 @@ public class IssuerService {
 
     /**
      * Builds the LIKE pattern for the name search.
-     *
+     * <p>
      * An empty search becomes "%", matching every name. %, _ and
      * the escape character itself are escaped so that a search for
      * e.g. "50%" looks for a literal percent sign.
@@ -288,7 +336,7 @@ public class IssuerService {
 
     /**
      * Imports issuers for many bonds in one call.
-     *
+     * <p>
      * Rows are independent: each one is committed on its own, and a
      * failing row is reported in {@code errors} instead of failing
      * the whole request. Rows are keyed by ISIN, so the caller does
@@ -462,7 +510,7 @@ public class IssuerService {
 
     /**
      * Looks a bond up by its ISIN.
-     *
+     * <p>
      * ISINs are stored upper-cased, so the input is normalized
      * first — that way an ISIN typed in lower case in a path
      * variable still resolves.

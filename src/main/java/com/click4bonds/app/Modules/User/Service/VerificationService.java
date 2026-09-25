@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.User.Service;
 
+import com.click4bonds.app.Modules.Sms.service.SmsService;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
@@ -62,6 +63,7 @@ public class VerificationService {
     private final UserService userService;
     private final UserVerificationService userVerificationService;
     private final OtpProperties otpProperties;
+    private final SmsService smsService;
 
     /**
      * Issues an email verification code and delivers it.
@@ -73,16 +75,16 @@ public class VerificationService {
      * <p>Deliberately not transactional: it performs no database write, and the
      * transaction would otherwise stay open across the provider's HTTP call.</p>
      *
-     * @param clerkUserId authenticated user, as identified by the token subject
+     * @param userId authenticated user identifier; the token subject, which is User.id
      * @param email       address to verify
      * @return a message that says nothing about the code itself
      */
-    public VerificationResponse sendEmailOtp(String clerkUserId, String email) {
+    public VerificationResponse sendEmailOtp(String userId, String email) {
 
-        User user = userService.getUserByClerkId(clerkUserId);
+        User user = userService.getUserById(userId);
         String normalizedEmail = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
 
-        assertEmailBelongsTo(user, normalizedEmail);
+        assertEmailCanBeVerified(user, normalizedEmail);
 
         UserVerification verification = userVerificationService.getVerification(user);
 
@@ -107,22 +109,29 @@ public class VerificationService {
      * accepted the code, so a wrong, expired or exhausted code leaves both the
      * verification record and the onboarding step exactly as they were.</p>
      *
-     * @param clerkUserId authenticated user, as identified by the token subject
+     * @param userId authenticated user identifier; the token subject, which is User.id
      * @param email       address being verified
      * @param otp         submitted code
      * @return a message that never echoes the code
      */
     @Transactional
-    public VerificationResponse verifyEmailOtp(String clerkUserId, String email, String otp) {
+    public VerificationResponse verifyEmailOtp(String userId, String email, String otp) {
 
-        User user = userService.getUserByClerkId(clerkUserId);
+        User user = userService.getUserById(userId);
         String normalizedEmail = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
 
-        assertEmailBelongsTo(user, normalizedEmail);
+        assertEmailCanBeVerified(user, normalizedEmail);
 
         // Throws when the code is wrong, unknown, expired, already redeemed or
         // out of attempts — so nothing below runs on anything but a real code.
         otpService.verifyOtp(OtpType.EMAIL, normalizedEmail, otp);
+
+        // Bound here, after proof, and never before — the same rule the phone
+        // step follows. An account that signed up by phone has no address yet,
+        // so this is where it acquires one.
+        if (user.getEmail() == null) {
+            userService.updateEmail(user, normalizedEmail);
+        }
 
         userVerificationService.updateEmailStatus(user, VerificationStatus.VERIFIED);
         advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PHONE_VERIFICATION);
@@ -139,13 +148,13 @@ public class VerificationService {
      * by the OTP module and nothing is sent. It is still a secret, so the
      * response says no more than that the code was generated.</p>
      *
-     * @param clerkUserId authenticated user, as identified by the token subject
+     * @param userId authenticated user identifier; the token subject, which is User.id
      * @param phone       number to verify
      * @return a message that never echoes the code
      */
-    public VerificationResponse sendPhoneOtp(String clerkUserId, String phone) {
+    public VerificationResponse sendPhoneOtp(String userId, String phone) {
 
-        User user = userService.getUserByClerkId(clerkUserId);
+        User user = userService.getUserById(userId);
         String normalizedPhone = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
         assertPhoneCanBeVerified(user, normalizedPhone);
@@ -157,7 +166,9 @@ public class VerificationService {
         }
 
         // Issuing a code proves nothing: the statuses are left untouched.
-        otpService.generateOtp(OtpType.SMS, normalizedPhone);
+//        otpService.generateOtp(OtpType.SMS, normalizedPhone);
+        String otp = otpService.generateOtp(OtpType.SMS, normalizedPhone);
+        smsService.sendOtp(normalizedPhone, otp);
 
         return new VerificationResponse(PHONE_OTP_GENERATED);
     }
@@ -169,15 +180,15 @@ public class VerificationService {
      * accepted: a number the account did not already own is bound to it here,
      * after proof, and never before.</p>
      *
-     * @param clerkUserId authenticated user, as identified by the token subject
+     * @param userId authenticated user identifier; the token subject, which is User.id
      * @param phone       number being verified
      * @param otp         submitted code
      * @return a message that never echoes the code
      */
     @Transactional
-    public VerificationResponse verifyPhoneOtp(String clerkUserId, String phone, String otp) {
+    public VerificationResponse verifyPhoneOtp(String userId, String phone, String otp) {
 
-        User user = userService.getUserByClerkId(clerkUserId);
+        User user = userService.getUserById(userId);
         String normalizedPhone = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
         assertPhoneCanBeVerified(user, normalizedPhone);
@@ -199,18 +210,57 @@ public class VerificationService {
     }
 
     /**
-     * Rejects an address the authenticated user does not own.
+     * Records that ownership of an account's number has been proven, and moves
+     * onboarding on if that was the step it was waiting on.
      *
-     * <p>Email is unique per account and there is no email-change flow, so the
-     * only address a user may verify is the one already on their record.
-     * Comparing case-insensitively matches the OTP module's own treatment of
-     * addresses.</p>
+     * <p>Exists so the sign-in flow can reuse this rule rather than restate it.
+     * Signing in by phone proves the number every bit as much as the dedicated
+     * verification endpoint does — it is the same code, checked the same way —
+     * so an account that signs in has a verified phone, and saying otherwise
+     * would leave the flag contradicting what just happened.</p>
+     *
+     * <p>The caller is responsible for having verified the code already.</p>
+     *
+     * @param user account whose number was just proven
      */
-    private void assertEmailBelongsTo(User user, String normalizedEmail) {
+    @Transactional
+    public void markPhoneVerified(User user) {
+
+        userVerificationService.updatePhoneStatus(user, VerificationStatus.VERIFIED);
+        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
+
+        log.info("Phone verified for user {}", user.getId());
+    }
+
+    /**
+     * Rejects an address the authenticated user may not verify.
+     *
+     * <p>An address already on the account has to match — there is no
+     * email-change flow, so the only one a user may verify is the one already on
+     * their record. Comparing case-insensitively matches the OTP module's own
+     * treatment of addresses.</p>
+     *
+     * <p>An account with no address yet may claim one, mirroring the phone
+     * rule: signing in by phone creates an account before it has an email, so
+     * the email step has to be able to supply the first one. It may only claim
+     * an address no other account holds, so nobody can verify their way into
+     * somebody else's.</p>
+     */
+    private void assertEmailCanBeVerified(User user, String normalizedEmail) {
 
         String registered = user.getEmail();
 
-        if (registered == null || !normalizedEmail.equalsIgnoreCase(registered.trim())) {
+        if (registered == null) {
+
+            if (userService.isEmailClaimed(normalizedEmail)) {
+                throw new ConflictException(
+                        "This email address is already registered to another account");
+            }
+
+            return;
+        }
+
+        if (!normalizedEmail.equalsIgnoreCase(registered.trim())) {
             throw new ForbiddenException(
                     "This email address is not associated with your account");
         }
@@ -249,7 +299,15 @@ public class VerificationService {
      *
      * <p>Only that exact step advances. A user who is already further along —
      * or who verified channels out of order — keeps the progress they have;
-     * onboarding never moves backwards, and a step is never skipped.</p>
+     * onboarding never moves backwards.</p>
+     *
+     * <p>The step landed on is the next one the account has not already
+     * satisfied, which is what makes signing in by phone work. Such an account
+     * arrives with its phone already proven and begins at the email step; once
+     * the email is verified the next step would nominally be the phone, which
+     * is done. Stopping there would strand the account on a step whose only
+     * endpoint answers "already verified" and never moves on, so satisfied
+     * steps are walked past instead.</p>
      */
     private void advanceOnboarding(User user, OnboardingStep completed, OnboardingStep next) {
 
@@ -257,6 +315,48 @@ public class VerificationService {
             return;
         }
 
-        userService.updateOnboardingStep(user, next);
+        userService.updateOnboardingStep(user, nextOutstanding(user, next));
+    }
+
+    /**
+     * Walks forward from {@code candidate} to the first step this account has
+     * not yet satisfied.
+     */
+    private OnboardingStep nextOutstanding(User user, OnboardingStep candidate) {
+
+        OnboardingStep step = candidate;
+
+        while (step != OnboardingStep.COMPLETED && isSatisfied(user, step)) {
+            step = successor(step);
+        }
+
+        return step;
+    }
+
+    /**
+     * @return {@code true} when the account has already completed {@code step}
+     */
+    private boolean isSatisfied(User user, OnboardingStep step) {
+
+        UserVerification verification = userVerificationService.getVerification(user);
+
+        return switch (step) {
+            case EMAIL_VERIFICATION -> verification.getEmailStatus() == VerificationStatus.VERIFIED;
+            case PHONE_VERIFICATION -> verification.getPhoneStatus() == VerificationStatus.VERIFIED;
+            case PAN_VERIFICATION -> verification.getPanStatus() == VerificationStatus.VERIFIED;
+            case BANK_ACCOUNT_VERIFICATION ->
+                    verification.getBankAccountStatus() == VerificationStatus.VERIFIED;
+            case COMPLETED -> true;
+        };
+    }
+
+    private OnboardingStep successor(OnboardingStep step) {
+
+        return switch (step) {
+            case EMAIL_VERIFICATION -> OnboardingStep.PHONE_VERIFICATION;
+            case PHONE_VERIFICATION -> OnboardingStep.PAN_VERIFICATION;
+            case PAN_VERIFICATION -> OnboardingStep.BANK_ACCOUNT_VERIFICATION;
+            case BANK_ACCOUNT_VERIFICATION, COMPLETED -> OnboardingStep.COMPLETED;
+        };
     }
 }

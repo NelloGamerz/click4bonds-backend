@@ -128,6 +128,32 @@ public class RedisServiceImpl implements RedisService {
         }
     }
 
+    @Override
+    public long increment(String key, Duration ttl) {
+
+        try {
+            Long count = redisTemplate.opsForValue().increment(key);
+
+            if (count == null) {
+                throw new RedisOperationException("Redis returned no counter value");
+            }
+
+            // Only the call that created the counter arms the window. Doing it
+            // on every increment would turn a fixed window into a sliding one
+            // that never expires while the caller stays active.
+            if (count == 1L && hasExpiry(ttl)) {
+                redisTemplate.expire(key, ttl);
+            }
+
+            return count;
+
+        } catch (RedisOperationException ex) {
+            throw ex;
+        } catch (RuntimeException ex) {
+            throw new RedisOperationException("Could not increment a Redis counter", ex);
+        }
+    }
+
     private String write(Object value) {
 
         if (value == null) {

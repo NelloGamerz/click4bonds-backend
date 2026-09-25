@@ -135,17 +135,17 @@ public class ClickHouseService {
         statement.setString(2, event.eventType().name());
 
         if (event.userId() != null) {
-            statement.setLong(3, event.userId());
+            statement.setObject(3, event.userId());
         } else {
-            statement.setNull(3, Types.BIGINT);
+            statement.setNull(3, Types.OTHER);
         }
 
         statement.setString(4, blankIfNull(event.sessionId()));
 
         if (event.bondId() != null) {
-            statement.setLong(5, event.bondId());
+            statement.setObject(5, event.bondId());
         } else {
-            statement.setNull(5, Types.BIGINT);
+            statement.setNull(5, Types.OTHER);
         }
 
         statement.setTimestamp(6, Timestamp.from(event.eventTime()));

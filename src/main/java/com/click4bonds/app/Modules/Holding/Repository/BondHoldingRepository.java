@@ -15,11 +15,9 @@ import com.click4bonds.app.Modules.Holding.Model.BondHolding;
 public interface BondHoldingRepository
                 extends JpaRepository<BondHolding, UUID> {
 
-        Page<BondHolding> findByCustomerId(
+        Page<BondHolding> findByCustomer_Id(
                         UUID customerId,
                         Pageable pageable);
-
-        Page<BondHolding> findByCustomer_ClerkUserId(String customerId, Pageable pageable);
 
         Optional<BondHolding> findByCustomerIdAndBondId(
                         UUID customerId,

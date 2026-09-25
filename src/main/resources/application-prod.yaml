@@ -1,0 +1,165 @@
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: 13009
+      password: ${REDIS_PASSWORD}
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+    hikari:
+      pool-name: PostgreSQL-Hikari
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+      connection-timeout: 5000
+      validation-timeout: 3000
+
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+      leak-detection-threshold: 60000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  kafka:
+    # A deployment that does not set KAFKA_BOOTSTRAP_SERVERS keeps the old
+    # single-node behaviour rather than failing to start.
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+      properties:
+        spring.json.add.type.headers: false
+
+    consumer:
+      group-id: ${KAFKA_ANALYTICS_GROUP_ID:click4bonds-analytics}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        spring.json.trusted.packages: "com.click4bonds.app.Modules.Analytics.Model"
+        spring.json.value.default.type: "com.click4bonds.app.Modules.Analytics.Model.AnalyticsEvent"
+        spring.json.use.type.headers: false
+
+# Credentials come from the environment. The defaults are the stock local
+# ClickHouse ones so that a deployment that never uses analytics still starts.
+clickhouse:
+  url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/${CLICKHOUSE_DATABASE:click4bonds_analytics}
+  username: ${CLICKHOUSE_USERNAME}
+  password: ${CLICKHOUSE_PASSWORD}
+
+#  clickhouse:
+#    datasource:
+#      url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/${CLICKHOUSE_DATABASE:click4bonds_analytics}
+#      username: ${CLICKHOUSE_USERNAME}
+#      password: ${CLICKHOUSE_PASSWORD}
+#      driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+#
+#      maximum-pool-size: 10
+#      minimum-idle: 2
+#      connection-timeout: 30000
+#      validation-timeout: 5000
+#      idle-timeout: 600000
+#      max-lifetime: 1800000
+#      leak-detection-threshold: 60000
+
+# Authentication's own settings are shared from application.yaml; production
+# only has to supply the signing key, which comes from the environment and has
+# no default by design.
+auth:
+  jwt:
+    secret: ${AUTH_JWT_SECRET}
+
+frontend:
+  url: ${FRONTEND_URL}
+  www-url: ${FRONTEND_WWW_URL}
+
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN
+    org.hibernate: WARN
+    org.apache.tomcat: WARN
+    com.zaxxer.hikari: WARN
+    com.click4bonds: INFO
+
+rcs:
+  api:
+    base-url: https://biz.sms4power.com/api/RCSApi
+    api-key: ${RCS_API_KEY}
+    otp-template-id: ${RCS_OTP_TEMPLATE_ID}
+
+resend:
+  api-key: ${RESEND_API_KEY}
+  from: ${RESEND_FROM_EMAIL}
+
+otp:
+  length: ${OTP_LENGTH}
+  expiry-minutes: ${OTP_EXPIRY_MINUTES}
+  max-attempts: ${OTP_MAX_ATTEMPTS}
+  resend-cooldown-seconds: ${OTP_RESEND_COOLDOWN_SECONDS}
+  hash-secret: ${OTP_HASH_SECRET}
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: [ health, info, metrics, prometheus ]
+
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true          # /health/liveness + /health/readiness
+
+  metrics:
+    tags:
+      application: click4bonds
+      env: prod
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        spring.data.repository.invocations: true
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 10s
+
+  observations:
+    key-values:
+      application: click4bonds
+
+  # only once you add the tracing deps + a trace store
+  tracing:
+    sampling:
+      probability: 0.1
+  otlp:
+    tracing:
+      endpoint: http://clickforbonds-alloy:4318/v1/traces
+
+sms:
+  gateway:
+      base-url: http://125.16.147.178/VoicenSMS/webresources/CreateSMSCampaignGet
+      ukey: ${SMS_GATEWAY_UKEY}
+      sender-id: CLKBND
+      otp-message: Dear customer your click4bond login OTP is <arg1>. Please enter it to login. Valid for 10 mins. Do not share this code. Thanks - CLICK4BOND

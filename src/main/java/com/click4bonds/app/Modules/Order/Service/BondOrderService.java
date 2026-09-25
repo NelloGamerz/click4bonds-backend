@@ -35,7 +35,7 @@ public class BondOrderService {
     // String customerId,
     // CreateOrderRequest request) throws BadRequestException {
 
-    // User customer = userRepository.findByClerkUserId(customerId)
+    // User customer = userService.getUser(customerId)
     // .orElseThrow(() -> new ResourceNotFoundException(
     // "Customer not found"));
 
@@ -92,11 +92,11 @@ public class BondOrderService {
 
     @Transactional
     public BondOrder createOrder(
-            String customerId,
+            UUID customerId,
             CreateOrderRequest request) {
 
 
-        User customer = userService.getUserByClerkId(customerId);
+        User customer = userService.getUser(customerId);
         Bond bond = bondService.findBond(request.bondIsin());
 
         BigDecimal price = bond.getPrice();
@@ -133,24 +133,24 @@ public class BondOrderService {
 
     @Transactional(readOnly = true)
     public Page<BondOrderResponse> getMyOrders(
-            String customerId,
+            UUID customerId,
             Pageable pageable) {
 
         return orderRepository
-                .findByCustomer_ClerkUserId(customerId, pageable)
+                .findByCustomer_Id(customerId, pageable)
                 .map(this::mapToResponse);
     }
 
     @Transactional(readOnly = true)
     public BondOrderResponse getOrder(
-            String customerId,
+            UUID customerId,
             UUID orderId) {
 
         BondOrder order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order not found"));
 
-        if (!order.getCustomer().getClerkUserId().equals(customerId)) {
+        if (!order.getCustomer().getId().equals(customerId)) {
             throw new ForbiddenException(
                     "You cannot access this order");
         }

@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.apache.coyote.BadRequestException;
 import org.springdoc.core.annotations.ParameterObject;
@@ -60,7 +61,10 @@ public class AdminBondController {
                         @Valid @RequestBody CreateBondRequest request,
                         @AuthenticationPrincipal Jwt jwt) throws BadRequestException {
 
-                String adminId = jwt.getSubject();
+                // The filter has already rejected any token whose subject is not
+                // a user identifier, so this cannot fail on an authenticated
+                // request.
+                UUID adminId = UUID.fromString(jwt.getSubject());
 
                 return ResponseEntity
                                 .status(HttpStatus.CREATED)
@@ -89,10 +93,12 @@ public class AdminBondController {
 
         @GetMapping("/bonds/{isin}")
         public ResponseEntity<BondResponse> getBond(
-                        @PathVariable String isin) {
+                        @PathVariable String isin,
+                        @AuthenticationPrincipal Jwt jwt) {
 
+                UUID userId = UUID.fromString(jwt.getSubject());
                 return ResponseEntity.ok(
-                                bondService.getBond(isin));
+                                bondService.getBond(isin, userId));
         }
 
         @PatchMapping("/bonds/{isin}")
@@ -194,10 +200,11 @@ public class AdminBondController {
 
         @GetMapping("/bonds/{isin}/issuer")
         public ResponseEntity<IssuerResponse> getIssuer(
-                        @PathVariable String isin) {
-
+                        @PathVariable String isin,
+                        @AuthenticationPrincipal Jwt jwt) {
+                UUID userId = jwt != null ? UUID.fromString(jwt.getSubject()) : null;
                 return ResponseEntity.ok(
-                                issuerService.getIssuerByIsin(isin));
+                                issuerService.getIssuerByIsin(isin, userId));
         }
 
         /**

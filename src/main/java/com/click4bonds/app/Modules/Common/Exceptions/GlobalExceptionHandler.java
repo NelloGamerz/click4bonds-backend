@@ -7,11 +7,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Auth.Exception.InvalidSessionException;
+import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
 import com.click4bonds.app.Modules.Common.Dto.ApiError;
 import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
 import com.click4bonds.app.Modules.OTP.Exception.InvalidOtpException;
@@ -79,6 +82,34 @@ public class GlobalExceptionHandler {
                                                                 ex.getMessage()));
         }
 
+        /**
+         * Handles a body that could not be read at all.
+         *
+         * <p>Reached before bean validation runs, so it covers what the
+         * annotations cannot: JSON that is not well-formed, a body of the wrong
+         * shape, and a value outside an enum — an unknown {@code ageRange}, for
+         * instance, is rejected by the deserialiser rather than by a constraint.
+         * Without this, all of those would fall through to the catch-all below
+         * and be reported as a server fault when the fault is the caller's.</p>
+         *
+         * <p>The parser's own message is not passed on. It describes the
+         * internal shape of the target type, which is not something the caller
+         * asked about and not something to hand out.</p>
+         */
+        @ExceptionHandler(HttpMessageNotReadableException.class)
+        public ResponseEntity<ApiError> handleUnreadableBody(
+                        HttpMessageNotReadableException ex) {
+
+                log.warn("Request body could not be read: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .badRequest()
+                                .body(
+                                                new ApiError(
+                                                                "MALFORMED_BODY",
+                                                                "The request body could not be read. Check that every field is present and holds an allowed value."));
+        }
+
         @ExceptionHandler(MethodArgumentNotValidException.class)
         public ResponseEntity<ApiError> handleValidation(
                         MethodArgumentNotValidException ex) {
@@ -102,10 +133,18 @@ public class GlobalExceptionHandler {
         }
 
         /**
-         * Handles database constraint violations.
+         * Handles database constraint violations that no service turned into a
+         * clearer answer of its own.
          *
-         * This is particularly important for the unique email
-         * constraint on contact inquiries.
+         * <p>Worded without naming a table or a column, because it is a
+         * fallback: the caller is told their details collide with something
+         * that already exists, and nothing about the schema. A service that
+         * knows which constraint it hit — the contact inquiry flow does —
+         * catches the violation and says something more useful instead.</p>
+         *
+         * <p>Expected to be reached most often by two sign-ups racing for the
+         * same phone number, where the unique index is the thing that actually
+         * decides it.</p>
          */
         @ExceptionHandler(DataIntegrityViolationException.class)
         public ResponseEntity<ApiError> handleDataIntegrityViolation(
@@ -120,7 +159,7 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 new ApiError(
                                                                 "CONFLICT",
-                                                                "A contact request has already been submitted for this email address."));
+                                                                "These details conflict with a record that already exists."));
         }
 
         /**
@@ -199,6 +238,46 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 new ApiError(
                                                                 "OTP_MAX_ATTEMPTS_EXCEEDED",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles a session that could not be resolved.
+         *
+         * <p>Answers 401 rather than 403: the caller's credential is not good
+         * enough, and the remedy is to sign in again — which is exactly what a
+         * client should infer from this status. The same response covers an
+         * absent cookie, an expired session and a revoked one, so it cannot be
+         * used to probe whether a given session identifier exists.</p>
+         */
+        @ExceptionHandler(InvalidSessionException.class)
+        public ResponseEntity<ApiError> handleInvalidSession(
+                        InvalidSessionException ex) {
+
+                log.debug("Session could not be resolved");
+
+                return ResponseEntity
+                                .status(HttpStatus.UNAUTHORIZED)
+                                .body(
+                                                new ApiError(
+                                                                "INVALID_SESSION",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles an OTP request beyond the client address's allowance.
+         */
+        @ExceptionHandler(OtpRateLimitedException.class)
+        public ResponseEntity<ApiError> handleOtpRateLimited(
+                        OtpRateLimitedException ex) {
+
+                log.warn("OTP request rejected: client rate limit reached");
+
+                return ResponseEntity
+                                .status(HttpStatus.TOO_MANY_REQUESTS)
+                                .body(
+                                                new ApiError(
+                                                                "OTP_RATE_LIMITED",
                                                                 ex.getMessage()));
         }
 

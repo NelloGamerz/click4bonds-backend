@@ -1,14 +1,15 @@
 package com.click4bonds.app.Modules.User.Service;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import com.click4bonds.app.Dto.ClerkWebhookRequest.ClerkUserData;
+import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
-import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
@@ -22,81 +23,104 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class UserService {
 
+    /**
+     * The answer given to a caller whose number has no account behind it.
+     *
+     * <p>Shared by both sign-in endpoints so the same situation is worded the
+     * same way whichever one runs into it.</p>
+     */
+    public static final String SIGNUP_REQUIRED = "User does not exist, please sign up";
+
     private final UserRepository userRepository;
     private final UserVerificationService userVerificationService;
 
     /**
-     * Creates the local user record for a Clerk signup.
+     * Resolves the account that signs in with a phone number.
      *
-     * Also creates the initial verification record for the user.
-     * 
-     * @param data user payload delivered by the Clerk webhook
-     * @return the created user, or an empty optional when the user already
-     *         existed (Clerk retries webhooks, and callers use this to avoid
-     *         repeating side effects such as the welcome email)
+     * <p>Accounts are no longer conjured from a number on the strength of a
+     * code: the number has to belong to an account that was signed up first, so
+     * a lookup that finds nothing is an answer rather than something to repair.
+     * The number is expected in canonical form — the same shape the OTP module
+     * normalises submissions to — so the lookup and the stored value agree.</p>
+     *
+     * @param mobileNumber canonical phone number
+     * @return the account that signs in with it
+     * @throws ResourceNotFoundException when no account does
      */
-    public Optional<User> createUser(ClerkUserData data) {
+    public User getUserByMobileNumber(String mobileNumber) {
 
-        if (userExists(data.id())) {
-            log.info("User already exists {}", data.id());
-            return Optional.empty();
+        return userRepository.findByMobileNumber(mobileNumber).orElseThrow(() -> new ResourceNotFoundException(SIGNUP_REQUIRED));
+    }
+
+    /**
+     * @param mobileNumber canonical phone number
+     * @return {@code true} when an account already signs in with this number
+     */
+    public boolean isMobileNumberClaimed(String mobileNumber) {
+        return userRepository.existsByMobileNumber(mobileNumber);
+    }
+
+    /**
+     * Persists a newly described account.
+     *
+     * <p>Used by sign-up, which is the only flow that collects a profile before
+     * ownership of the number has been proven. The caller supplies the entity,
+     * which keeps this module free of the sign-up request type; what this
+     * method adds is everything every new account needs regardless of where it
+     * came from — the row itself, and the verification record that tracks each
+     * channel separately.</p>
+     *
+     * @param user account to persist, not yet saved
+     * @return the saved account
+     */
+    public User createUser(User user) {
+
+        User saved = userRepository.save(user);
+        userVerificationService.createVerification(saved);
+
+        // The identifier is logged; the number is personal data and is not.
+        log.info("Created user {} from a sign-up", saved.getId());
+
+        return saved;
+    }
+
+    /**
+     * Resolves the account a token subject names.
+     *
+     * <p>The subject of an access token is {@code User.id}, and the
+     * authentication filter has already rejected any token whose subject is not
+     * a well-formed identifier — so a malformed value here means the caller was
+     * handed something other than an authenticated subject.</p>
+     *
+     * @param userId subject of the authenticated token
+     * @return the account it names
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User getUserById(String userId) {
+
+        if (userId == null || userId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
         }
 
-        String email = data.email_addresses()
-                .stream()
-                .findFirst()
-                .orElse(data.email_addresses().getFirst())
-                .email_address();
+        try {
+            return getUser(UUID.fromString(userId));
 
-        User user = User.builder()
-                .clerkUserId(data.id())
-                .email(email)
-                .firstName(data.first_name())
-                .lastName(data.last_name())
-                .profileImage(data.image_url())
-                // .onboardingCompleted(false)
-                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
-                .status(UserStatus.ACTIVE)
-                .build();
-
-        User savedUser = userRepository.save(user);
-        userVerificationService.createVerification(savedUser);
-
-        log.info("Created user {}", data.id());
-
-        return Optional.of(savedUser);
+        } catch (IllegalArgumentException ex) {
+            // Reported as unauthenticated rather than as a bad request: a
+            // subject that is not an identifier means the caller's token is not
+            // one this application issued.
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
+        }
     }
 
-    public void updateUser(ClerkUserData data) {
+    /**
+     * @param userId account identifier
+     * @return the account it names
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User getUser(UUID userId) {
 
-        User user = getUser(data.id());
-
-        String email = data.email_addresses()
-                .stream()
-                .findFirst()
-                .orElse(data.email_addresses().getFirst())
-                .email_address();
-
-        user.setEmail(email);
-        user.setMobileNumber(null);
-        user.setFirstName(data.first_name());
-        user.setLastName(data.last_name());
-        user.setProfileImage(data.image_url());
-
-        log.info("Updated user {}", data.id());
-    }
-
-    public void softDeleteUser(String clerkUserId) {
-
-        User user = getUser(clerkUserId);
-
-        markDeleted(user);
-
-        log.info("Soft deleted user {}", clerkUserId);
-    }
-
-    public User getUserByClerkId(String clerkUserId) {
-        return getUser(clerkUserId);
+        return userRepository.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     /**
@@ -112,10 +136,7 @@ public class UserService {
 
         user.setOnboardingStep(onboardingStep);
 
-        log.info(
-                "Updated onboarding step for user {} to {}",
-                user.getId(),
-                onboardingStep);
+        log.info("Updated onboarding step for user {} to {}", user.getId(), onboardingStep);
     }
 
     /**
@@ -137,24 +158,96 @@ public class UserService {
     }
 
     /**
-     * @return {@code true} when a user already owns this mobile number
+     * Records the address whose ownership the user has proven.
+     *
+     * <p>Assigned during the email verification step, which may be the first
+     * time the account has an address at all.</p>
+     *
+     * @param user  user the address belongs to
+     * @param email canonical address
      */
-    public boolean isMobileNumberClaimed(String mobileNumber) {
-        return userRepository.existsByMobileNumber(mobileNumber);
+    public void updateEmail(User user, String email) {
+
+        user.setEmail(email);
+
+        log.info("Updated email for user {}", user.getId());
     }
 
-    protected User getUser(String clerkUserId) {
-        return userRepository.findByClerkUserId(clerkUserId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "User not found"));
+    /**
+     * @return {@code true} when another account already owns this address
+     */
+    public boolean isEmailClaimed(String email) {
+        return userRepository.existsByEmail(email);
     }
 
-    protected void markDeleted(User user) {
+    /**
+     * Checks whether the user with the given identifier has the requested role.
+     *
+     * @param userId user identifier
+     * @param role   role to check
+     * @return {@code true} when the user exists and has the requested role
+     */
+//    public boolean hasRole(UUID userId, UserRole role) {
+//
+//        if (userId == null || role == null) {
+//            return false;
+//        }
+//
+//        return userRepository.findRoleByUserId(userId).map(userRole -> userRole == role).orElse(false);
+//    }
+//    public boolean hasRole(UUID userId, UserRole role) {
+//
+//        if (userId == null || role == null) {
+//            log.warn(
+//                    "hasRole called with null value: userId={}, role={}",
+//                    userId,
+//                    role
+//            );
+//            return false;
+//        }
+//
+//        Optional<UserRole> result = userRepository.findRoleByUserId(userId);
+//
+//        log.info(
+//                "Role lookup: userId={}, requestedRole={}, databaseRole={}",
+//                userId,
+//                role,
+//                result.orElse(null)
+//        );
+//
+//        boolean matches = result
+//                .map(userRole -> userRole == role)
+//                .orElse(false);
+//
+//        log.info(
+//                "Role result: userId={}, requestedRole={}, databaseRole={}, matches={}",
+//                userId,
+//                role,
+//                result.orElse(null),
+//                matches
+//        );
+//
+//        return matches;
+//    }
+    public boolean hasRole(UUID userId, UserRole role) {
 
-        user.setStatus(UserStatus.DELETED);
+        if (userId == null || role == null) {
+            log.warn("Role check skipped: userId={}, requestedRole={}", userId, role);
+            return false;
+        }
+
+        log.info("Looking up user role: userId={}, requestedRole={}", userId, role);
+
+        Optional<UserRole> roleResult = userRepository.findRoleByUserId(userId);
+
+        log.info("Role lookup result: userId={}, requestedRole={}, databaseRole={}, present={}", userId, role, roleResult.orElse(null), roleResult.isPresent());
+
+        boolean matches = roleResult.map(userRole -> userRole == role).orElse(false);
+
+        log.info("Role check result: userId={}, requestedRole={}, databaseRole={}, matches={}", userId, role, roleResult.orElse(null), matches);
+
+        return matches;
     }
 
-    protected boolean userExists(String clerkUserId) {
-        return userRepository.existsByClerkUserId(clerkUserId);
-    }
+
 }

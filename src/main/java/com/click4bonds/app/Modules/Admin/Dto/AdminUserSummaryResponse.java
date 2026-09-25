@@ -20,7 +20,6 @@ import lombok.Setter;
 public class AdminUserSummaryResponse {
 
     private UUID id;
-    private String clerkUserId;
     private String firstName;
     private String lastName;
     private String email;

@@ -144,15 +144,16 @@ class ClickHouseServiceTest {
     @Test
     void shouldBindAPresentUserId() throws SQLException {
 
-        clickHouseService.insertBatch(List.of(eventWithIds(42L, 99L)));
+        UUID userID = UUID.randomUUID();
+        clickHouseService.insertBatch(List.of(eventWithIds(UUID.randomUUID(), UUID.randomUUID())));
 
-        verify(statement).setLong(3, 42L);
+        verify(statement).setObject(3, userID);
     }
 
     @Test
     void shouldBindANullUserIdAsSqlNull() throws SQLException {
 
-        clickHouseService.insertBatch(List.of(eventWithIds(null, 99L)));
+        clickHouseService.insertBatch(List.of(eventWithIds(null, UUID.randomUUID())));
 
         verify(statement).setNull(3, Types.BIGINT);
         verify(statement, never()).setLong(eq(3), anyInt());
@@ -161,7 +162,7 @@ class ClickHouseServiceTest {
     @Test
     void shouldBindAPresentBondId() throws SQLException {
 
-        clickHouseService.insertBatch(List.of(eventWithIds(42L, 99L)));
+        clickHouseService.insertBatch(List.of(eventWithIds(UUID.randomUUID(), UUID.randomUUID())));
 
         verify(statement).setLong(5, 99L);
     }
@@ -169,7 +170,7 @@ class ClickHouseServiceTest {
     @Test
     void shouldBindANullBondIdAsSqlNull() throws SQLException {
 
-        clickHouseService.insertBatch(List.of(eventWithIds(42L, null)));
+        clickHouseService.insertBatch(List.of(eventWithIds(UUID.randomUUID(), null)));
 
         verify(statement).setNull(5, Types.BIGINT);
         verify(statement, never()).setLong(eq(5), anyInt());
@@ -286,10 +287,10 @@ class ClickHouseServiceTest {
     }
 
     private static AnalyticsEvent event() {
-        return eventWithIds(1L, 7L);
+        return eventWithIds(UUID.randomUUID(), UUID.randomUUID());
     }
 
-    private static AnalyticsEvent eventWithIds(Long userId, Long bondId) {
+    private static AnalyticsEvent eventWithIds(UUID userId, UUID bondId) {
 
         return new AnalyticsEvent(
                 UUID.randomUUID(),
@@ -308,9 +309,9 @@ class ClickHouseServiceTest {
         return new AnalyticsEvent(
                 UUID.randomUUID(),
                 AnalyticsEventType.BOND_VIEW,
-                1L,
+                UUID.randomUUID(),
                 "session-1",
-                7L,
+                UUID.randomUUID(),
                 Instant.parse("2026-09-15T10:15:30Z"),
                 "WEB",
                 "BOND_DETAILS",

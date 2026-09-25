@@ -356,8 +356,10 @@ public class Bond {
     // @JoinColumn(name = "created_by")
     // private User createdBy;
 
+    // Points at the user's primary key, which is the only identifier a user
+    // has. The column used to hold an external provider's identifier instead.
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", referencedColumnName = "clerk_user_id")
+    @JoinColumn(name = "created_by", referencedColumnName = "id")
     private User createdBy;
 
     @Column(length = 255)
