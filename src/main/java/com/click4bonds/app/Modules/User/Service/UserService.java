@@ -7,9 +7,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
-import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
@@ -23,28 +23,33 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class UserService {
 
+    /**
+     * The answer given to a caller whose number has no account behind it.
+     *
+     * <p>Shared by both sign-in endpoints so the same situation is worded the
+     * same way whichever one runs into it.</p>
+     */
+    public static final String SIGNUP_REQUIRED = "User does not exist, please sign up";
+
     private final UserRepository userRepository;
     private final UserVerificationService userVerificationService;
 
     /**
-     * Finds or creates the account behind a phone number.
+     * Resolves the account that signs in with a phone number.
      *
-     * <p>Called only once ownership of the number has been proven, because that
-     * proof is what the account's identity rests on. The number is expected in
-     * canonical form — the same shape the OTP module normalises submissions to
-     * — so the lookup and the stored value agree.</p>
+     * <p>Accounts are no longer conjured from a number on the strength of a
+     * code: the number has to belong to an account that was signed up first, so
+     * a lookup that finds nothing is an answer rather than something to repair.
+     * The number is expected in canonical form — the same shape the OTP module
+     * normalises submissions to — so the lookup and the stored value agree.</p>
      *
-     * <p>A new account starts as an active customer at the beginning of
-     * onboarding, with no email address: signing in establishes the phone, and
-     * the email step is what comes next. Its phone verification is recorded as
-     * complete, because it is.</p>
-     *
-     * @param mobileNumber canonical phone number that was just verified
-     * @return the existing account, or the one created for this number
+     * @param mobileNumber canonical phone number
+     * @return the account that signs in with it
+     * @throws ResourceNotFoundException when no account does
      */
-    public User findOrCreateByMobileNumber(String mobileNumber) {
+    public User getUserByMobileNumber(String mobileNumber) {
 
-        return userRepository.findByMobileNumber(mobileNumber).orElseGet(() -> createPhoneUser(mobileNumber));
+        return userRepository.findByMobileNumber(mobileNumber).orElseThrow(() -> new ResourceNotFoundException(SIGNUP_REQUIRED));
     }
 
     /**
@@ -53,6 +58,30 @@ public class UserService {
      */
     public boolean isMobileNumberClaimed(String mobileNumber) {
         return userRepository.existsByMobileNumber(mobileNumber);
+    }
+
+    /**
+     * Persists a newly described account.
+     *
+     * <p>Used by sign-up, which is the only flow that collects a profile before
+     * ownership of the number has been proven. The caller supplies the entity,
+     * which keeps this module free of the sign-up request type; what this
+     * method adds is everything every new account needs regardless of where it
+     * came from — the row itself, and the verification record that tracks each
+     * channel separately.</p>
+     *
+     * @param user account to persist, not yet saved
+     * @return the saved account
+     */
+    public User createUser(User user) {
+
+        User saved = userRepository.save(user);
+        userVerificationService.createVerification(saved);
+
+        // The identifier is logged; the number is personal data and is not.
+        log.info("Created user {} from a sign-up", saved.getId());
+
+        return saved;
     }
 
     /**
@@ -149,26 +178,6 @@ public class UserService {
      */
     public boolean isEmailClaimed(String email) {
         return userRepository.existsByEmail(email);
-    }
-
-    /**
-     * Creates the account a phone number signs in with.
-     *
-     * <p>No welcome email is sent here, and that is not an oversight: there is
-     * no address to send it to yet. The account has one only once the email
-     * verification step completes.</p>
-     */
-    private User createPhoneUser(String mobileNumber) {
-
-        User user = User.builder().mobileNumber(mobileNumber).onboardingStep(OnboardingStep.EMAIL_VERIFICATION).role(UserRole.CUSTOMER).status(UserStatus.ACTIVE).build();
-
-        User saved = userRepository.save(user);
-        userVerificationService.createVerification(saved);
-
-        // The identifier is logged; the number is personal data and is not.
-        log.info("Created user {} from a verified phone number", saved.getId());
-
-        return saved;
     }
 
     /**

@@ -6,8 +6,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
 import com.click4bonds.app.Modules.Auth.Dto.AuthResponse;
+import com.click4bonds.app.Modules.Auth.Dto.SignupRequest;
 import com.click4bonds.app.Modules.Auth.Exception.InvalidSessionException;
 import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
+import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
 import com.click4bonds.app.Modules.OTP.Model.OtpType;
@@ -16,6 +18,9 @@ import com.click4bonds.app.Modules.OTP.Service.OtpService;
 import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
+import com.click4bonds.app.Modules.User.Dto.VerificationResponse;
+import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
@@ -27,23 +32,33 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Signing in with a phone number.
+ * Signing up and signing in with a phone number.
  *
  * <p>Ownership of the number is the whole of the identity proof: a code is
- * delivered to it by SMS, and redeeming that code is what creates or finds the
- * account and opens a session. Nothing else — no password, no external identity
- * provider — is consulted.</p>
+ * delivered to it by SMS, and redeeming that code is what opens a session.
+ * Nothing else — no password, no external identity provider — is consulted.</p>
+ *
+ * <p>An account is created by {@link #signup}, and only there. Redeeming a code
+ * cannot conjure one: a number with no account behind it is refused and told to
+ * sign up, so the profile a sign-up collected is never bypassed. That is also
+ * why the two endpoints report the same thing about an unknown number — an
+ * account either exists because somebody signed up, or it does not.</p>
  *
  * <p>The OTP mechanics are entirely the OTP module's: generation, hashing,
  * expiry, the attempt limit and the resend cooldown all live there and are
  * reused here rather than reimplemented. What this class adds is the part that
- * knows about accounts: turning a verified number into a user, refusing one
- * that may not sign in, and issuing the token and session that follow.</p>
+ * knows about accounts: creating one from a sign-up form, finding it from a
+ * proof of ownership, refusing one that may not sign in, and issuing the token
+ * and session that follow.</p>
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthService {
+
+    /** Reported after a sign-up that also had a code sent to it. */
+    public static final String SIGNUP_COMPLETE =
+            "Sign-up successful. A verification code has been sent to your phone.";
 
     private final OtpService otpService;
     private final SmsService smsService;
@@ -59,21 +74,89 @@ public class AuthService {
     }
 
     /**
+     * Opens an account from a sign-up form and sends it a code.
+     *
+     * <p>The profile is written before the code is issued rather than after it
+     * is redeemed, which is what makes the number the identity it signs in
+     * with: the account exists from this call onwards, and
+     * {@link #verifyPhoneOtp} only ever looks one up.</p>
+     *
+     * <p>The two steps are deliberately not one transaction. Issuing the code
+     * reaches an SMS provider, and holding a database transaction open across
+     * that call would keep a connection tied up for the length of somebody
+     * else's HTTP request. So the write is committed first and the code is sent
+     * afterwards: if delivery fails, the account survives and its owner can ask
+     * for another code at {@code /auth/phone/send-otp} with the profile they
+     * already filled in, rather than having to enter it again.</p>
+     *
+     * <p>The number is checked before anything is written. Two sign-ups racing
+     * for the same number are still separated by the unique index on it — the
+     * loser is refused by the database rather than by this check — but the
+     * check is what turns the ordinary case into a clear answer.</p>
+     *
+     * @param request       the sign-up form
+     * @param clientAddress address the request came from, for the OTP rate limit
+     * @return a message that says a code was sent, and nothing about the code
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ConflictException
+     *         when the number already has an account
+     * @throws OtpRateLimitedException when this address has asked too often
+     */
+    public VerificationResponse signup(SignupRequest request, String clientAddress) {
+
+        String normalized = IdentifierNormalizer.normalize(OtpType.SMS, request.mobileNumber());
+
+        if (userService.isMobileNumberClaimed(normalized)) {
+            throw new ConflictException(
+                    "This phone number is already registered. Please sign in instead.");
+        }
+
+        // Signing up establishes the number, and proving it is the next thing
+        // the account is asked to do — which is why onboarding starts at the
+        // phone step rather than at the email step that follows a plain
+        // sign-in. Nothing else here is defaulted: the profile comes from the
+        // form, and the account opens as an active customer with no email
+        // address, because no address was asked for.
+        User user = userService.createUser(User.builder()
+                .mobileNumber(normalized)
+                .firstName(request.firstName().trim())
+                .lastName(request.lastName().trim())
+                .ageRange(request.ageRange())
+                .userType(request.userType())
+                .preferredCommunicationLanguage(request.preferredCommunicationLanguage())
+                .whatsappCommunicationConsent(request.whatsappCommunicationConsent())
+                .termsAccepted(request.termsAccepted())
+                .onboardingStep(OnboardingStep.PHONE_VERIFICATION)
+                .role(UserRole.CUSTOMER)
+                .status(UserStatus.ACTIVE)
+                .build());
+
+        log.info("Sign-up opened the account for user {}", user.getId());
+
+        // The account exists by now, so this cannot answer "please sign up" to
+        // the caller who just did.
+        sendPhoneOtp(normalized, clientAddress);
+
+        return new VerificationResponse(SIGNUP_COMPLETE);
+    }
+
+    /**
      * Sends a sign-in code to a phone number.
      *
-     * <p>Whether an account already exists for the number makes no difference
-     * to what happens here or to what the caller is told: a code is issued
-     * either way, and the answer is the same. That is deliberate — a response
-     * that varied would turn this into a way to ask whether a given number is
-     * registered, which is not something an unauthenticated caller should be
-     * able to find out.</p>
+     * <p>Only a number that already has an account is sent to. One that does
+     * not is refused and told to sign up, because there is nothing for it to
+     * sign in to — a code would prove ownership of a number that leads nowhere,
+     * and the caller would find that out one step later instead of here.</p>
      *
-     * <p>Because it behaves identically for every number, it is also the
-     * endpoint that can be pointed at an arbitrary phone number to send
-     * somebody unsolicited SMS. The rate limit below is what bounds that.</p>
+     * <p>The cost of that answer is that this endpoint reports whether a given
+     * number is registered. The rate limit is what keeps it from being a useful
+     * enumeration oracle: the allowance is spent before the lookup, so sweeping
+     * a range of numbers is throttled long before it is worth doing, and a
+     * caller cannot probe for free by asking and then hanging up.</p>
      *
      * @param phone         number to send to, in any accepted spelling
      * @param clientAddress address the request came from, for rate limiting
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException
+     *                                    when no account signs in with this number
      * @throws OtpRateLimitedException    when this address has asked too often
      * @throws com.click4bonds.app.Modules.OTP.Exception.OtpResendCooldownException
      *                                    when this number was asked for too recently
@@ -84,7 +167,11 @@ public class AuthService {
         // costs nothing to reject and must not spend the caller's budget.
         String normalized = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
+        // Also before the lookup below, so a sweep across numbers spends the
+        // allowance rather than reading the answer out of it.
         enforceOtpRateLimit(clientAddress);
+
+        userService.getUserByMobileNumber(normalized);
 
         String otp = otpService.generateOtp(OtpType.SMS, normalized);
 
@@ -97,14 +184,20 @@ public class AuthService {
      * Redeems a sign-in code and opens a session.
      *
      * <p>The order matters. The code is verified first, so nothing downstream
-     * runs on an unproven number — and a wrong, expired or exhausted code
-     * leaves the account untouched, creating nothing. Only then is the account
-     * found or created, checked, and given a session.</p>
+     * runs on an unproven number — a wrong, expired or exhausted code leaves
+     * the account untouched. Only then is the account looked up, checked, and
+     * given a session.</p>
+     *
+     * <p>Looked up, not created: sign-up is the only way an account comes into
+     * existence, and a number that never went through it is refused here with
+     * the same answer {@link #sendPhoneOtp} gives.</p>
      *
      * @param phone     number the code was sent to
      * @param otp       submitted code
      * @param userAgent client description, recorded against the session
      * @return the new session and the access token issued for it
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException
+     *         when no account signs in with this number
      */
     @Transactional
     public IssuedSession verifyPhoneOtp(String phone, String otp, String userAgent) {
@@ -114,7 +207,7 @@ public class AuthService {
         // Consumes the code: a success here cannot be replayed.
         otpService.verifyOtp(OtpType.SMS, normalized, otp);
 
-        User user = userService.findOrCreateByMobileNumber(normalized);
+        User user = userService.getUserByMobileNumber(normalized);
 
         assertCanSignIn(user);
 

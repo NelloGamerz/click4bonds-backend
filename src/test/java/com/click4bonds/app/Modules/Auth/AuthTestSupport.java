@@ -5,7 +5,6 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -14,6 +13,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.click4bonds.app.Config.SecurityConfig;
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
+import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
@@ -163,9 +163,10 @@ public final class AuthTestSupport {
     /**
      * In-memory stand-in for {@link UserService}.
      *
-     * <p>Implements the account-creation rule the real one does — the same
-     * number always resolves to the same account, and a new number creates
-     * one — so a test can assert on identity across two sign-ins.</p>
+     * <p>Implements the rule the real one does — a number resolves to the
+     * account that was signed up for it, and to nothing else — so a test can
+     * assert on identity across two sign-ins and on the refusal of a number
+     * that was never signed up.</p>
      */
     public static final class FakeUserService extends UserService {
 
@@ -188,22 +189,29 @@ public final class AuthTestSupport {
         }
 
         @Override
-        public User findOrCreateByMobileNumber(String mobileNumber) {
+        public User createUser(User user) {
 
-            return Optional.ofNullable(byMobileNumber.get(mobileNumber))
-                    .orElseGet(() -> {
-                        User created = User.builder()
-                                .id(UUID.randomUUID())
-                                .mobileNumber(mobileNumber)
-                                .role(UserRole.CUSTOMER)
-                                .status(UserStatus.ACTIVE)
-                                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
-                                .build();
+            // The real one gets its identifier from the database, which this
+            // double has no equivalent of.
+            if (user.getId() == null) {
+                user.setId(UUID.randomUUID());
+            }
 
-                        register(created);
+            register(user);
 
-                        return created;
-                    });
+            return user;
+        }
+
+        @Override
+        public User getUserByMobileNumber(String mobileNumber) {
+
+            User user = byMobileNumber.get(mobileNumber);
+
+            if (user == null) {
+                throw new ResourceNotFoundException(SIGNUP_REQUIRED);
+            }
+
+            return user;
         }
 
         @Override
