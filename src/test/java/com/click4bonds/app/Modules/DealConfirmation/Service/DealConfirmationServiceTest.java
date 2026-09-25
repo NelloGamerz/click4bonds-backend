@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -49,6 +50,9 @@ class DealConfirmationServiceTest {
     @Mock
     private DealConfirmationDocumentService documentService;
 
+    @Mock
+    private DealConfirmationDocumentRecorder documentRecorder;
+
     private DealConfirmationService service;
 
     @BeforeEach
@@ -57,7 +61,8 @@ class DealConfirmationServiceTest {
                 writer,
                 dealConfirmationRepository,
                 new DealConfirmationMapper(),
-                documentService);
+                documentService,
+                documentRecorder);
     }
 
     // ============================================================
@@ -235,6 +240,74 @@ class DealConfirmationServiceTest {
         assertFalse(result.replayed());
     }
 
+    @Test
+    void recordsWhereTheGeneratedDocumentWasStored() {
+
+        givenWriterCreatesDeal();
+
+        when(documentService.generate(any()))
+                .thenReturn(new DealConfirmationDocument(
+                        "DC-20260922-000001.pdf",
+                        "application/pdf",
+                        "pdf bytes".getBytes(),
+                        "2026/09/DC-20260922-000001.pdf"));
+
+        service.createDeal(USER_ID, request(), null);
+
+        /*
+         * The recording is a separate transactional step from the generation,
+         * because the generation must not hold a database transaction open.
+         * Tying them together here is what lets a deal say whether it has a
+         * letter.
+         */
+        verify(documentRecorder).record(
+                any(),
+                eq("2026/09/DC-20260922-000001.pdf"));
+    }
+
+    @Test
+    void doesNotRecordAnythingWhenNoDocumentWasProduced() {
+
+        /*
+         * none() means "documents are switched off", which is a normal outcome.
+         * Recording it would mark every deal in a LibreOffice-less environment
+         * as documented when no file exists.
+         */
+        givenWriterCreatesDeal();
+
+        service.createDeal(USER_ID, request(), null);
+
+        verify(documentRecorder, never()).record(any(), any());
+    }
+
+    @Test
+    void aRecordingFailureDoesNotFailThePurchase() {
+
+        givenWriterCreatesDeal();
+
+        when(documentService.generate(any()))
+                .thenReturn(new DealConfirmationDocument(
+                        "DC-20260922-000001.pdf",
+                        "application/pdf",
+                        "pdf bytes".getBytes(),
+                        "2026/09/DC-20260922-000001.pdf"));
+
+        org.mockito.Mockito.doThrow(new IllegalStateException("database is down"))
+                .when(documentRecorder)
+                .record(any(), any());
+
+        /*
+         * The document was produced; only recording it failed. The purchase is
+         * unaffected either way — the deal is already committed and its
+         * inventory already reserved.
+         */
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), null);
+
+        assertEquals("DC-20260922-000001", result.response().getDealReference());
+        assertFalse(result.replayed());
+    }
+
     // ============================================================
     // FIXTURES
     // ============================================================
@@ -258,7 +331,10 @@ class DealConfirmationServiceTest {
         when(writer.create(any(), any(), any()))
                 .thenReturn(new DealConfirmationWriter.CreatedDeal(
                         new DealConfirmationMapper().toResponse(deal),
-                        DealConfirmationDocumentData.from(deal)));
+                        DealConfirmationDocumentData.from(
+                                deal,
+                                LocalDate.of(2026, 9, 22),
+                                null)));
     }
 
     private DealConfirmation deal(String reference) {

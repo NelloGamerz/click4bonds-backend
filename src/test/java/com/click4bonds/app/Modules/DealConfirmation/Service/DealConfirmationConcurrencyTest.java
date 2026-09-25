@@ -33,6 +33,7 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
@@ -79,6 +80,14 @@ class DealConfirmationConcurrencyTest {
 
     @Mock
     private DealReferenceGenerator dealReferenceGenerator;
+
+    /*
+     * Mocked rather than real: this test is about inventory, and an unstubbed
+     * Mockito method returning Optional yields an empty Optional, which is the
+     * "no accrual" path the writer already tolerates.
+     */
+    @Mock
+    private DealAccrualCalculator accrualCalculator;
 
     // ============================================================
     // CONCURRENCY
@@ -173,7 +182,9 @@ class DealConfirmationConcurrencyTest {
                 bondRepository,
                 userService,
                 dealReferenceGenerator,
-                new DealConfirmationMapper());
+                new DealConfirmationMapper(),
+                accrualCalculator,
+                new DocumentProperties());
     }
 
     private Callable<String> attempt(

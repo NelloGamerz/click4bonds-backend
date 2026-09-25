@@ -15,10 +15,12 @@ import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Service.UserService;
@@ -51,6 +53,8 @@ public class DealConfirmationWriter {
     private final UserService userService;
     private final DealReferenceGenerator dealReferenceGenerator;
     private final DealConfirmationMapper mapper;
+    private final DealAccrualCalculator accrualCalculator;
+    private final DocumentProperties documentProperties;
 
     /** A created deal, paired with the snapshot its document will be built from. */
     public record CreatedDeal(
@@ -83,6 +87,16 @@ public class DealConfirmationWriter {
         long totalQuantity = calculateTotalQuantity(
                 request.quantityPerLot(),
                 request.numberOfLots());
+
+        /*
+         * Captured once. The reference, the letter's deal date and the value
+         * date the accrual is measured to all have to agree, and a request
+         * arriving at midnight would otherwise see two different "today"s.
+         */
+        LocalDate dealDate = LocalDate.now();
+
+        LocalDate valueDate = dealDate.plusDays(
+                documentProperties.getDeal().getValueDateOffsetDays());
 
         log.info(
                 "Deal creation attempt: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
@@ -145,7 +159,8 @@ public class DealConfirmationWriter {
                 reservedBond,
                 request,
                 totalQuantity,
-                idempotencyKey);
+                idempotencyKey,
+                dealDate);
 
         DealConfirmation saved = dealConfirmationRepository.save(deal);
 
@@ -156,13 +171,24 @@ public class DealConfirmationWriter {
                 saved.getTotalQuantity());
 
         /*
+         * Computed here, in the transaction, because the services behind it take
+         * the Bond entity and the document step that consumes the result runs
+         * after this transaction has committed. An empty result is normal — the
+         * document step declines to generate a letter rather than printing a
+         * blank interest figure.
+         */
+        DealAccrual accrual = accrualCalculator
+                .calculate(reservedBond, valueDate)
+                .orElse(null);
+
+        /*
          * Mapped while the session is open. These two DTOs are the only things
          * that leave the transaction, so the caller can log and document the deal
          * after it has committed without touching a lazy association.
          */
         return new CreatedDeal(
                 mapper.toResponse(saved),
-                mapper.toDocumentData(saved));
+                mapper.toDocumentData(saved, valueDate, accrual));
     }
 
     // =========================================================
@@ -254,12 +280,13 @@ public class DealConfirmationWriter {
             Bond bond,
             CreateDealConfirmationRequest request,
             long totalQuantity,
-            String idempotencyKey) {
+            String idempotencyKey,
+            LocalDate dealDate) {
 
         BigDecimal pricePerUnit = bond.getPrice();
 
         return DealConfirmation.builder()
-                .dealReference(dealReferenceGenerator.next(LocalDate.now()))
+                .dealReference(dealReferenceGenerator.next(dealDate))
                 .customer(customer)
                 .bond(bond)
                 .isin(bond.getIsin())

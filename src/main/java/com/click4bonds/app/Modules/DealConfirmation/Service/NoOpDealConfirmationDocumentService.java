@@ -1,26 +1,31 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
-import org.springframework.stereotype.Service;
-
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Placeholder for {@link DealConfirmationDocumentService}.
+ * The "documents are switched off" implementation of
+ * {@link DealConfirmationDocumentService}.
  *
- * <p>Produces no document. It exists so the deal flow can be wired end to end
- * today — the call site, the logging and the status handling are all real — and
- * so that implementing the document step is a one-line swap: replace this bean
- * with the real implementation, whose {@link #generate} will fill
- * {@code Deal Format.xlsx}, convert it to PDF and store it.</p>
+ * <p>Produces no document, and says so at information level. It is wired when
+ * {@code document.enabled=false}, which is the setting for an environment
+ * without LibreOffice — a developer laptop or CI — where generation would
+ * otherwise fail on every purchase and fill the logs with errors that are not
+ * anyone's problem.</p>
  *
- * <p>The template file is already in the repository at
- * {@code src/main/resources/deal_confirmation/Deal Format.xlsx}; it is not read
- * yet on purpose (Apache POI is not a dependency of this project).</p>
+ * <p>It is not a placeholder any more. The real implementation is
+ * {@link AtSplDealConfirmationDocumentService}; this one is the deliberate
+ * degraded mode, and the two are selected in
+ * {@link com.click4bonds.app.Modules.DealConfirmation.Config.DealConfirmationDocumentConfig}.</p>
+ *
+ * <p><strong>Deliberately not annotated {@code @Service}.</strong> Bean
+ * selection is by {@code @ConditionalOnMissingBean}, which is evaluated in an
+ * undefined order when the candidate comes from component scanning — a known
+ * source of a fallback that is sometimes the one wired. Declaring both as
+ * {@code @Bean} methods in one configuration class makes the order explicit.</p>
  */
-@Service
 @Slf4j
 public class NoOpDealConfirmationDocumentService implements DealConfirmationDocumentService {
 
@@ -28,8 +33,9 @@ public class NoOpDealConfirmationDocumentService implements DealConfirmationDocu
     public DealConfirmationDocument generate(DealConfirmationDocumentData dealConfirmation) {
 
         log.info(
-                "Deal confirmation document generation is not implemented yet; "
-                        + "skipping for deal {}", dealConfirmation.dealReference());
+                "Document generation is switched off (document.enabled=false); "
+                        + "no confirmation letter produced for deal {}",
+                dealConfirmation.dealReference());
 
         return DealConfirmationDocument.none();
     }

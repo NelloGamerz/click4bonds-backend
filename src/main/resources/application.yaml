@@ -13,6 +13,81 @@ email:
   # Supported values: resend | msg91
   provider: ${EMAIL_PROVIDER:resend}
 
+# Generation of customer-facing documents — today, the deal confirmation letter.
+#
+# Split into three groups: how documents are produced (storage, template, pdf),
+# what they say (deal), and who we are (organisation). The first is the same in
+# every environment, the second changes with the business's arithmetic, and the
+# third changes only if a second entity is onboarded.
+document:
+  # Master switch. false wires the no-op implementation, so deals are still
+  # created and simply produce no letter. This is the setting for a machine with
+  # no LibreOffice — a laptop or CI — where generation would otherwise fail on
+  # every purchase.
+  enabled: ${DOCUMENT_ENABLED:true}
+
+  storage:
+    # Root for every generated document. Must be writable by the application
+    # user. On a container this needs a mounted volume, or documents are lost on
+    # redeploy while the database still records that they exist.
+    directory: ${DOCUMENT_STORAGE_DIR:./storage/deal-confirmations}
+    # Keeps the filled spreadsheet beside the PDF. It is what an operator needs
+    # to correct and reprint a letter.
+    keep-xlsx: ${DOCUMENT_KEEP_XLSX:true}
+
+  template:
+    # Read as a classpath stream, never a file: the template is packaged inside
+    # the jar. The name contains a space, which a plain YAML scalar allows.
+    path: ${DOCUMENT_TEMPLATE_PATH:deal_confirmation/ATSPL Deal Format.xlsx}
+    # The sheet in the template is actually named "PSU Private Sale " with a
+    # trailing space, which YAML would strip from this value — the lookup trims
+    # both sides before comparing, so the spelling here does not have to match
+    # that quirk. Do not wrap this in quotes: they would become part of the name.
+    sheet-name: ${DOCUMENT_TEMPLATE_SHEET:PSU Private Sale}
+
+  pdf:
+    # false produces the spreadsheet only. A deliberate degraded mode for an
+    # environment without LibreOffice, not a failure.
+    enabled: ${DOCUMENT_PDF_ENABLED:true}
+    # Absolute path, or a bare name resolved from PATH.
+    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
+    # A hung engine must not hold an HTTP request open indefinitely.
+    timeout: ${DOCUMENT_SOFFICE_TIMEOUT:30s}
+    # Each conversion is a separate process taking a few hundred megabytes, and
+    # there is no queue behind this. Requests over the limit wait.
+    max-concurrent-conversions: ${DOCUMENT_MAX_CONCURRENT_CONVERSIONS:2}
+
+  deal:
+    # Bond has no face-value field; 100 is the market convention and the only
+    # value consistent with the persisted total_amount (price x quantity).
+    face-value: ${DOCUMENT_FACE_VALUE:100}
+    # Deal date to value (settlement) date. T+0 today.
+    value-date-offset-days: ${DOCUMENT_VALUE_DATE_OFFSET_DAYS:0}
+    # The customer is buying from us, so the letter is our sale. A purchase-side
+    # letter is a different document with a different sheet.
+    transaction-type: ${DOCUMENT_TRANSACTION_TYPE:Our Sale}
+    # Zero pending confirmation of the rule: the template carries a bare literal
+    # with no formula, so neither the rate nor its base can be derived from it.
+    stamp-duty: ${DOCUMENT_STAMP_DUTY:0}
+
+  # Printed in the "Our ..." cells of the letter. These identify an organisation;
+  # they are not credentials, which is why they carry real defaults rather than
+  # being required — a blank PAN on a confirmation letter is worse than a
+  # visibly wrong one.
+  organisation:
+    beneficiary-name: ${DOCUMENT_ORG_BENEFICIARY:All Time Securities pvt. Ltd.}
+    pan: ${DOCUMENT_ORG_PAN:AAHCA7743E}
+    cm-bp-id: ${DOCUMENT_ORG_CM_BP_ID:IN619994}
+    cm-name: ${DOCUMENT_ORG_CM_NAME:Indian Clearing Corporation Ltd}
+    ifsc-code: ${DOCUMENT_ORG_IFSC:ICLL0000001}
+    market-type: ${DOCUMENT_ORG_MARKET_TYPE:ICDM(T+0)}
+    banker: ${DOCUMENT_ORG_BANKER:ICCL Or RBI}
+    mode-of-delivery: ${DOCUMENT_ORG_DELIVERY:ICCL}
+    # Left blank: this application holds neither value, and a guessed identifier
+    # on a legal document is worse than an empty cell.
+    account-number: ${DOCUMENT_ORG_ACCOUNT:}
+    settlement-number: ${DOCUMENT_ORG_SETTLEMENT:}
+
 # Authentication with a phone number and an OTP.
 #
 # Tokens are signed by this application and verified by it; there is no

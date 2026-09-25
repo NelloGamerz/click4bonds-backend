@@ -26,6 +26,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
@@ -59,6 +60,15 @@ class DealConfirmationWriterTest {
     @Mock
     private DealReferenceGenerator dealReferenceGenerator;
 
+    /*
+     * Mocked rather than real: the real calculator needs a bond with a coupon
+     * rate and an interest-payment description, and these fixtures are about
+     * inventory. An unstubbed Mockito method returning Optional yields an empty
+     * Optional, which is exactly the "no accrual" path the writer tolerates.
+     */
+    @Mock
+    private DealAccrualCalculator accrualCalculator;
+
     private DealConfirmationWriter writer;
 
     @BeforeEach
@@ -68,7 +78,9 @@ class DealConfirmationWriterTest {
                 bondRepository,
                 userService,
                 dealReferenceGenerator,
-                new DealConfirmationMapper());
+                new DealConfirmationMapper(),
+                accrualCalculator,
+                new DocumentProperties());
     }
 
     // ============================================================

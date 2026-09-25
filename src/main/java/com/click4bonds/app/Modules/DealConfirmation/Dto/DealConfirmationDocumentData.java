@@ -10,16 +10,22 @@ import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.User.Model.User;
 
 /**
- * Everything the future deal confirmation document needs, in one flat record.
+ * Everything the deal confirmation document needs, in one flat record.
  *
- * <p>This is the seam for the Excel template step that is not implemented yet:
- * when the template is filled, it is filled from this record, and the template
- * code never sees an entity, a repository or a session. It is assembled inside
- * the transaction that creates the deal, so the document step — which runs after
- * that transaction has committed — never touches a lazy association.</p>
+ * <p>This is the seam for the Excel template step: the template is filled from
+ * this record, and the template code never sees an entity, a repository or a
+ * session. It is assembled inside the transaction that creates the deal, so the
+ * document step — which runs after that transaction has committed — never
+ * touches a lazy association.</p>
  *
  * <p>Values are snapshots taken at purchase time; they do not follow later edits
  * to the bond.</p>
+ *
+ * <p><strong>Why the interest figures are carried rather than recomputed.</strong>
+ * {@code AccruedInterestService} takes a {@code Bond} entity, and the document
+ * step may not load one. Recomputing the arithmetic here instead would create a
+ * second definition of accrued interest that could drift from the one used for
+ * pricing, so the results travel — see {@link DealAccrual}.</p>
  */
 public record DealConfirmationDocumentData(
 
@@ -28,6 +34,9 @@ public record DealConfirmationDocumentData(
         LocalDate dealDate,
 
         Instant dealCreatedAt,
+
+        /** Settlement date the letter prints and the accrual is measured to. */
+        LocalDate valueDate,
 
         String customerName,
 
@@ -43,6 +52,18 @@ public record DealConfirmationDocumentData(
         BigDecimal couponRate,
 
         LocalDate maturityDate,
+
+        /** The bond's raw interest-payment description, e.g. "23rd of every month". */
+        String ipDateDescription,
+
+        /** Coupon date on or before the value date; null when unresolved. */
+        LocalDate previousCouponDate,
+
+        /** Days from {@code previousCouponDate} to {@code valueDate}; null when unresolved. */
+        Long accruedDays,
+
+        /** Accrued interest for one bond of face value 100; null when unresolved. */
+        BigDecimal accruedInterestPerHundredFace,
 
         Long quantityPerLot,
 
@@ -62,8 +83,20 @@ public record DealConfirmationDocumentData(
      *
      * <p>Must be called while the persistence context is still open — it reads
      * {@code customer} and {@code bond}, both of which are lazily loaded.</p>
+     *
+     * @param deal      the deal just persisted
+     * @param valueDate settlement date, computed once by the caller so the date
+     *                  the letter prints and the date the accrual was measured
+     *                  to cannot drift apart
+     * @param accrual   interest figures computed in this transaction, or null
+     *                  when they could not be determined. Null is a normal
+     *                  outcome, not an error: the document step declines to
+     *                  generate a letter rather than printing blanks.
      */
-    public static DealConfirmationDocumentData from(DealConfirmation deal) {
+    public static DealConfirmationDocumentData from(
+            DealConfirmation deal,
+            LocalDate valueDate,
+            DealAccrual accrual) {
 
         var bond = deal.getBond();
 
@@ -73,6 +106,7 @@ public record DealConfirmationDocumentData(
                         ? LocalDate.now()
                         : LocalDate.ofInstant(deal.getCreatedAt(), ZoneOffset.UTC),
                 deal.getCreatedAt(),
+                valueDate,
                 customerName(deal.getCustomer()),
                 deal.getCustomer() == null ? null : deal.getCustomer().getEmail(),
                 bond == null ? null : bond.getName(),
@@ -82,6 +116,10 @@ public record DealConfirmationDocumentData(
                         : bond.getSecurityType().name(),
                 bond == null ? null : bond.getCouponRate(),
                 bond == null ? null : bond.getMaturityDate(),
+                bond == null ? null : bond.getIpDateDescription(),
+                accrual == null ? null : accrual.previousCouponDate(),
+                accrual == null ? null : accrual.accruedDays(),
+                accrual == null ? null : accrual.accruedInterestPerHundredFace(),
                 deal.getQuantityPerLot(),
                 deal.getNumberOfLots(),
                 deal.getTotalQuantity(),

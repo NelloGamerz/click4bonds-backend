@@ -1,7 +1,10 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
+import java.time.LocalDate;
+
 import org.springframework.stereotype.Component;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
@@ -36,7 +39,11 @@ public class DealConfirmationMapper {
                 .build();
     }
 
-    public DealConfirmationDocumentData toDocumentData(DealConfirmation deal) {
-        return DealConfirmationDocumentData.from(deal);
+    public DealConfirmationDocumentData toDocumentData(
+            DealConfirmation deal,
+            LocalDate valueDate,
+            DealAccrual accrual) {
+
+        return DealConfirmationDocumentData.from(deal, valueDate, accrual);
     }
 }

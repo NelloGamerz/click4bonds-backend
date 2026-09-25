@@ -12,8 +12,8 @@ lots sold to the authenticated customer. It does two things, in this order:
 
 1. **Writes the deal** as a `deal_confirmations` row holding a snapshot of what
    was agreed — quantities, the price as it stood, the reference.
-2. **Generates the confirmation document** — the Excel/PDF step. *Not
-   implemented yet*; see [§7](#7-not-implemented-yet).
+2. **Generates the confirmation document** — the Excel/PDF step. Fills the ATSPL
+   template, renders a PDF, stores both. See [§7](#7-the-document-step).
 
 **This module does not touch bond inventory.** It does not reserve, deduct,
 release or lock units, and it makes no decision based on how many a bond has
@@ -34,7 +34,14 @@ two values and a persisted deal is always `CREATED` first.
 | `DealConfirmationMapper` | `...DealConfirmation.Service` | Entity → response DTO, entity → document snapshot. |
 | `DealReferenceGenerator` / `DealReferenceGeneratorImpl` | `...DealConfirmation.Service` | Issues `DC-YYYYMMDD-000001`. |
 | `DealConfirmationDocumentService` | `...DealConfirmation.Service` | Interface for the Excel/PDF step. |
-| `NoOpDealConfirmationDocumentService` | `...DealConfirmation.Service` | Placeholder that produces nothing. |
+| `AtSplDealConfirmationDocumentService` | `...DealConfirmation.Service` | The real implementation: fills the template, renders a PDF, stores both. |
+| `NoOpDealConfirmationDocumentService` | `...DealConfirmation.Service` | Wired when `document.enabled=false`; produces nothing and says so. |
+| `DealConfirmationDocumentConfig` | `...DealConfirmation.Config` | Chooses between the two implementations above. |
+| `DealAccrualCalculator` | `...DealConfirmation.Service` | Accrued interest and last coupon date, computed on the managed bond. |
+| `DealConfirmationSheetValuesFactory` / `DealConfirmationCellMap` | `...DealConfirmation.Service` | The letter's arithmetic, then its layout. |
+| `DealConfirmationDocumentRecorder` | `...DealConfirmation.Service` | Records where the document landed; flips the status. |
+| `DealConfirmationDocumentReader` | `...DealConfirmation.Service` | Reads a stored letter back for download. |
+| `Modules/Document/*` | `...Modules.Document` | The reusable engine: template fill, PDF conversion, storage. |
 | `DealConfirmation` | `...DealConfirmation.Model` | The `deal_confirmations` table. |
 | `DealReferenceSequence` | `...DealConfirmation.Model` | The `deal_reference_sequences` daily counter. |
 | `DealConfirmationRepository` | `...DealConfirmation.Repository` | Idempotency lookup, `dealReference` lookup. |
@@ -339,77 +346,125 @@ actually guarantees uniqueness; the generator is what makes it look tidy.
 
 ---
 
-## 7. Not implemented yet
+## 7. The document step
 
-The document step is a wired-up seam with no implementation behind it. This is
-intentional, and it is the main outstanding work in the module.
+Implemented. A created deal produces an ATSPL confirmation letter as a filled
+spreadsheet and a PDF.
 
-### What exists
-
-| Piece | State |
-|---|---|
-| The call site (`DealConfirmationService.generateDocument`) | Real, runs after commit, swallows failures |
-| `DealConfirmationDocumentService` interface | Real |
-| `DealConfirmationDocumentData` snapshot | Real, fully assembled |
-| `NoOpDealConfirmationDocumentService` | Placeholder — logs and returns `none()` |
-| `src/main/resources/deal_confirmation/Deal Format.xlsx` | In the repo, **not read** |
-| Apache POI dependency | **Not present** in `pom.xml` |
-
-### The planned pipeline
-
-`DealConfirmationDocumentService.java:9-32` documents the intended shape:
+### Pipeline
 
 ```
 DealConfirmation
-      |
-      v
-ExcelTemplateService   (fills src/main/resources/deal_confirmation/Deal Format.xlsx)
-      |
-      v
-Excel to PDF
-      |
-      v
-DocumentStorage        (keeps the bytes somewhere durable)
-      |
-      v
-download / email
+       |
+       v
+DealConfirmationSheetValuesFactory   (snapshot -> the letter's values)
+       |
+       v
+DealConfirmationCellMap              (values -> cells of the template)
+       |
+       v
+XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
+       |
+       v
+PdfConverter                         (LibreOffice, headless)
+       |
+       v
+DocumentStorage                      (keeps both artefacts)
+       |
+       v
+GET /api/deal-confirmations/{reference}/document
 ```
 
-### Why it is a seam and not a stub
+The engine half (`Modules/Document`) knows nothing about deals: it fills a
+template, converts a workbook to PDF, and stores bytes. The deal-specific half
+lives in `Modules/DealConfirmation`.
 
-`DealConfirmationDocumentData` is a flat record holding everything the document
-needs — reference, date, customer name and email, bond name, ISIN, security type,
-coupon rate, maturity date, the quantities, the money, the status
-(`DealConfirmationDocumentData.java:24-58`). It is assembled **inside** the deal's
-transaction, because building it reads `customer` and `bond`, which are both
-lazily loaded. The document step, which runs after that transaction has
-committed, therefore never touches an entity, a repository or a session.
+### The template
 
-`DealConfirmationDocument` is deliberately format-agnostic — it names no file
-format, library or storage location (`DealConfirmationDocument.java:3-9`). So
-implementing the document step is a one-line bean swap: replace
-`NoOpDealConfirmationDocumentService` with a real implementation. Nothing in deal
-creation or validation changes.
+`src/main/resources/deal_confirmation/ATSPL Deal Format.xlsx`, sheet
+`PSU Private Sale `. Two things about it are easy to get wrong:
 
-### Two rules a real implementation must follow
+- **Every sheet name ends with a space.** `getSheet("PSU Private Sale")` returns
+  `null`, so the lookup trims both sides before comparing.
+- **The workbook has four sheets**, and a PDF conversion renders all of them. The
+  writer removes every sheet but the one being filled, or the customer would
+  receive the purchase-side layouts too.
 
-From the interface contract (`DealConfirmationDocumentService.java:34-42`):
+The committed template is *sample-filled* — it holds a previous deal's ISIN,
+security name and quantity. Every mapped cell is overwritten, and a test asserts
+that no known sample value survives, because a missed cell would print a
+stranger's trade on a customer's letter.
 
-- **Do not read the database or touch lazy associations.** You run after commit,
-  with the snapshot you were given.
-- **A failure must not fail the deal.** Throw, and the caller logs it and leaves
-  the deal in `CREATED` for a later retry. The deal is already committed —
-  failing the request now would make the client believe it did not happen.
+### Why the interest figures travel on the snapshot
 
-### The TODO at the call site
+`AccruedInterestService` and `CouponScheduleService` both take a `Bond` **entity**,
+and the document step runs after the deal's transaction has committed, where it
+may not load one. So `DealAccrualCalculator` runs them inside the transaction, on
+the managed bond, and the results are carried on `DealConfirmationDocumentData`.
 
-`DealConfirmationService.java:139-145` records the three steps that belong to the
-document implementation, not to the deal flow:
+Recomputing the arithmetic in the document module was rejected: it would create a
+second definition of accrued interest that could drift from the one used for
+pricing, and the letter and the ledger would disagree.
 
-1. Store the document and keep its location on the deal.
-2. Move the deal to `DealConfirmationStatus.CONFIRMATION_GENERATED`.
-3. Notify the customer.
+### Formulas are replaced, not recalculated
 
+The template's money cells carry their own arithmetic, using day-count
+conventions that disagree with this application's — `/360` and `COUPDAYBS` on one
+sale sheet, `/365` on another, against actual/actual in
+`AccruedInterestServiceImpl`. The backend's figures win, so those cells are
+overwritten with literal values. `XlsxTemplateWriterTest` asserts that no formula
+survives the fill anywhere in the sheet.
+
+> **Open, and for finance rather than engineering:** the printed letter's
+> accrued interest therefore differs slightly from what the template's own
+> formula would have produced, and "No. of Accrued Days" shows actual days rather
+> than `COUPDAYBS` days. This is a contractual number, not a formatting choice.
+> Related questions still outstanding: the `Quantum` multiplier (the two sale
+> sheets disagree on it by 100x), the stamp-duty rule, the reference format
+> (`2026/S/SEP/121` in the template versus `DC-YYYYMMDD-nnnnnn` here), and
+> `Settlement NO.`, which the clearing house issues per deal.
+
+### Selecting the implementation
+
+`DealConfirmationDocumentConfig` declares both candidates as `@Bean` methods.
+`document.enabled=false` wires the no-op, which is the setting for a machine with
+no LibreOffice: without that fallback, disabling documents would leave no bean at
+all and the context would fail to start.
+
+`@ConditionalOnMissingBean` is order-dependent against a component-scanned
+candidate, which is why neither class carries `@Service`.
+
+### Failure
+
+Generation throws; `DealConfirmationService` catches and logs, and the deal stays
+`CREATED` with no document recorded. A failure must never fail the purchase — by
+the time the document step runs, the deal is committed and its inventory
+reserved.
+
+`soffice` being absent throws rather than returning `none()`. Returning `none()`
+would be indistinguishable from "documents are switched off", would produce no
+error log, and would mark the pipeline as having run.
+
+### Storage and the download endpoint
+
+Documents are written under `document.storage.directory`, filed as
+`yyyy/MM/<dealReference>.<ext>`. The key is relative, so a deal row is not tied
+to one host's directory layout, and deterministic, so regenerating a deal
+overwrites rather than accumulating copies.
+
+`GET /api/deal-confirmations/{reference}/document` streams the letter back. It is
+scoped to the authenticated customer by the query itself, so another customer's
+deal is indistinguishable from one that does not exist.
+
+### Schema
+
+`document_path` and `document_generated_at` on `deal_confirmations`, added by
+`db/migration/V4__add_deal_confirmation_document.sql`. **That migration must be
+applied by hand** — `application-prod.yaml` sets `ddl-auto: validate`, and the
+project has no Flyway or Liquibase dependency, so production will refuse to start
+without it.
+
+---
 ---
 
 ## 8. Known gaps
@@ -433,9 +488,19 @@ lookup finds nothing, so any other constraint violation on this endpoint surface
 with a message about contact inquiries.
 
 **No read endpoint.** A deal cannot be fetched after creation — there is no `GET`
-by reference or by customer. `DealConfirmationRepository.findByDealReference`
-exists but is unused. A customer who loses the `201` response body has no way to
-recover their `dealReference` except by retrying with the same idempotency key.
+by reference or by customer, so a customer who loses the `201` response body has
+no way to recover their `dealReference` except by retrying with the same
+idempotency key. The generated *document* can be downloaded
+(`GET /api/deal-confirmations/{reference}/document`), but the deal itself cannot.
+
+**No way to regenerate a document.** A deal whose generation failed stays
+`CREATED` with no document, and nothing moves it forward: `@EnableScheduling` is
+commented out in `AppApplication`, there is no `@Async` anywhere, and there is no
+admin re-run endpoint. Because the storage key is deterministic
+(`yyyy/MM/<reference>.<ext>`), a future re-run would overwrite rather than
+accumulate, so adding one is safe. Until then, a stuck deal needs a manual
+intervention and there is no query surface to find stuck deals other than
+database access — `document_generated_at` is the column to age against.
 
 **No analytics event.** Deal creation emits no `AnalyticsService.track(...)` call,
 unlike `BondService` and `OrderService` (see `docs/analytics.md`), so purchases do
@@ -453,11 +518,14 @@ reserved anywhere. Until that step exists, a deal confirmation is a statement of
 intent with no stock behind it — which is the correct state for this stage, but
 it does mean the oversell guard is currently dormant rather than unused.
 
-**Schema is applied by Hibernate, not migrations.** `application-dev.yaml:167-169`
-sets `ddl-auto: update`. `bonds.remaining_quantity` and the two new tables
-(`deal_confirmations`, `deal_reference_sequences`) exist because Hibernate creates
-them; there are no `db/` migration scripts in the project. A schema change that
-Hibernate cannot express as an additive update would need manual handling.
+**Schema is applied by hand in production.** `application-dev.yaml:169` sets
+`ddl-auto: update`, so a dev database is built by Hibernate.
+`application-prod.yaml:29` sets `ddl-auto: validate` — production refuses to
+start on a schema it does not recognise — and the project has **no Flyway or
+Liquibase dependency**, so `src/main/resources/db/migration/V1..V4` are applied
+manually. Anything that adds a column has to ship a migration script and someone
+has to run it. `V4__add_deal_confirmation_document.sql` is the one that goes with
+the document step.
 
 ---
 
@@ -469,7 +537,7 @@ All under `src/test/java/com/click4bonds/app/Modules/DealConfirmation/`.
 |---|---|
 | `CreateDealConfirmationRequestTest` | Every validation rule, including all broken fields reported at once (13 cases). |
 | `DealConfirmationWriterTest` | Inventory-neutrality (each success ends with `verifyNoMoreInteractions(bondRepository)`), no status flip at zero units, deals created with `null` or insufficient inventory, ISIN normalisation, overflow, null price, each rejection path, write failure propagating (13 cases). |
-| `DealConfirmationServiceTest` | Idempotency: no key, blank key, retry replays, replay does not regenerate the document, key scoped per customer, concurrent duplicate collapsed, constraint violation rethrown when no deal matches, document failure does not fail the purchase (9 cases). |
+| `DealConfirmationServiceTest` | Idempotency: no key, blank key, retry replays, replay does not regenerate the document, key scoped per customer, concurrent duplicate collapsed, constraint violation rethrown when no deal matches, document failure does not fail the purchase, the document is recorded when produced, not recorded when absent, and a recording failure does not fail the purchase (12 cases). |
 | `DealConfirmationConcurrencyTest` | Eight concurrent requests against a bond with 1000 units, each asking for 500 — all succeed, inventory is bit-for-bit unchanged, and the repository's working reservation stand-in is never reached. |
 | `DealReferenceGeneratorImplTest` | Format, zero-padding, reads back the counter it just incremented, fails loudly when unreadable. |
 | `BondRepositoryReserveQuantityContractTest` | *(under `Modules/Bond/Repository/`)* That `reserveQuantity` still exists, is `@Modifying`, binds both parameters, remains a single `UPDATE` carrying the `>= :quantity` guard with no `SELECT`, and is the repository's only mutating statement. |
@@ -482,3 +550,20 @@ it protects a statement this module no longer calls — see
 [§4](#the-oversell-guard-is-preserved). Note that it is reflective rather than
 executed against a database: the project has no embedded database or
 Testcontainers.
+
+The document step adds these, under `Modules/DealConfirmation/` unless noted:
+
+| Test class | Covers |
+|---|---|
+| `DealConfirmationSheetValuesFactoryTest` | The letter's arithmetic: coupon percent→fraction, quantum from face value, accrued interest scaled from one bond to the position, the total, 2dp rounding, and refusing a deal with no price or no accrual (15 cases). |
+| `DealConfirmationCellMapTest` | The layout: every address, that no label cell is written to, that the customer identifiers with no source stay blank, and that the template's stale echo of the counterparty line is overwritten (6 cases). |
+| `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written (7 cases). |
+| `DealConfirmationDocumentRecorderTest` | Status and key recorded together; a deal that is no longer there is warned about, not thrown. |
+| `DealConfirmationDocumentConfigTest` | *(under `Modules/DealConfirmation/Config/`)* That `document.enabled` really swaps the implementation, and never wires both. |
+| `XlsxTemplateWriterTest` | *(under `Modules/Document/Service/`)* **The keystone.** Fills the real committed template and reopens it: every mapped cell, **no formula survives**, **no sample value survives**, exactly one sheet remains, dates stay date-formatted (9 cases). |
+| `LocalFileSystemDocumentStorageTest` | Key layout, directory creation, replacement rather than accumulation, no `.part` left behind, and refusal of escaping or absolute keys (11 cases). |
+| `LibreOfficePdfConverterTest` | The command line — headless flags, per-run profile directory, outdir, argument-list (not shell) handling of the space in the template's name — plus a real conversion where LibreOffice is installed, skipped where it is not. |
+
+`XlsxTemplateWriterTest` is the one to keep an eye on. It reads the real
+workbook, so a template the business edits by hand fails the build rather than
+shipping letters with the wrong values under the right labels.

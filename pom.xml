@@ -114,6 +114,22 @@
             <artifactId>resend-java</artifactId>
             <version>4.11.0</version>
         </dependency>
+        <!--
+            Fills the deal confirmation spreadsheet template.
+
+            The version is explicit because Spring Boot's dependency management
+            does not cover POI — the parent POM declares no poi.version property,
+            so omitting this would leave the version unresolved.
+
+            poi-ooxml is the XLSX half (it pulls poi, xmlbeans and commons-compress
+            transitively); plain poi only handles the legacy .xls format, which
+            this project's templates are not.
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.5.1</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

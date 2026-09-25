@@ -22,10 +22,9 @@ import java.util.UUID;
  * that must happen outside its transaction: recognising a retried request, and
  * generating the confirmation document.</p>
  *
- * <p>This class is deliberately not transactional. The document step is an
- * external operation that will eventually fill a spreadsheet and render a PDF,
- * and holding a database transaction open across it would pin a connection for
- * the duration.</p>
+ * <p>This class is deliberately not transactional. The document step fills a
+ * spreadsheet and renders a PDF, and holding a database transaction open across
+ * it would pin a connection for the duration.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -36,6 +35,7 @@ public class DealConfirmationService {
     private final DealConfirmationRepository dealConfirmationRepository;
     private final DealConfirmationMapper mapper;
     private final DealConfirmationDocumentService documentService;
+    private final DealConfirmationDocumentRecorder documentRecorder;
 
     /**
      * Outcome of a create request.
@@ -107,28 +107,34 @@ public class DealConfirmationService {
             return new Result(mapper.toResponse(existing), true);
         }
 
-        generateDocument(created.documentData());
+        generateDocument(created.response().getDealConfirmationId(), created.documentData());
 
         return new Result(created.response(), false);
     }
 
     // =========================================================
-    // DOCUMENT EXTENSION POINT
+    // DOCUMENT STEP
     // =========================================================
 
     /**
-     * Hands the created deal to the document step.
+     * Hands the created deal to the document step, then records the result.
      *
-     * <p>Called after the deal has been committed, and outside any transaction.
-     * Today the only implementation produces nothing, so this logs and returns;
-     * when the Excel template and PDF steps arrive they plug in behind
-     * {@link DealConfirmationDocumentService} without changing anything above.</p>
+     * <p>Called after the deal has been committed, and outside any transaction —
+     * rendering a document is slow, and holding a database transaction open
+     * across it would pin a connection for its duration.</p>
      *
-     * <p>A failure here is logged, never propagated: the customer's purchase is
-     * already confirmed and inventory already reserved, and failing the request
-     * now would make the client believe the deal did not happen.</p>
+     * <p>The two halves are deliberately separate. Producing the document is
+     * {@link DealConfirmationDocumentService}'s job and is forbidden from
+     * touching the database; recording where it landed is a short transaction of
+     * its own, in {@link DealConfirmationDocumentRecorder}. A document is only
+     * recorded once its bytes have actually been stored.</p>
+     *
+     * <p>A failure anywhere here is logged, never propagated: the customer's
+     * purchase is already confirmed and inventory already reserved, and failing
+     * the request now would make the client believe the deal did not happen. The
+     * deal stays {@code CREATED} so it can be retried.</p>
      */
-    private void generateDocument(DealConfirmationDocumentData dealData) {
+    private void generateDocument(UUID dealId, DealConfirmationDocumentData dealData) {
 
         try {
 
@@ -138,13 +144,8 @@ public class DealConfirmationService {
                 return;
             }
 
-            /*
-             * TODO document workflow:
-             *   1. store the document and keep its location on the deal,
-             *   2. move the deal to DealConfirmationStatus.CONFIRMATION_GENERATED,
-             *   3. notify the customer.
-             * All three belong to the document implementation, not here.
-             */
+            documentRecorder.record(dealId, document.storageKey());
+
             log.info(
                     "Deal confirmation document produced for deal {}: fileName={} contentType={}",
                     dealData.dealReference(),

@@ -143,6 +143,31 @@ public class DealConfirmation {
     @Column(name = "idempotency_key", length = 255)
     private String idempotencyKey;
 
+    /**
+     * Location of the generated confirmation document, relative to the
+     * configured document storage root.
+     *
+     * <p>Deliberately relative rather than absolute: an absolute path would tie
+     * this row to one host's directory layout, so moving the storage root or
+     * mounting it elsewhere in the container would leave every historical row
+     * pointing at nothing. It is resolved against the storage root when read.</p>
+     *
+     * <p>NULL means no document has been produced for this deal yet — either
+     * generation has not run, or it failed. The deal's {@link #status} is the
+     * other half of that answer.</p>
+     */
+    @Column(name = "document_path", length = 512)
+    private String documentPath;
+
+    /**
+     * When {@link #documentPath} was written.
+     *
+     * <p>Kept because "which deals are stuck waiting for a document" is a
+     * question about age, and the path alone cannot answer it.</p>
+     */
+    @Column(name = "document_generated_at")
+    private Instant documentGeneratedAt;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;
