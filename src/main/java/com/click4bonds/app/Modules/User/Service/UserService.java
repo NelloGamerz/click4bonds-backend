@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
@@ -33,6 +35,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final UserVerificationService userVerificationService;
+    private final AnalyticsService analyticsService;
 
     /**
      * Resolves the account that signs in with a phone number.
@@ -137,6 +140,16 @@ public class UserService {
         user.setOnboardingStep(onboardingStep);
 
         log.info("Updated onboarding step for user {} to {}", user.getId(), onboardingStep);
+        if (onboardingStep == OnboardingStep.COMPLETED) {
+            analyticsService.track(
+                    AnalyticsEventType.PROFILE_COMPLETE,
+                    user.getId(),
+                    null,
+                    null,
+                    "WEB",
+                    "PROFILE",
+                    java.util.Map.of());
+        }
     }
 
     /**
@@ -155,6 +168,14 @@ public class UserService {
 
         // The number itself is personal data and is never written to the log.
         log.info("Updated mobile number for user {}", user.getId());
+        analyticsService.track(
+                AnalyticsEventType.PROFILE_UPDATE,
+                user.getId(),
+                null,
+                null,
+                "WEB",
+                "PROFILE",
+                java.util.Map.of("field", "mobileNumber"));
     }
 
     /**
@@ -171,6 +192,14 @@ public class UserService {
         user.setEmail(email);
 
         log.info("Updated email for user {}", user.getId());
+        analyticsService.track(
+                AnalyticsEventType.PROFILE_UPDATE,
+                user.getId(),
+                null,
+                null,
+                "WEB",
+                "PROFILE",
+                java.util.Map.of("field", "email"));
     }
 
     /**
@@ -178,6 +207,34 @@ public class UserService {
      */
     public boolean isEmailClaimed(String email) {
         return userRepository.existsByEmail(email);
+    }
+
+    /**
+     * Creates the account a phone number signs in with.
+     *
+     * <p>No welcome email is sent here, and that is not an oversight: there is
+     * no address to send it to yet. The account has one only once the email
+     * verification step completes.</p>
+     */
+    private User createPhoneUser(String mobileNumber) {
+
+        User user = User.builder().mobileNumber(mobileNumber).onboardingStep(OnboardingStep.EMAIL_VERIFICATION).role(UserRole.CUSTOMER).status(UserStatus.ACTIVE).build();
+
+        User saved = userRepository.save(user);
+        userVerificationService.createVerification(saved);
+
+        // The identifier is logged; the number is personal data and is not.
+        log.info("Created user {} from a verified phone number", saved.getId());
+        analyticsService.track(
+                AnalyticsEventType.SIGNUP,
+                saved.getId(),
+                null,
+                null,
+                "WEB",
+                "AUTHENTICATION",
+                java.util.Map.of("method", "PHONE_OTP"));
+
+        return saved;
     }
 
     /**
