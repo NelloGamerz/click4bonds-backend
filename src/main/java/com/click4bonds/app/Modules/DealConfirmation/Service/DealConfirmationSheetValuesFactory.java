@@ -21,12 +21,18 @@ import lombok.RequiredArgsConstructor;
  * happens exactly once:</p>
  *
  * <ul>
- *   <li>the coupon is stored as a percentage and printed as a fraction
- *       ({@code 13.70} becomes {@code 0.1370});</li>
  *   <li>a quantity becomes a quantum by multiplying by the face value;</li>
  *   <li>accrued interest is stored per bond of face value 100 and printed for
  *       the whole position.</li>
  * </ul>
+ *
+ * <p><strong>The coupon rate is not converted.</strong> The letter prints it
+ * exactly as {@code Bond} stores it, a percentage, so {@code 8.80} prints as
+ * {@code 8.80} and a null prints as a blank cell rather than a zero — which
+ * would read as a zero-coupon bond. The template's coupon cell is formatted as
+ * a percentage of a <em>fraction</em>, so it is that cell's format the letter
+ * changes rather than this class that divides; see
+ * {@link DealConfirmationCellMap#numberFormats()}.</p>
  *
  * <p><strong>Refuses to build values it cannot complete.</strong> A letter
  * missing its price or its accrued interest is a legal document with a hole in
@@ -97,7 +103,7 @@ public class DealConfirmationSheetValuesFactory {
                 snapshot.maturityDate(),
                 snapshot.ipDateDescription(),
                 snapshot.previousCouponDate(),
-                couponRateFraction(snapshot.couponRate()),
+                snapshot.couponRate(),
                 snapshot.accruedDays(),
                 numberOfBonds,
                 quantum,
@@ -148,23 +154,6 @@ public class DealConfirmationSheetValuesFactory {
             throw new DocumentGenerationException(
                     "Deal " + snapshot.dealReference() + " has no value date");
         }
-    }
-
-    /**
-     * Converts the stored percentage to the fraction the letter shows.
-     *
-     * <p>{@code Bond.couponRate} holds {@code 13.70} meaning 13.70%; the template
-     * cell is formatted as a percentage and expects {@code 0.137}. A null rate
-     * prints as a blank cell rather than a zero, which would read as a
-     * zero-coupon bond.</p>
-     */
-    private BigDecimal couponRateFraction(BigDecimal couponRate) {
-
-        if (couponRate == null) {
-            return null;
-        }
-
-        return couponRate.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP);
     }
 
     private BigDecimal money(BigDecimal amount) {

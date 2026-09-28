@@ -12,9 +12,11 @@ import jakarta.validation.constraints.Size;
  * the JWT by the controller. There is deliberately no field a client could set
  * to buy on someone else's behalf.</p>
  *
- * <p>Also carries no total quantity. The server computes
- * {@code quantityPerLot * numberOfLots} — a client-supplied total could disagree
- * with the parts it is made of.</p>
+ * <p>Also carries no quantity per lot and no total quantity. The lot size
+ * belongs to the bond, so the server reads it from the bond and computes
+ * {@code bond.lotSize * numberOfLots} — a client-supplied per-lot quantity could
+ * disagree with the bond it is buying just as a client-supplied total could
+ * disagree with the parts it is made of.</p>
  */
 public record CreateDealConfirmationRequest(
 
@@ -29,10 +31,10 @@ public record CreateDealConfirmationRequest(
         @Size(max = 12, message = "ISIN must be at most 12 characters")
         String isin,
 
-        @NotNull(message = "Quantity per lot is required")
-        @Positive(message = "Quantity per lot must be greater than 0")
-        Long quantityPerLot,
-
+        /**
+         * How many lots to buy. The only quantity the caller supplies: the units
+         * in a lot come from the bond.
+         */
         @NotNull(message = "Number of lots is required")
         @Positive(message = "Number of lots must be greater than 0")
         Long numberOfLots

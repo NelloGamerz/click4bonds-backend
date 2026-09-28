@@ -49,6 +49,7 @@ public record DealConfirmationDocumentData(
         /** {@code SecurityType} name, or null when the bond has none. */
         String securityType,
 
+        /** The bond's coupon as stored, a percentage: 8.80 means 8.80%. */
         BigDecimal couponRate,
 
         LocalDate maturityDate,

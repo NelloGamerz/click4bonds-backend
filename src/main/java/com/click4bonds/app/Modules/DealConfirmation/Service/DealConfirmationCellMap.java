@@ -67,7 +67,7 @@ public class DealConfirmationCellMap {
         cells.put("C19", values.maturityDate());
         cells.put("C20", values.ipDateDescription());
         cells.put("C21", values.lastInterestPaymentDate());
-        cells.put("C22", values.couponRateFraction());
+        cells.put("C22", values.couponRate());
         cells.put("C23", values.accruedDays());
         cells.put("C24", values.numberOfBonds());
 
@@ -95,5 +95,27 @@ public class DealConfirmationCellMap {
         cells.put("D34", organisation.getBanker());
 
         return cells;
+    }
+
+    /**
+     * The cells whose template number format does not fit the value written to
+     * them.
+     *
+     * <p>Only the coupon needs one. Its cell is formatted {@code 0.00%}, which
+     * prints our value correctly only if a fraction is written to it — but the
+     * letter prints the rate exactly as {@code Bond} stores it, a percentage, so
+     * {@code 8.80} written under that format would read {@code 880.00%}. The
+     * format is replaced with a plain two-decimal number instead, and the cell
+     * prints {@code 8.80}.</p>
+     *
+     * <p>Kept here, beside the addresses, because it is a fact about the
+     * template's layout rather than about any value.</p>
+     *
+     * @return cell address to Excel number format, for the addresses that need
+     *         one
+     */
+    public Map<String, String> numberFormats() {
+
+        return Map.of("C22", "0.00");
     }
 }

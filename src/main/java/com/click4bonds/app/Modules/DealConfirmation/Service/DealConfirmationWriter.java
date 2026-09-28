@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -84,10 +85,6 @@ public class DealConfirmationWriter {
 
         String isin = normalizeIsin(request.isin());
 
-        long totalQuantity = calculateTotalQuantity(
-                request.quantityPerLot(),
-                request.numberOfLots());
-
         /*
          * Captured once. The reference, the letter's deal date and the value
          * date the accrual is measured to all have to agree, and a request
@@ -97,13 +94,6 @@ public class DealConfirmationWriter {
 
         LocalDate valueDate = dealDate.plusDays(
                 documentProperties.getDeal().getValueDateOffsetDays());
-
-        log.info(
-                "Deal creation attempt: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
-                isin,
-                request.quantityPerLot(),
-                request.numberOfLots(),
-                totalQuantity);
 
         /*
          * Loaded first so a request from an unknown or disabled account fails
@@ -115,6 +105,25 @@ public class DealConfirmationWriter {
         Bond bond = bondRepository.findByIsin(isin)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Bond not found with ISIN: " + isin));
+
+        /*
+         * The units in a lot are a property of the bond, not of the request, so
+         * they are read from the row just loaded and only the number of lots
+         * comes from the caller. This has to happen after the bond is read, which
+         * is why the total is no longer computed before any database access.
+         */
+        long quantityPerLot = resolveLotSize(bond);
+
+        long totalQuantity = calculateTotalQuantity(
+                quantityPerLot,
+                request.numberOfLots());
+
+        log.info(
+                "Deal creation attempt: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
+                isin,
+                quantityPerLot,
+                request.numberOfLots(),
+                totalQuantity);
 
         validatePurchasable(bond, totalQuantity);
 
@@ -158,6 +167,7 @@ public class DealConfirmationWriter {
                 customer,
                 reservedBond,
                 request,
+                quantityPerLot,
                 totalQuantity,
                 idempotencyKey,
                 dealDate);
@@ -249,10 +259,55 @@ public class DealConfirmationWriter {
     }
 
     /**
+     * Reads the bond's lot size as a whole number of units.
+     *
+     * <p>The lot size is stored as a {@code BigDecimal}, so it can hold a
+     * fraction, but a quantity of units cannot. Anything under half a unit
+     * rounds away and anything from half a unit up rounds up, matching the
+     * {@code HALF_UP} convention the rest of this codebase rounds money with.</p>
+     *
+     * @throws BadRequestException when the bond has no lot size, or one that is
+     *                             not a positive whole number of units. Both are
+     *                             data problems an admin has to fix: guessing a
+     *                             quantity would reserve units the bond does not
+     *                             trade in, and the deal would be wrong in a way
+     *                             nothing downstream could detect.
+     */
+    private long resolveLotSize(Bond bond) {
+
+        BigDecimal lotSize = bond.getLotSize();
+
+        if (lotSize == null) {
+            throw new BadRequestException(
+                    "Lot size has not been set for bond: " + bond.getIsin());
+        }
+
+        long units;
+
+        try {
+            units = lotSize.setScale(0, RoundingMode.HALF_UP).longValueExact();
+
+        } catch (ArithmeticException unusable) {
+
+            throw new BadRequestException(
+                    "Lot size is not a usable quantity for bond: " + bond.getIsin()
+                            + " (lot size " + lotSize + ")");
+        }
+
+        if (units <= 0) {
+            throw new BadRequestException(
+                    "Lot size must be greater than 0 for bond: " + bond.getIsin()
+                            + " (lot size " + lotSize + ")");
+        }
+
+        return units;
+    }
+
+    /**
      * @throws BadRequestException when the product of the two quantities does not
      *                             fit in a {@code long}
      */
-    private long calculateTotalQuantity(Long quantityPerLot, Long numberOfLots) {
+    private long calculateTotalQuantity(long quantityPerLot, Long numberOfLots) {
 
         try {
             return Math.multiplyExact(quantityPerLot, numberOfLots);
@@ -279,6 +334,7 @@ public class DealConfirmationWriter {
             User customer,
             Bond bond,
             CreateDealConfirmationRequest request,
+            long quantityPerLot,
             long totalQuantity,
             String idempotencyKey,
             LocalDate dealDate) {
@@ -290,7 +346,12 @@ public class DealConfirmationWriter {
                 .customer(customer)
                 .bond(bond)
                 .isin(bond.getIsin())
-                .quantityPerLot(request.quantityPerLot())
+                /*
+                 * The lot size the deal was actually struck at, resolved from the
+                 * bond above — stored rather than left to be re-derived, because
+                 * an admin editing the bond later must not restate an old deal.
+                 */
+                .quantityPerLot(quantityPerLot)
                 .numberOfLots(request.numberOfLots())
                 .totalQuantity(totalQuantity)
                 .pricePerUnit(pricePerUnit)

@@ -313,7 +313,7 @@ class DealConfirmationServiceTest {
     // ============================================================
 
     private CreateDealConfirmationRequest request() {
-        return new CreateDealConfirmationRequest(ISIN, 100L, 5L);
+        return new CreateDealConfirmationRequest(ISIN, 5L);
     }
 
     private void givenWriterCreatesDeal() {

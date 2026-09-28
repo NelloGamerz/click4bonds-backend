@@ -32,7 +32,10 @@ import lombok.extern.slf4j.Slf4j;
  * deliberately narrow: it writes the cells it is told to write and changes
  * nothing else. Styles, column widths, merged regions, the letterhead drawing
  * and the legal text all survive untouched, because the {@link CellStyle} is
- * captured from the existing cell and re-applied to the replacement.</p>
+ * captured from the existing cell and re-applied to the replacement. The one
+ * exception is opt-in and explicit: a caller may replace a single cell's number
+ * format through {@link #fill(String, Map, Map)}, for the cells where the
+ * template's format fits its own sample data but not the value we write.</p>
  *
  * <p><strong>Every other sheet is removed.</strong> A PDF conversion renders the
  * whole workbook, so leaving the sibling sheets in would staple the purchase-side
@@ -53,7 +56,7 @@ public class XlsxTemplateWriter {
     private final DocumentProperties properties;
 
     /**
-     * Fills the configured template.
+     * Fills the configured template, keeping every cell's own number format.
      *
      * @param sheetName sheet to fill; matched with surrounding whitespace
      *                  ignored, because every sheet in this workbook is named
@@ -67,6 +70,37 @@ public class XlsxTemplateWriter {
      */
     public byte[] fill(String sheetName, Map<String, Object> cells) {
 
+        return fill(sheetName, cells, Map.of());
+    }
+
+    /**
+     * Fills the configured template, replacing the number format of some cells.
+     *
+     * <p>The template's own formats are what make its values readable, and every
+     * cell that is not named in {@code numberFormats} keeps the one it has. An
+     * override is for the cells where the template's format suits the sample
+     * data it was saved with but not the value this application writes.</p>
+     *
+     * <p>Only the data format is replaced. The cell's remaining style — the
+     * borders and alignment the letter is laid out with — is cloned from the
+     * template, so an override cannot strip the layout.</p>
+     *
+     * @param sheetName     sheet to fill, as above
+     * @param cells         cell address to value, as above
+     * @param numberFormats cell address to an Excel number format, e.g.
+     *                      {@code "0.00"}. Addresses absent from the map keep
+     *                      the template's format. For numeric cells only: a date
+     *                      needs a date format to be written at all
+     * @return the filled workbook
+     * @throws DocumentGenerationException when the template is missing, the
+     *                                     sheet does not exist, or a value
+     *                                     cannot be written
+     */
+    public byte[] fill(
+            String sheetName,
+            Map<String, Object> cells,
+            Map<String, String> numberFormats) {
+
         String templatePath = properties.getTemplate().getPath();
 
         try (InputStream template = open(templatePath);
@@ -76,7 +110,7 @@ public class XlsxTemplateWriter {
 
             keepOnly(workbook, sheet);
 
-            writeAll(workbook, sheet, cells);
+            writeAll(workbook, sheet, cells, numberFormats);
 
             return toBytes(workbook);
 
@@ -174,7 +208,11 @@ public class XlsxTemplateWriter {
         workbook.setSelectedTab(index);
     }
 
-    private void writeAll(Workbook workbook, Sheet sheet, Map<String, Object> cells) {
+    private void writeAll(
+            Workbook workbook,
+            Sheet sheet,
+            Map<String, Object> cells,
+            Map<String, String> numberFormats) {
 
         if (cells == null || cells.isEmpty()) {
 
@@ -185,7 +223,12 @@ public class XlsxTemplateWriter {
 
         for (Map.Entry<String, Object> entry : cells.entrySet()) {
 
-            write(workbook, sheet, entry.getKey(), entry.getValue());
+            write(
+                    workbook,
+                    sheet,
+                    entry.getKey(),
+                    entry.getValue(),
+                    numberFormats.get(entry.getKey()));
         }
     }
 
@@ -199,7 +242,12 @@ public class XlsxTemplateWriter {
      * cells is meant to prevent. Re-creating the cell removes any formula and any
      * stale cached result unambiguously.</p>
      */
-    private void write(Workbook workbook, Sheet sheet, String address, Object value) {
+    private void write(
+            Workbook workbook,
+            Sheet sheet,
+            String address,
+            Object value,
+            String numberFormat) {
 
         CellReference reference;
 
@@ -220,7 +268,11 @@ public class XlsxTemplateWriter {
         }
 
         Cell existing = row.getCell(reference.getCol());
-        CellStyle style = existing == null ? null : existing.getCellStyle();
+
+        CellStyle style = styleFor(
+                workbook,
+                existing == null ? null : existing.getCellStyle(),
+                numberFormat);
 
         if (existing != null) {
             row.removeCell(existing);
@@ -233,6 +285,39 @@ public class XlsxTemplateWriter {
         }
 
         applyValue(workbook, cell, address, value, style);
+    }
+
+    /**
+     * Works out the style a re-created cell should carry.
+     *
+     * <p>With no override this is simply the template's own style, re-applied
+     * because re-creating the cell to shed its formula also sheds its style.</p>
+     *
+     * <p>With an override the template's style is <em>cloned</em> and only the
+     * data format replaced. A fresh style carrying just the new format would
+     * drop the borders and alignment the letter is laid out with, and mutating
+     * the template's style in place would change every other cell that shares
+     * it.</p>
+     */
+    private CellStyle styleFor(
+            Workbook workbook,
+            CellStyle inherited,
+            String numberFormat) {
+
+        if (numberFormat == null) {
+            return inherited;
+        }
+
+        CellStyle overridden = workbook.createCellStyle();
+
+        if (inherited != null) {
+            overridden.cloneStyleFrom(inherited);
+        }
+
+        overridden.setDataFormat(
+                workbook.createDataFormat().getFormat(numberFormat));
+
+        return overridden;
     }
 
     private void applyValue(

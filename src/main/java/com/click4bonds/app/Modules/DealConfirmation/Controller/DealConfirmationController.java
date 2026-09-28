@@ -52,7 +52,8 @@ public class DealConfirmationController {
     /**
      * Buys a bond.
      *
-     * @param request        bond and quantities; the total is calculated server side
+     * @param request        bond and number of lots; the per-lot quantity is read
+     *                       from the bond and the total is calculated server side
      * @param idempotencyKey optional key that makes a retry safe. A client that
      *                       may retry (double click, flaky mobile connection)
      *                       should send a fresh value per intended purchase and

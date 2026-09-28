@@ -50,7 +50,8 @@ document:
     # environment without LibreOffice, not a failure.
     enabled: ${DOCUMENT_PDF_ENABLED:true}
     # Absolute path, or a bare name resolved from PATH.
-    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
+#    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
+    soffice-path: ${DOCUMENT_SOFFICE_PATH:C:/Program Files/LibreOffice/program/soffice.exe}
     # A hung engine must not hold an HTTP request open indefinitely.
     timeout: ${DOCUMENT_SOFFICE_TIMEOUT:30s}
     # Each conversion is a separate process taking a few hundred megabytes, and

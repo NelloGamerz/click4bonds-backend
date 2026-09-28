@@ -67,7 +67,8 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
 
         byte[] xlsx = templateWriter.fill(
                 properties.getTemplate().getSheetName(),
-                cells);
+                cells,
+                cellMap.numberFormats());
 
         String xlsxKey = stem + "." + DocumentFormat.XLSX.extension();
 

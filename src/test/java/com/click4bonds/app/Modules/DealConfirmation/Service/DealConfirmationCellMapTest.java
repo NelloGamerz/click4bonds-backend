@@ -50,7 +50,7 @@ class DealConfirmationCellMapTest {
         assertEquals(LocalDate.of(2027, 8, 23), cells.get("C19"));
         assertEquals("23rd Of Every Month", cells.get("C20"));
         assertEquals(LocalDate.of(2026, 7, 23), cells.get("C21"));
-        assertEquals(new BigDecimal("0.137000"), cells.get("C22"));
+        assertEquals(new BigDecimal("13.70"), cells.get("C22"));
         assertEquals(64L, cells.get("C23"));
         assertEquals(11L, cells.get("C24"));
     }
@@ -153,6 +153,27 @@ class DealConfirmationCellMapTest {
         assertEquals("Counterparty Name- Test Customer", cells.get("C39"));
     }
 
+    @Test
+    void overridesTheNumberFormatOfTheCellsWhoseTemplateFormatDoesNotFit() {
+
+        /*
+         * The coupon cell is formatted 0.00% in the template, which prints our
+         * value correctly only if a fraction is written to it. We print the rate
+         * as Bond stores it, a percentage, so the format has to be replaced —
+         * without this, 8.80 prints as 880.00%.
+         */
+        assertEquals("0.00", cellMap.numberFormats().get("C22"));
+
+        /*
+         * Nothing else is overridden: every other cell's value matches the format
+         * the template already gives it.
+         */
+        assertEquals(
+                java.util.Set.of("C22"),
+                cellMap.numberFormats().keySet(),
+                "only the coupon cell should need a format override");
+    }
+
     // =========================================================
     // FIXTURES
     // =========================================================
@@ -173,7 +194,7 @@ class DealConfirmationCellMapTest {
                 LocalDate.of(2027, 8, 23),
                 "23rd Of Every Month",
                 LocalDate.of(2026, 7, 23),
-                new BigDecimal("0.137000"),
+                new BigDecimal("13.70"),
                 64L,
                 11L,
                 new BigDecimal("1100.00"),

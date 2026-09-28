@@ -9,8 +9,8 @@ import java.time.LocalDate;
  * <p>Separate from the cell map so the arithmetic can be read and tested without
  * a spreadsheet address in sight, and so a template revision that moves a cell
  * does not touch the maths. Every money field is already rounded and in the unit
- * the letter shows — the coupling of quantity, face value and rate happens once,
- * in the factory.</p>
+ * the letter shows — the coupling of quantity, face value and accrual happens
+ * once, in the factory.</p>
  *
  * @param letterDate              date printed at the top of the letter
  * @param dealReference           our reference for the deal
@@ -25,7 +25,8 @@ import java.time.LocalDate;
  * @param maturityDate            the bond's maturity, or null when perpetual
  * @param ipDateDescription       the bond's raw interest-payment description
  * @param lastInterestPaymentDate last coupon date before the value date
- * @param couponRateFraction      coupon as a fraction: 13.70% prints as 0.1370
+ * @param couponRate              the bond's coupon as stored, a percentage:
+ *                                8.80 prints as 8.80
  * @param accruedDays             days of interest accrued at settlement
  * @param numberOfBonds           quantity bought
  * @param quantum                 face value of the position
@@ -48,7 +49,7 @@ public record DealConfirmationSheetValues(
         LocalDate maturityDate,
         String ipDateDescription,
         LocalDate lastInterestPaymentDate,
-        BigDecimal couponRateFraction,
+        BigDecimal couponRate,
         Long accruedDays,
         Long numberOfBonds,
         BigDecimal quantum,

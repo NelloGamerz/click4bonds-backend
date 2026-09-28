@@ -107,8 +107,8 @@ class DealConfirmationConcurrencyTest {
         CyclicBarrier startTogether = new CyclicBarrier(2);
 
         List<Callable<String>> requests = List.of(
-                attempt(startTogether, writer, 100L, 7L), // 700 units
-                attempt(startTogether, writer, 100L, 5L)); // 500 units
+                attempt(startTogether, writer, 7L), // 7 lots of 100 = 700 units
+                attempt(startTogether, writer, 5L)); // 5 lots of 100 = 500 units
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
 
@@ -163,7 +163,7 @@ class DealConfirmationConcurrencyTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(userId, request(100L, 11L), null)); // 1100 units
+                () -> writer.create(userId, request(11L), null)); // 11 lots of 100 = 1100 units
 
         assertEquals(1000L, inventory.remaining(), "a rejected request reserves nothing");
         assertEquals(0, inventory.reservationsGranted());
@@ -190,7 +190,6 @@ class DealConfirmationConcurrencyTest {
     private Callable<String> attempt(
             CyclicBarrier startTogether,
             DealConfirmationWriter writer,
-            long quantityPerLot,
             long numberOfLots) {
 
         return () -> {
@@ -201,7 +200,7 @@ class DealConfirmationConcurrencyTest {
             try {
                 writer.create(
                         userId,
-                        new CreateDealConfirmationRequest(ISIN, quantityPerLot, numberOfLots),
+                        new CreateDealConfirmationRequest(ISIN, numberOfLots),
                         null);
 
                 return "SUCCESS";
@@ -212,8 +211,8 @@ class DealConfirmationConcurrencyTest {
         };
     }
 
-    private CreateDealConfirmationRequest request(long quantityPerLot, long numberOfLots) {
-        return new CreateDealConfirmationRequest(ISIN, quantityPerLot, numberOfLots);
+    private CreateDealConfirmationRequest request(long numberOfLots) {
+        return new CreateDealConfirmationRequest(ISIN, numberOfLots);
     }
 
     private void stubCustomer() {
@@ -319,6 +318,7 @@ class DealConfirmationConcurrencyTest {
                     .isin(ISIN)
                     .status(BondStatus.ACTIVE)
                     .remainingQuantity(remaining.get())
+                    .lotSize(new BigDecimal("100"))
                     .price(new BigDecimal("98.94"))
                     .build();
         }

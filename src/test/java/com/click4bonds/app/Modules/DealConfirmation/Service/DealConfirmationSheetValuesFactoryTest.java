@@ -117,16 +117,18 @@ class DealConfirmationSheetValuesFactoryTest {
     // =========================================================
 
     @Test
-    void printsTheCouponAsAFractionNotAPercentage() {
+    void printsTheCouponExactlyAsTheBondStoresIt() {
 
         /*
-         * Bond.couponRate holds 13.70 meaning 13.70%. The cell is formatted as a
-         * percentage, so it expects 0.137. Writing 13.70 into it would print
-         * 1370%.
+         * Bond.couponRate holds 13.70 meaning 13.70%, and the letter prints that
+         * number as it stands. Nothing is divided by 100 here: the template's
+         * coupon cell is formatted as a percentage of a fraction, and it is that
+         * cell's format the cell map overrides rather than this class that
+         * converts the value.
          */
         DealConfirmationSheetValues values = factory.build(snapshot());
 
-        assertEquals(new BigDecimal("0.137000"), values.couponRateFraction());
+        assertEquals(new BigDecimal("13.70"), values.couponRate());
     }
 
     @Test
@@ -139,7 +141,7 @@ class DealConfirmationSheetValuesFactoryTest {
         DealConfirmationSheetValues values = factory.build(
                 snapshotWith(builder -> builder.couponRate(null)));
 
-        assertNull(values.couponRateFraction());
+        assertNull(values.couponRate());
     }
 
     // =========================================================

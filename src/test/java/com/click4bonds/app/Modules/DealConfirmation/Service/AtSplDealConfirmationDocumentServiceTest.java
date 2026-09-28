@@ -141,7 +141,10 @@ class AtSplDealConfirmationDocumentServiceTest {
          * sheets. If the configured name were wrong the fill would throw, but
          * asserting the wiring here makes a config regression obvious.
          */
-        verify(templateWriter).fill(eq(properties.getTemplate().getSheetName()), anyMap());
+        verify(templateWriter).fill(
+                eq(properties.getTemplate().getSheetName()),
+                anyMap(),
+                anyMap());
     }
 
     // =========================================================
@@ -181,7 +184,7 @@ class AtSplDealConfirmationDocumentServiceTest {
     @Test
     void storesNothingWhenTheSpreadsheetCannotBeFilled() {
 
-        when(templateWriter.fill(anyString(), any()))
+        when(templateWriter.fill(anyString(), any(), any()))
                 .thenThrow(new DocumentGenerationException("template is missing"));
 
         assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
@@ -265,7 +268,7 @@ class AtSplDealConfirmationDocumentServiceTest {
 
     private void givenTheSpreadsheetIsFilled() {
 
-        when(templateWriter.fill(anyString(), any())).thenReturn(XLSX);
+        when(templateWriter.fill(anyString(), any(), any())).thenReturn(XLSX);
     }
 
     private void givenThePdfRenders() {

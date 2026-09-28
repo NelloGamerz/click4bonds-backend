@@ -99,7 +99,7 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.create(USER_ID, request(100L, 5L), null);
+                writer.create(USER_ID, request(5L), null);
 
         assertEquals("DC-20260922-000001", created.response().getDealReference());
         assertEquals(ISIN, created.response().getIsin());
@@ -132,7 +132,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000001");
         givenSaveReturnsItsArgument();
 
-        writer.create(USER_ID, request(100L, 5L), "key-1");
+        writer.create(USER_ID, request(5L), "key-1");
 
         Mockito.verify(dealConfirmationRepository).save(
                 Mockito.argThat(deal -> "key-1".equals(deal.getIdempotencyKey())));
@@ -149,7 +149,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000002");
         givenSaveReturnsItsArgument();
 
-        writer.create(USER_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(5L), null);
 
         assertEquals(0L, reserved.getRemainingQuantity());
         assertEquals(BondStatus.SOLD_OUT, reserved.getStatus());
@@ -168,7 +168,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000003");
         givenSaveReturnsItsArgument();
 
-        writer.create(USER_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(5L), null);
 
         assertEquals(BondStatus.ACTIVE, bond.getStatus());
 
@@ -188,7 +188,7 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.create(USER_ID, request(100L, 5L), null);
+                writer.create(USER_ID, request(5L), null);
 
         /*
          * An unknown price must not be recorded as a free purchase.
@@ -210,10 +210,117 @@ class DealConfirmationWriterTest {
 
         writer.create(
                 USER_ID,
-                new CreateDealConfirmationRequest("ine123a01016", 100L, 5L),
+                new CreateDealConfirmationRequest("ine123a01016", 5L),
                 null);
 
         Mockito.verify(bondRepository).findByIsin(ISIN);
+    }
+
+    // ============================================================
+    // LOT SIZE
+    // ============================================================
+
+    @Test
+    void takesTheLotSizeFromTheBondRatherThanTheRequest() {
+
+        /*
+         * The caller sends lots only. A client that believed a lot was 10 units
+         * must not be able to reserve 50 when the bond trades in lots of 100 —
+         * the bond is the only authority on its own lot size.
+         */
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        givenActiveCustomer();
+        givenBond(bond);
+        givenReservationSucceeds(bond, 500L);
+        givenReference("DC-20260922-000008");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.create(USER_ID, request(5L), null);
+
+        assertEquals(100L, created.response().getQuantityPerLot());
+        assertEquals(5L, created.response().getNumberOfLots());
+        assertEquals(500L, created.response().getTotalQuantity());
+
+        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 500L);
+    }
+
+    @Test
+    void roundsAFractionalLotSizeUpFromAHalfUnit() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+        bond.setLotSize(new BigDecimal("100.5"));
+
+        givenActiveCustomer();
+        givenBond(bond);
+        givenReservationSucceeds(bond, 505L);
+        givenReference("DC-20260922-000009");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.create(USER_ID, request(5L), null);
+
+        // 100.5 rounds half-up to 101 units, so five lots are 505.
+        assertEquals(101L, created.response().getQuantityPerLot());
+        assertEquals(505L, created.response().getTotalQuantity());
+
+        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 505L);
+    }
+
+    @Test
+    void roundsAFractionalLotSizeDownBelowAHalfUnit() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+        bond.setLotSize(new BigDecimal("100.4"));
+
+        givenActiveCustomer();
+        givenBond(bond);
+        givenReservationSucceeds(bond, 500L);
+        givenReference("DC-20260922-000010");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.create(USER_ID, request(5L), null);
+
+        assertEquals(100L, created.response().getQuantityPerLot());
+        assertEquals(500L, created.response().getTotalQuantity());
+    }
+
+    @Test
+    void rejectsBondWithoutALotSize() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+        bond.setLotSize(null);
+
+        givenActiveCustomer();
+        givenBond(bond);
+
+        assertThrows(
+                BadRequestException.class,
+                () -> writer.create(USER_ID, request(5L), null));
+
+        Mockito.verify(bondRepository, Mockito.never())
+                .reserveQuantity(any(), anyLong());
+        Mockito.verify(dealConfirmationRepository, Mockito.never())
+                .save(any());
+    }
+
+    @Test
+    void rejectsBondWithANonPositiveLotSize() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+        bond.setLotSize(BigDecimal.ZERO);
+
+        givenActiveCustomer();
+        givenBond(bond);
+
+        assertThrows(
+                BadRequestException.class,
+                () -> writer.create(USER_ID, request(5L), null));
+
+        Mockito.verify(bondRepository, Mockito.never())
+                .reserveQuantity(any(), anyLong());
     }
 
     // ============================================================
@@ -223,15 +330,25 @@ class DealConfirmationWriterTest {
     @Test
     void rejectsTotalQuantityThatOverflows() {
 
+        /*
+         * An absurd lot size times an absurd number of lots. Both factors are
+         * positive, so this is an absurd order rather than a malformed one, and
+         * it must not wrap around into a small number and reserve the wrong
+         * quantity.
+         */
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+        bond.setLotSize(BigDecimal.valueOf(Long.MAX_VALUE));
+
+        givenActiveCustomer();
+        givenBond(bond);
+
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(
-                        USER_ID,
-                        request(Long.MAX_VALUE, 2L),
-                        null));
+                () -> writer.create(USER_ID, request(2L), null));
 
-        // Nothing was read, reserved or written.
-        Mockito.verifyNoInteractions(bondRepository);
+        // The guard fires before any inventory moves or any row is written.
+        Mockito.verify(bondRepository, Mockito.never())
+                .reserveQuantity(any(), anyLong());
         Mockito.verifyNoInteractions(dealConfirmationRepository);
     }
 
@@ -248,7 +365,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ResourceNotFoundException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -266,7 +383,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -284,7 +401,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -300,7 +417,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 BadRequestException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
                 .reserveQuantity(any(), anyLong());
@@ -322,7 +439,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         // The row was never even asked to give up units.
         Mockito.verify(bondRepository, Mockito.never())
@@ -349,7 +466,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ConflictException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
@@ -371,7 +488,7 @@ class DealConfirmationWriterTest {
         givenReference("DC-20260922-000006");
         givenSaveReturnsItsArgument();
 
-        writer.create(USER_ID, request(100L, 5L), null);
+        writer.create(USER_ID, request(5L), null);
 
         InOrder order = Mockito.inOrder(bondRepository, dealConfirmationRepository);
 
@@ -394,7 +511,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         /*
          * The exception escapes the @Transactional boundary, which is what makes
@@ -420,7 +537,7 @@ class DealConfirmationWriterTest {
 
         assertThrows(
                 ForbiddenException.class,
-                () -> writer.create(USER_ID, request(100L, 5L), null));
+                () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verifyNoInteractions(bondRepository);
     }
@@ -429,10 +546,14 @@ class DealConfirmationWriterTest {
     // FIXTURES
     // ============================================================
 
-    private CreateDealConfirmationRequest request(long quantityPerLot, long numberOfLots) {
-        return new CreateDealConfirmationRequest(ISIN, quantityPerLot, numberOfLots);
+    private CreateDealConfirmationRequest request(long numberOfLots) {
+        return new CreateDealConfirmationRequest(ISIN, numberOfLots);
     }
 
+    /**
+     * The lot size lived on the request until it moved onto the bond, so the
+     * fixture carries it now: every quantity in this class is 100 units a lot.
+     */
     private Bond bond(BondStatus status, Long remainingQuantity) {
 
         return Bond.builder()
@@ -441,6 +562,7 @@ class DealConfirmationWriterTest {
                 .isin(ISIN)
                 .status(status)
                 .remainingQuantity(remainingQuantity)
+                .lotSize(new BigDecimal("100"))
                 .price(new BigDecimal("98.94"))
                 .build();
     }
@@ -473,7 +595,13 @@ class DealConfirmationWriterTest {
      */
     private Bond givenReservationSucceeds(Bond bond, long remainingAfter) {
 
-        Mockito.when(bondRepository.reserveQuantity(bond.getId(), 500L))
+        /*
+         * Matches any quantity on purpose: the tests that care which quantity was
+         * reserved assert it with an explicit verify after the call. Stubbing a
+         * fixed 500L here would silently return 0 — and so a ConflictException —
+         * for the cases that reserve something else.
+         */
+        Mockito.when(bondRepository.reserveQuantity(bond.getId(), anyLong()))
                 .thenReturn(1);
 
         Bond afterReservation = bond(bond.getStatus(), remainingAfter);

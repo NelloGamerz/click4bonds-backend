@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import java.io.ByteArrayInputStream;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -315,10 +316,12 @@ class XlsxTemplateWriterTest {
          * These formats are what make the values readable, and two of them are
          * what make the units correct:
          *
-         *   C22 is 0.00%, so writing the coupon as a FRACTION (0.137) prints
-         *   "13.70%" while writing the stored percentage (13.70) would print
-         *   "1370.00%". That conversion is the whole reason
-         *   DealConfirmationSheetValuesFactory divides by 100.
+         *   C22 is 0.00%, which prints a FRACTION as a percentage: 0.137 reads
+         *   "13.70%". This application writes the rate as Bond stores it, a
+         *   percentage, so the letter overrides this one cell's format rather
+         *   than dividing the value by 100 — see
+         *   replacesTheNumberFormatOfACellTheCallerNames. Left alone, writing
+         *   13.70 here would print "1370.00%".
          *
          *   C14/C15/C19/C21 are date formats, so a date written without one
          *   prints as a serial number.
@@ -339,6 +342,43 @@ class XlsxTemplateWriterTest {
             for (String money : new String[] { "C26", "C27" }) {
                 assertEquals("0.00", format(sheet, money), money + " should print to the paisa");
             }
+        }
+    }
+
+    @Test
+    void replacesTheNumberFormatOfACellTheCallerNames() throws Exception {
+
+        /*
+         * The coupon cell is formatted 0.00%, which suits a fraction. The letter
+         * writes the rate as Bond stores it — a percentage, here 8.80 — so it
+         * asks for a plain two-decimal format instead. Without this the stored
+         * rate would print as 880.00%.
+         */
+        Map<String, Object> cells = dealCells();
+        cells.put("C22", new BigDecimal("8.80"));
+
+        byte[] filled = writer.fill(SHEET, cells, Map.of("C22", "0.00"));
+
+        try (Workbook workbook = open(filled)) {
+
+            Sheet sheet = onlySheet(workbook);
+
+            assertEquals("0.00", format(sheet, "C22"), "the override should replace the format");
+            assertEquals(
+                    8.80d,
+                    cell(sheet, "C22").getNumericCellValue(),
+                    0.0001,
+                    "the rate should be written unchanged, not scaled");
+            assertTrue(
+                    cell(sheet, "C22").getCellStyle() != null,
+                    "the rest of the template's style should survive the override");
+
+            /*
+             * D22 shares the coupon row and is formatted 0.00% too. It must keep
+             * that format: the override clones the template's style rather than
+             * mutating it, so it cannot leak onto a cell the caller never named.
+             */
+            assertEquals("0.00%", format(sheet, "D22"), "an override must not leak sideways");
         }
     }
 

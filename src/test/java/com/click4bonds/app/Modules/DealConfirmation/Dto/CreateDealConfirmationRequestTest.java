@@ -16,9 +16,10 @@ import jakarta.validation.ValidatorFactory;
  * Bean validation on the create-deal request.
  *
  * <p>Covers the cases the API contract promises to reject before any bond is
- * looked at: a missing ISIN, a non-positive lot quantity, a non-positive number
- * of lots. The service additionally guards the product of the two, which bean
- * validation cannot express.</p>
+ * looked at: a missing ISIN and a non-positive number of lots. There is no
+ * per-lot quantity to validate — the lot size comes from the bond, and the
+ * service guards the product of it and the lot count, which bean validation
+ * cannot express.</p>
  */
 class CreateDealConfirmationRequestTest {
 
@@ -43,14 +44,14 @@ class CreateDealConfirmationRequestTest {
     @Test
     void acceptsAWellFormedRequest() {
 
-        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 100L, 5L))
+        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 5L))
                 .isEmpty());
     }
 
     @Test
-    void acceptsTheMinimumPositiveQuantities() {
+    void acceptsTheMinimumNumberOfLots() {
 
-        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 1L, 1L))
+        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 1L))
                 .isEmpty());
     }
 
@@ -61,68 +62,50 @@ class CreateDealConfirmationRequestTest {
     @Test
     void rejectsMissingIsin() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest(null, 100L, 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest(null, 5L)));
     }
 
     @Test
     void rejectsBlankIsin() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest("   ", 100L, 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest("   ", 5L)));
     }
 
     @Test
     void rejectsIsinLongerThanTheBondApiAllows() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest("INE123A01016X", 100L, 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest("INE123A01016X", 5L)));
     }
 
     // ============================================================
-    // QUANTITIES
+    // NUMBER OF LOTS
     // ============================================================
-
-    @Test
-    void rejectsZeroQuantityPerLot() {
-
-        assertTrue(rejects("quantityPerLot", new CreateDealConfirmationRequest("INE123A01016", 0L, 5L)));
-    }
-
-    @Test
-    void rejectsNegativeQuantityPerLot() {
-
-        assertTrue(rejects("quantityPerLot", new CreateDealConfirmationRequest("INE123A01016", -1L, 5L)));
-    }
-
-    @Test
-    void rejectsMissingQuantityPerLot() {
-
-        assertTrue(rejects("quantityPerLot", new CreateDealConfirmationRequest("INE123A01016", null, 5L)));
-    }
 
     @Test
     void rejectsZeroLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 100L, 0L)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 0L)));
     }
 
     @Test
     void rejectsNegativeLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 100L, -5L)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", -5L)));
     }
 
     @Test
     void rejectsMissingNumberOfLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 100L, null)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", null)));
     }
 
     @Test
     void reportsEveryBrokenFieldAtOnce() {
 
         Set<ConstraintViolation<CreateDealConfirmationRequest>> violations =
-                violationsOf(new CreateDealConfirmationRequest("", 0L, 0L));
+                violationsOf(new CreateDealConfirmationRequest("", 0L));
 
-        assertEquals(3, violations.size());
+        assertEquals(2, violations.size());
     }
 
     // ============================================================
