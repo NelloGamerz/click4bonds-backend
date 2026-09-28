@@ -223,4 +223,104 @@ class AuthEndpointTest {
                         .content("{\"phone\":\"+919999999999\",\"otp\":\"123456\"}"))
                 .andExpect(status().isBadRequest());
     }
+
+    // ------------------------------------------------------------------
+    // Sign-up endpoint validation
+    //
+    // Every body below is rejected before the controller runs, so none of
+    // these tests writes anything — which is what lets them sit in a context
+    // wired to real infrastructure.
+    // ------------------------------------------------------------------
+
+    /**
+     * A complete, valid sign-up body.
+     *
+     * <p>One line on purpose: the tests below derive their bodies from it by
+     * substitution, and a multi-line literal would make the whitespace in each
+     * replacement a thing to get right rather than a thing to ignore.</p>
+     */
+    private static final String VALID_SIGNUP =
+            "{\"firstName\":\"Karan\","
+                    + "\"lastName\":\"Pareek\","
+                    + "\"mobileNumber\":\"+919876543210\","
+                    + "\"ageRange\":\"AGE_31_40\","
+                    + "\"userType\":\"INDIVIDUAL_RESIDENT\","
+                    + "\"preferredCommunicationLanguage\":\"ENGLISH\","
+                    + "\"whatsappCommunicationConsent\":true,"
+                    + "\"termsAccepted\":true}";
+
+    private void signupExpectingBadRequest(String body) throws Exception {
+
+        mockMvc.perform(post("/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isBadRequest());
+
+        // Refused before the controller ran, so no account was written and no
+        // message was sent.
+        org.mockito.Mockito.verifyNoInteractions(smsService);
+    }
+
+    @Test
+    void signupRejectsAnEmptyBody() throws Exception {
+        signupExpectingBadRequest("{}");
+    }
+
+    @Test
+    void signupRejectsAMissingName() throws Exception {
+        signupExpectingBadRequest(VALID_SIGNUP.replace("\"Pareek\"", "null"));
+    }
+
+    @Test
+    void signupRejectsANameThatIsNotAName() throws Exception {
+        signupExpectingBadRequest(VALID_SIGNUP.replace("\"Karan\"", "\"K4r4n\""));
+    }
+
+    @Test
+    void signupRejectsAMalformedNumber() throws Exception {
+        signupExpectingBadRequest(VALID_SIGNUP.replace("+919876543210", "12"));
+    }
+
+    @Test
+    void signupRejectsAMissingAgeRange() throws Exception {
+        signupExpectingBadRequest(VALID_SIGNUP.replace("AGE_31_40", "null"));
+    }
+
+    @Test
+    void signupRejectsAnUnknownEnumValue() throws Exception {
+
+        // The deserialiser refuses this before validation runs, which is why
+        // the handler for an unreadable body exists at all: without it, this
+        // would be reported as a server fault rather than a bad request.
+        signupExpectingBadRequest(VALID_SIGNUP.replace("AGE_31_40", "AGE_99_100"));
+    }
+
+    @Test
+    void signupRejectsAMissingConsent() throws Exception {
+
+        // Null rather than false: a consent that was not answered is not a
+        // consent that was refused.
+        signupExpectingBadRequest(
+                VALID_SIGNUP.replace("Consent\":true", "Consent\":null"));
+    }
+
+    @Test
+    void signupRejectsUnacceptedTerms() throws Exception {
+        signupExpectingBadRequest(
+                VALID_SIGNUP.replace("termsAccepted\":true", "termsAccepted\":false"));
+    }
+
+    @Test
+    void signupRejectsAnOmittedTermsField() throws Exception {
+
+        // Omission rather than refusal, which only @AssertTrue's companion
+        // @NotNull catches — an assertion on its own passes on a missing value.
+        signupExpectingBadRequest(
+                VALID_SIGNUP.replace(",\"termsAccepted\":true", ""));
+    }
+
+    @Test
+    void signupRejectsABodyThatIsNotJson() throws Exception {
+        signupExpectingBadRequest("not json at all");
+    }
 }

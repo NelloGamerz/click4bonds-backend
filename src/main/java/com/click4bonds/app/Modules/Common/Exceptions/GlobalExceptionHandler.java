@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -81,6 +82,34 @@ public class GlobalExceptionHandler {
                                                                 ex.getMessage()));
         }
 
+        /**
+         * Handles a body that could not be read at all.
+         *
+         * <p>Reached before bean validation runs, so it covers what the
+         * annotations cannot: JSON that is not well-formed, a body of the wrong
+         * shape, and a value outside an enum — an unknown {@code ageRange}, for
+         * instance, is rejected by the deserialiser rather than by a constraint.
+         * Without this, all of those would fall through to the catch-all below
+         * and be reported as a server fault when the fault is the caller's.</p>
+         *
+         * <p>The parser's own message is not passed on. It describes the
+         * internal shape of the target type, which is not something the caller
+         * asked about and not something to hand out.</p>
+         */
+        @ExceptionHandler(HttpMessageNotReadableException.class)
+        public ResponseEntity<ApiError> handleUnreadableBody(
+                        HttpMessageNotReadableException ex) {
+
+                log.warn("Request body could not be read: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .badRequest()
+                                .body(
+                                                new ApiError(
+                                                                "MALFORMED_BODY",
+                                                                "The request body could not be read. Check that every field is present and holds an allowed value."));
+        }
+
         @ExceptionHandler(MethodArgumentNotValidException.class)
         public ResponseEntity<ApiError> handleValidation(
                         MethodArgumentNotValidException ex) {
@@ -104,10 +133,18 @@ public class GlobalExceptionHandler {
         }
 
         /**
-         * Handles database constraint violations.
+         * Handles database constraint violations that no service turned into a
+         * clearer answer of its own.
          *
-         * This is particularly important for the unique email
-         * constraint on contact inquiries.
+         * <p>Worded without naming a table or a column, because it is a
+         * fallback: the caller is told their details collide with something
+         * that already exists, and nothing about the schema. A service that
+         * knows which constraint it hit — the contact inquiry flow does —
+         * catches the violation and says something more useful instead.</p>
+         *
+         * <p>Expected to be reached most often by two sign-ups racing for the
+         * same phone number, where the unique index is the thing that actually
+         * decides it.</p>
          */
         @ExceptionHandler(DataIntegrityViolationException.class)
         public ResponseEntity<ApiError> handleDataIntegrityViolation(
@@ -122,7 +159,7 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 new ApiError(
                                                                 "CONFLICT",
-                                                                "A contact request has already been submitted for this email address."));
+                                                                "These details conflict with a record that already exists."));
         }
 
         /**

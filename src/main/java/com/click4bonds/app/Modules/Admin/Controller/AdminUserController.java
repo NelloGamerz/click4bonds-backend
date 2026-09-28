@@ -71,7 +71,7 @@ public class AdminUserController {
         }
 
         @PatchMapping("/{id}/role")
-        public ResponseEntity<User> updateRole(
+        public ResponseEntity<AdminUserDetailsResponse> updateRole(
                         @PathVariable UUID id,
                         @RequestParam UserRole role) {
 

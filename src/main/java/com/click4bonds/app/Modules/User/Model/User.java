@@ -3,12 +3,9 @@ package com.click4bonds.app.Modules.User.Model;
 import java.time.Instant;
 import java.util.UUID;
 
+import com.click4bonds.app.Modules.User.Enums.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
-import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
-import com.click4bonds.app.Modules.User.Enums.UserRole;
-import com.click4bonds.app.Modules.User.Enums.UserStatus;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -39,11 +36,7 @@ import lombok.Setter;
  * the point of this class's current shape.</p>
  */
 @Entity
-@Table(name = "users", indexes = {
-        @Index(name = "idx_user_email", columnList = "email", unique = true),
-        @Index(name = "idx_user_mobile_number", columnList = "mobileNumber", unique = true),
-        @Index(name = "idx_user_role", columnList = "role")
-})
+@Table(name = "users", indexes = {@Index(name = "idx_user_email", columnList = "email", unique = true), @Index(name = "idx_user_mobile_number", columnList = "mobileNumber", unique = true), @Index(name = "idx_user_role", columnList = "role")})
 // @Data
 @Getter
 @Setter
@@ -120,6 +113,26 @@ public class User {
     @Column(name = "is_kyc_completed", nullable = false)
     @Builder.Default
     private Boolean isKycCompleted = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "age_range")
+    private AgeRange ageRange;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "user_type")
+    private UserType userType;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_communication_language")
+    private CommunicationLanguage preferredCommunicationLanguage;
+
+    @Column(name = "whatsapp_communication_consent", nullable = false)
+    @Builder.Default
+    private Boolean whatsappCommunicationConsent = false;
+
+    @Column(name = "terms_accepted", nullable = false)
+    @Builder.Default
+    private Boolean termsAccepted = false;
 
     @CreationTimestamp
     @Column(updatable = false)
