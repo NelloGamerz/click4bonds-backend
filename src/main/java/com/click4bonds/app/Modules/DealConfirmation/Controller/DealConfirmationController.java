@@ -1,0 +1,122 @@
+package com.click4bonds.app.Modules.DealConfirmation.Controller;
+
+import java.util.UUID;
+
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentReader;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
+
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * Deal confirmation API.
+ *
+ * <p>Follows {@code BondOrderController}: the caller is the subject of the
+ * verified JWT, never a field in the body, so a customer cannot buy in someone
+ * else's name, and the buyer is looked up from that subject rather than trusted
+ * from the request.</p>
+ *
+ * <p>The {@code @PreAuthorize} mirrors the role rule the rest of the application
+ * declares. It only takes effect if method security is switched on
+ * ({@code @EnableMethodSecurity}); today the request is authenticated by the
+ * {@code SecurityConfig} filter chain regardless, and the customer must be an
+ * active account for the deal to be accepted.</p>
+ */
+@RestController
+@RequestMapping("/api/deal-confirmations")
+@RequiredArgsConstructor
+@PreAuthorize("hasRole('CUSTOMER')")
+public class DealConfirmationController {
+
+    private final DealConfirmationService dealConfirmationService;
+    private final DealConfirmationDocumentReader documentReader;
+
+    /**
+     * Buys a bond.
+     *
+     * @param request        bond and number of lots; the per-lot quantity is read
+     *                       from the bond and the total is calculated server side
+     * @param idempotencyKey optional key that makes a retry safe. A client that
+     *                       may retry (double click, flaky mobile connection)
+     *                       should send a fresh value per intended purchase and
+     *                       the same value for every retry of it.
+     * @param jwt            verified token; its subject identifies the customer
+     * @return 201 with the new deal, or 200 with the existing one when the
+     *         request was a retry and bought nothing further
+     */
+    @PostMapping
+    public ResponseEntity<DealConfirmationResponse> createDealConfirmation(
+            @Valid @RequestBody CreateDealConfirmationRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        DealConfirmationService.Result result = dealConfirmationService.createDeal(
+                UUID.fromString(jwt.getSubject()),
+                request,
+                idempotencyKey);
+
+        /*
+         * A replayed request is answered 200 rather than 201: nothing was
+         * created this time, and a client that treats 201 as "a new purchase
+         * happened" would be misled.
+         */
+        return ResponseEntity
+                .status(result.replayed()
+                        ? HttpStatus.OK
+                        : HttpStatus.CREATED)
+                .body(result.response());
+    }
+
+    /**
+     * Downloads the confirmation letter for one of the caller's deals.
+     *
+     * <p>Scoped to the authenticated customer through the query itself, so a deal
+     * belonging to somebody else is indistinguishable from one that does not
+     * exist — both are 404, and the endpoint cannot be used to discover which
+     * references are real.</p>
+     *
+     * @param dealReference the deal's reference, as returned when it was created
+     * @param jwt           verified token; its subject identifies the customer
+     * @return the letter, as an attachment
+     */
+    @GetMapping("/{dealReference}/document")
+    public ResponseEntity<byte[]> downloadDocument(
+            @PathVariable String dealReference,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        DealConfirmationDocumentReader.DownloadedDocument document =
+                documentReader.read(UUID.fromString(jwt.getSubject()), dealReference);
+
+        /*
+         * Sent as an attachment so the browser saves the letter rather than
+         * trying to render it in a tab, and named after the reference so two
+         * downloads do not collide.
+         */
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(document.fileName())
+                .build();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(document.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(document.content());
+    }
+}

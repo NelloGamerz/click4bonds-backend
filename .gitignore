@@ -33,3 +33,10 @@ build/
 .vscode/
 src/main/resources/application-dev.yaml
 .env
+.github/workflows/qodana_code_quality.yml
+
+### Generated documents ###
+# Default document.storage.directory. Confirmation letters contain a customer's
+# name, the bonds they bought and what they paid, so they must never be
+# committed. The real root is a mounted volume in production.
+storage/

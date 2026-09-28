@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -80,4 +81,32 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                             WHERE b.id = :id
                         """)
         Optional<Bond> findByIdForUpdate(@Param("id") UUID id);
+
+        /**
+         * Reserves (deducts) {@code quantity} units from a bond's inventory.
+         *
+         * <p>This is deliberately a single conditional UPDATE rather than a
+         * read-then-write in Java. The {@code remainingQuantity >= :quantity}
+         * predicate is evaluated by the database while it holds a row lock, so
+         * two concurrent buyers are serialized by PostgreSQL and the loser
+         * matches zero rows instead of taking the inventory negative.</p>
+         *
+         * <p>Callers MUST check the returned row count: {@code 1} means the units
+         * were reserved, {@code 0} means the bond had fewer units left than
+         * requested (or its inventory is NULL / unconfigured).</p>
+         *
+         * @param id       bond whose inventory is being reserved
+         * @param quantity units to deduct; must be greater than zero
+         * @return number of rows updated — always 0 or 1
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("""
+                            UPDATE Bond b
+                            SET b.remainingQuantity = b.remainingQuantity - :quantity
+                            WHERE b.id = :id
+                              AND b.remainingQuantity >= :quantity
+                        """)
+        int reserveQuantity(
+                        @Param("id") UUID id,
+                        @Param("quantity") Long quantity);
 }
