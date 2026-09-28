@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 import java.lang.reflect.RecordComponent;
 import java.time.Duration;
@@ -18,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import com.click4bonds.app.Modules.Auth.AuthTestSupport;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
 import com.click4bonds.app.Modules.Auth.Dto.AuthResponse;
 import com.click4bonds.app.Modules.Auth.Dto.SignupRequest;
@@ -95,7 +97,8 @@ class AuthServiceTest {
                 jwts,
                 sessions,
                 properties,
-                redis);
+                redis,
+                mock(AnalyticsService.class));
     }
 
     private static OtpProperties otpProperties() {

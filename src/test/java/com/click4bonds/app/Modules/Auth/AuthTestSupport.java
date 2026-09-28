@@ -174,7 +174,7 @@ public final class AuthTestSupport {
         private final Map<String, User> byMobileNumber = new HashMap<>();
 
         public FakeUserService() {
-            super(null, null);
+            super(null, null, null);
         }
 
         public FakeUserService register(User user) {

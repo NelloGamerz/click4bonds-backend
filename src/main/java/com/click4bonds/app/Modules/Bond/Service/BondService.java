@@ -306,14 +306,62 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             Pageable pageable) {
+        return getBonds(search, isFlashNews, pageable, null);
+    }
 
+    public Page<BondResponse> getBonds(
+            String search,
+            Boolean isFlashNews,
+            Pageable pageable,
+            UUID userId) {
         if ((search == null || search.isBlank()) && isFlashNews == null) {
             return getBonds(pageable);
         }
 
-        return bondRepository
+        Page<BondResponse> bonds = bondRepository
                 .searchBonds(search, isFlashNews, pageable)
                 .map(this::mapToResponse);
+
+        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+            if (search != null && !search.isBlank()) {
+                analyticsService.track(
+                        AnalyticsEventType.BOND_SEARCH,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of(
+                                "searchLength", search.trim().length(),
+                                "resultCount", bonds.getTotalElements()));
+            }
+
+            if (isFlashNews != null) {
+                analyticsService.track(
+                        AnalyticsEventType.BOND_FILTER,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of("filter", "flashNews", "value", isFlashNews));
+            }
+
+            if (bonds.isEmpty()) {
+                analyticsService.track(
+                        AnalyticsEventType.SEARCH_NO_RESULT,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of(
+                                "searchApplied", search != null && !search.isBlank(),
+                                "filterApplied", isFlashNews != null));
+            }
+        }
+
+        return bonds;
     }
 
     // =========================================================

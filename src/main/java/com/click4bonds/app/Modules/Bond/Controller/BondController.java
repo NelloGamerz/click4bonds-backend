@@ -37,10 +37,13 @@ public class BondController {
     public ResponseEntity<Page<BondResponse>> getBonds(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean isFlashNews,
-            @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+            @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        UUID userId = jwt == null ? null : UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
-                bondService.getBonds(search, isFlashNews, pageable));
+                bondService.getBonds(search, isFlashNews, pageable, userId));
     }
 
 //    @GetMapping("/{isin}")
