@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Auth.Dto.AuthResponse;
+import com.click4bonds.app.Modules.Auth.Dto.SignupRequest;
 import com.click4bonds.app.Modules.Auth.Service.AuthCookieService;
 import com.click4bonds.app.Modules.Auth.Service.AuthService;
 import com.click4bonds.app.Modules.User.Dto.SendPhoneOtpRequest;
@@ -28,46 +29,82 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Signing in with a phone number.
+ * Signing up and signing in with a phone number.
  *
- * <p>Sign-in is two calls: one to have a code sent to a number, one to redeem
- * it. The second call is what creates the session, and it returns both an
- * access token and a cookie — the token for the {@code Authorization} header,
- * the cookie for the refresh and logout endpoints.</p>
+ * <p>An account is opened by {@code POST /auth/signup}, which takes the
+ * sign-up form and sends the first code. Sign-in after that is two calls: one
+ * to have a code sent to a number, one to redeem it. The second call is what
+ * creates the session, and it returns both an access token and a cookie — the
+ * token for the {@code Authorization} header, the cookie for the refresh and
+ * logout endpoints.</p>
+ *
+ * <p>Only sign-up creates accounts. Both {@code send-otp} and {@code verify-otp}
+ * refuse a number that has none and tell the caller to sign up, so a caller
+ * cannot reach sign-in without having been through sign-up — and cannot use
+ * either endpoint to open an account with a profile it never supplied.</p>
  *
  * <p>The session identifier appears only in that cookie. It is never in a
  * response body, which is the point of the cookie being {@code HttpOnly}:
  * nothing running in the browser can read it, so it cannot be copied into
  * storage where it would outlive its usefulness.</p>
  *
- * <p>The first three endpoints are reachable without a token — they are how a
- * caller gets one. Refresh and logout authenticate by cookie instead, which is
- * why they do not require a token either. {@code /auth/me} is the exception: it
- * reads the account the access token names, so it needs the token.</p>
+ * <p>Sign-up and the first two sign-in endpoints are reachable without a token
+ * — they are how a caller gets one. Refresh and logout authenticate by cookie
+ * instead, which is why they do not require a token either. {@code /auth/me} is
+ * the exception: it reads the account the access token names, so it needs the
+ * token.</p>
  */
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication", description = "Phone number and OTP sign-in")
+@Tag(name = "Authentication", description = "Sign-up and phone number OTP sign-in")
 public class AuthController {
 
-    /** Reported for every send request, whether or not the number is known. */
+    /** Reported for every send request that reaches the provider. */
     public static final String OTP_SENT =
-            "If the number can be used to sign in, a verification code has been sent.";
+            "A verification code has been sent to your phone.";
 
     private final AuthService authService;
     private final AuthCookieService authCookieService;
 
     @Operation(
+            summary = "Open an account and send the first code by SMS",
+            description = """
+                    Creates an account from the sign-up form — name, phone number, age range,
+                    user type, preferred language and the two consents — and delivers the first
+                    verification code to that number. The number is refused if an account
+                    already signs in with it.
+
+                    The account is written before the code is sent, so a request is only
+                    successful once an account exists. If delivery fails the account survives,
+                    and another code can be requested at /auth/phone/send-otp.
+                    """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Account created and code issued"),
+            @ApiResponse(responseCode = "400", description = "A field is missing, malformed or fails validation, or the body cannot be read"),
+            @ApiResponse(responseCode = "409", description = "The phone number already has an account"),
+            @ApiResponse(responseCode = "429", description = "Too many requests from this client")
+    })
+    @PostMapping("/signup")
+    public ResponseEntity<VerificationResponse> signup(
+            @Valid @RequestBody SignupRequest request,
+            HttpServletRequest httpRequest) {
+
+        return ResponseEntity.ok(
+                authService.signup(request, clientAddress(httpRequest)));
+    }
+
+    @Operation(
             summary = "Send a sign-in code by SMS",
             description = """
-                    Issues a code for the given number and delivers it by SMS. The response is
-                    the same whether or not an account exists for the number, so it cannot be
-                    used to find out who is registered.
+                    Issues a code for the given number and delivers it by SMS. The number must
+                    already have an account, which sign-up is what creates; one that does not
+                    is answered with a message telling the caller to sign up.
                     """)
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Code issued"),
             @ApiResponse(responseCode = "400", description = "Malformed phone number"),
+            @ApiResponse(responseCode = "404", description = "No account signs in with this number"),
             @ApiResponse(responseCode = "429", description = "Too many requests from this client, or a code was requested too recently")
     })
     @PostMapping("/phone/send-otp")
@@ -85,14 +122,16 @@ public class AuthController {
     @Operation(
             summary = "Verify a code and sign in",
             description = """
-                    Redeems the code, creating the account if the number has never been used
-                    before, and returns an access token. The session is set as an HttpOnly
-                    cookie and is not included in the response body.
+                    Redeems the code and returns an access token for the account the number
+                    belongs to. It does not create an account: a number that was never signed up
+                    is answered with a message telling the caller to sign up. The session is set
+                    as an HttpOnly cookie and is not included in the response body.
                     """)
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Signed in"),
             @ApiResponse(responseCode = "400", description = "Malformed number or code, or the code is wrong or expired"),
             @ApiResponse(responseCode = "403", description = "The account may not sign in"),
+            @ApiResponse(responseCode = "404", description = "No account signs in with this number"),
             @ApiResponse(responseCode = "429", description = "Too many failed attempts; request a new code")
     })
     @PostMapping("/phone/verify-otp")
