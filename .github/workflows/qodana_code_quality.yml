@@ -4,13 +4,15 @@
 #-------------------------------------------------------------------------------#
 
 name: Qodana
-on:
-  workflow_dispatch:
-  pull_request:
-  push:
-    branches:
-      - main
-      - karan
+#on:
+#  workflow_dispatch:
+#  pull_request:
+#  push:
+#    branches:
+#      - main
+#      - karan
+
+on: {}
 
 jobs:
   qodana:

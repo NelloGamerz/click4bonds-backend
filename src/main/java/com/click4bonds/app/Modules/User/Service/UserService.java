@@ -3,6 +3,7 @@ package com.click4bonds.app.Modules.User.Service;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
