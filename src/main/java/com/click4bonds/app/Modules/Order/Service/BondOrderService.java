@@ -8,6 +8,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Bond.Enums.BondOrderStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
@@ -30,6 +32,7 @@ public class BondOrderService {
     private final BondOrderRepository orderRepository;
     private final UserService userService;
     private final BondService bondService;
+    private final AnalyticsService analyticsService;
 
     // public BondOrderResponse createOrder(
     // String customerId,
@@ -119,7 +122,19 @@ public class BondOrderService {
                 .status(BondOrderStatus.PENDING)
                 .build();
 
-        return orderRepository.save(order);
+        BondOrder savedOrder = orderRepository.save(order);
+        analyticsService.track(
+                AnalyticsEventType.ORDER_CREATE,
+                customerId,
+                null,
+                bond.getId(),
+                "WEB",
+                "ORDER",
+                java.util.Map.of(
+                        "orderId", savedOrder.getId().toString(),
+                        "quantity", savedOrder.getQuantity(),
+                        "status", savedOrder.getStatus().name()));
+        return savedOrder;
     }
 
     private String generateOrderNumber() {
@@ -136,9 +151,20 @@ public class BondOrderService {
             UUID customerId,
             Pageable pageable) {
 
-        return orderRepository
+        Page<BondOrderResponse> orders = orderRepository
                 .findByCustomer_Id(customerId, pageable)
                 .map(this::mapToResponse);
+        analyticsService.track(
+                AnalyticsEventType.PORTFOLIO_TRANSACTION_VIEW,
+                customerId,
+                null,
+                null,
+                "WEB",
+                "ORDER_HISTORY",
+                java.util.Map.of(
+                        "resultCount", orders.getNumberOfElements(),
+                        "page", orders.getNumber()));
+        return orders;
     }
 
     @Transactional(readOnly = true)

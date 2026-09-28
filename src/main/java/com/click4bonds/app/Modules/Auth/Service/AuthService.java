@@ -4,12 +4,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
 import com.click4bonds.app.Modules.Auth.Dto.AuthResponse;
 import com.click4bonds.app.Modules.Auth.Exception.InvalidSessionException;
 import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
+import com.click4bonds.app.Modules.OTP.Exception.OtpException;
 import com.click4bonds.app.Modules.OTP.Model.OtpType;
 import com.click4bonds.app.Modules.OTP.Service.IdentifierNormalizer;
 import com.click4bonds.app.Modules.OTP.Service.OtpService;
@@ -53,6 +56,7 @@ public class AuthService {
     private final AuthSessionService authSessionService;
     private final AuthProperties authProperties;
     private final RedisService redisService;
+    private final AnalyticsService analyticsService;
 
     /** A session that was opened, and the token issued for it. */
     public record IssuedSession(String sessionId, AuthResponse response) {
@@ -112,7 +116,19 @@ public class AuthService {
         String normalized = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
         // Consumes the code: a success here cannot be replayed.
-        otpService.verifyOtp(OtpType.SMS, normalized, otp);
+        try {
+            otpService.verifyOtp(OtpType.SMS, normalized, otp);
+        } catch (OtpException ex) {
+            analyticsService.track(
+                    AnalyticsEventType.LOGIN_FAILED,
+                    null,
+                    null,
+                    null,
+                    "WEB",
+                    "AUTHENTICATION",
+                    java.util.Map.of("method", "PHONE_OTP"));
+            throw ex;
+        }
 
         User user = userService.findOrCreateByMobileNumber(normalized);
 
@@ -149,7 +165,19 @@ public class AuthService {
 
         AuthSessionService.ResolvedSession resolved = authSessionService
                 .refresh(sessionId, userAgent)
-                .orElseThrow(InvalidSessionException::new);
+                .orElse(null);
+
+        if (resolved == null) {
+            analyticsService.track(
+                    AnalyticsEventType.SESSION_EXPIRED,
+                    null,
+                    null,
+                    null,
+                    "WEB",
+                    "AUTHENTICATION",
+                    java.util.Map.of());
+            throw new InvalidSessionException();
+        }
 
         User user;
 
@@ -193,7 +221,25 @@ public class AuthService {
      * @param sessionId identifier from the request cookie, may be null
      */
     public void logout(String sessionId) {
+        AuthSessionService.ResolvedSession resolved = authSessionService.resolve(sessionId).orElse(null);
         authSessionService.revoke(sessionId);
+        java.util.UUID userId = resolved == null ? null : resolved.session().userId();
+        analyticsService.track(
+                AnalyticsEventType.LOGOUT,
+                userId,
+                null,
+                null,
+                "WEB",
+                "AUTHENTICATION",
+                java.util.Map.of());
+        analyticsService.track(
+                AnalyticsEventType.SESSION_END,
+                userId,
+                null,
+                null,
+                "WEB",
+                "AUTHENTICATION",
+                java.util.Map.of());
     }
 
     /**
@@ -205,6 +251,22 @@ public class AuthService {
         String accessToken = authJwtService.createAccessToken(user);
 
         log.info("User {} signed in", user.getId());
+        analyticsService.track(
+                AnalyticsEventType.LOGIN,
+                user.getId(),
+                null,
+                null,
+                "WEB",
+                "AUTHENTICATION",
+                java.util.Map.of("method", "PHONE_OTP"));
+        analyticsService.track(
+                AnalyticsEventType.SESSION_START,
+                user.getId(),
+                null,
+                null,
+                "WEB",
+                "AUTHENTICATION",
+                java.util.Map.of());
 
         return new IssuedSession(sessionId, buildResponse(accessToken, user));
     }
@@ -288,7 +350,17 @@ public class AuthService {
      */
     @Transactional
     public UserResponse getProfile(String userId) {
-        return toUserResponse(userService.getUserById(userId));
+        User user = userService.getUserById(userId);
+//        UserResponse response = toUserResponse(user);
+//        analyticsService.track(
+//                AnalyticsEventType.PROFILE_VIEW,
+//                user.getId(),
+//                null,
+//                null,
+//                "WEB",
+//                "PROFILE",
+//                java.util.Map.of());
+        return toUserResponse(user);
     }
 
     /**
