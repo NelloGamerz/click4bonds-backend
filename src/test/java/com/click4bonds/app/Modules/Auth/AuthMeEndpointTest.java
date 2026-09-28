@@ -105,6 +105,7 @@ class AuthMeEndpointTest {
                 .phoneStatus(VerificationStatus.VERIFIED)
                 .panStatus(VerificationStatus.NOT_STARTED)
                 .bankAccountStatus(VerificationStatus.NOT_STARTED)
+                .dematStatus(VerificationStatus.NOT_STARTED)
                 .createdAt(Instant.parse("2026-09-22T06:30:00Z"))
                 .updatedAt(Instant.parse("2026-09-22T06:30:00Z"))
                 .build();
@@ -195,6 +196,7 @@ class AuthMeEndpointTest {
                 .andExpect(jsonPath("$.verification.phoneStatus").value("VERIFIED"))
                 .andExpect(jsonPath("$.verification.panStatus").value("NOT_STARTED"))
                 .andExpect(jsonPath("$.verification.bankAccountStatus").value("NOT_STARTED"))
+                .andExpect(jsonPath("$.verification.dematStatus").value("NOT_STARTED"))
                 .andExpect(jsonPath("$.verification.id").exists())
                 .andExpect(jsonPath("$.verification.createdAt").exists())
                 .andExpect(jsonPath("$.verification.updatedAt").exists());

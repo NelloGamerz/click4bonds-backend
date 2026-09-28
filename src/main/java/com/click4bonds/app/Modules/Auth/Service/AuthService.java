@@ -492,6 +492,7 @@ public class AuthService {
                                         .phoneStatus(verification.getPhoneStatus())
                                         .panStatus(verification.getPanStatus())
                                         .bankAccountStatus(verification.getBankAccountStatus())
+                                        .dematStatus(verification.getDematStatus())
                                         .createdAt(verification.getCreatedAt())
                                         .updatedAt(verification.getUpdatedAt())
                                         .build())

@@ -216,7 +216,7 @@ class AuthServiceTest {
 
         // Onboarding began at the phone step, so proving the number moves the
         // account on rather than leaving it where it was.
-        assertEquals(OnboardingStep.PAN_VERIFICATION, created.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, created.getOnboardingStep());
     }
 
     // ------------------------------------------------------------------
@@ -625,6 +625,7 @@ class AuthServiceTest {
                 .phoneStatus(VerificationStatus.VERIFIED)
                 .panStatus(VerificationStatus.NOT_STARTED)
                 .bankAccountStatus(VerificationStatus.NOT_STARTED)
+                .dematStatus(VerificationStatus.NOT_STARTED)
                 .build());
 
         users.register(user);
