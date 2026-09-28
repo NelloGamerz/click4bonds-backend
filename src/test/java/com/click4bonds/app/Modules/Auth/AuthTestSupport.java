@@ -275,10 +275,10 @@ public final class AuthTestSupport {
 
             phoneVerified.add(user.getId());
 
-            // Mirrors the real rule: a phone-first account starts at the email
-            // step, so there is nothing to advance past here.
+            // Mirrors the real rule: proving the number moves an account that
+            // was waiting on it to the next step, which is the email step.
             if (user.getOnboardingStep() == OnboardingStep.PHONE_VERIFICATION) {
-                user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
+                user.setOnboardingStep(OnboardingStep.EMAIL_VERIFICATION);
             }
         }
 

@@ -164,6 +164,8 @@ public class AdminUserService {
                                                                                 .panStatus(verification.getPanStatus())
                                                                                 .bankAccountStatus(verification
                                                                                                 .getBankAccountStatus())
+                                                                                .dematStatus(verification
+                                                                                                .getDematStatus())
                                                                                 .createdAt(verification.getCreatedAt())
                                                                                 .updatedAt(verification.getUpdatedAt())
                                                                                 .build())

@@ -541,7 +541,7 @@ class VerificationServicePhoneTest {
     }
 
     @Test
-    void shouldAdvanceOnboardingToThePanStep() {
+    void shouldAdvanceOnboardingToTheEmailStep() {
 
         user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
 
@@ -551,7 +551,7 @@ class VerificationServicePhoneTest {
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
-        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
     }
 
     @Test

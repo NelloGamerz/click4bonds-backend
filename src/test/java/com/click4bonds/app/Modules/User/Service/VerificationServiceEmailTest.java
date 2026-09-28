@@ -570,7 +570,7 @@ class VerificationServiceEmailTest {
     }
 
     @Test
-    void shouldAdvanceOnboardingToThePhoneStep() {
+    void shouldAdvanceOnboardingToThePanStep() {
 
         service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
@@ -578,7 +578,7 @@ class VerificationServiceEmailTest {
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
-        assertEquals(OnboardingStep.PHONE_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep());
     }
 
     @Test

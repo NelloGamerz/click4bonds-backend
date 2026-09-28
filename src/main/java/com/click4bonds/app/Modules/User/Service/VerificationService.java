@@ -134,7 +134,7 @@ public class VerificationService {
         }
 
         userVerificationService.updateEmailStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PHONE_VERIFICATION);
+        advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
 
         log.info("Email verified for user {}", user.getId());
 
@@ -202,7 +202,7 @@ public class VerificationService {
         }
 
         userVerificationService.updatePhoneStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
+        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
 
         log.info("Phone verified for user {}", user.getId());
 
@@ -227,7 +227,7 @@ public class VerificationService {
     public void markPhoneVerified(User user) {
 
         userVerificationService.updatePhoneStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
+        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
 
         log.info("Phone verified for user {}", user.getId());
     }
@@ -302,12 +302,12 @@ public class VerificationService {
      * onboarding never moves backwards.</p>
      *
      * <p>The step landed on is the next one the account has not already
-     * satisfied, which is what makes signing in by phone work. Such an account
-     * arrives with its phone already proven and begins at the email step; once
-     * the email is verified the next step would nominally be the phone, which
-     * is done. Stopping there would strand the account on a step whose only
-     * endpoint answers "already verified" and never moves on, so satisfied
-     * steps are walked past instead.</p>
+     * satisfied, which is what makes verifying out of order work. An account
+     * that proved its email before its phone, for instance, sits at the phone
+     * step; once the phone is verified the next step would nominally be the
+     * email, which is done. Stopping there would strand the account on a step
+     * whose only endpoint answers "already verified" and never moves on, so
+     * satisfied steps are walked past instead.</p>
      */
     private void advanceOnboarding(User user, OnboardingStep completed, OnboardingStep next) {
 
@@ -341,11 +341,12 @@ public class VerificationService {
         UserVerification verification = userVerificationService.getVerification(user);
 
         return switch (step) {
-            case EMAIL_VERIFICATION -> verification.getEmailStatus() == VerificationStatus.VERIFIED;
             case PHONE_VERIFICATION -> verification.getPhoneStatus() == VerificationStatus.VERIFIED;
+            case EMAIL_VERIFICATION -> verification.getEmailStatus() == VerificationStatus.VERIFIED;
             case PAN_VERIFICATION -> verification.getPanStatus() == VerificationStatus.VERIFIED;
             case BANK_ACCOUNT_VERIFICATION ->
                     verification.getBankAccountStatus() == VerificationStatus.VERIFIED;
+            case DEMAT_VERIFICATION -> verification.getDematStatus() == VerificationStatus.VERIFIED;
             case COMPLETED -> true;
         };
     }
@@ -353,10 +354,11 @@ public class VerificationService {
     private OnboardingStep successor(OnboardingStep step) {
 
         return switch (step) {
-            case EMAIL_VERIFICATION -> OnboardingStep.PHONE_VERIFICATION;
-            case PHONE_VERIFICATION -> OnboardingStep.PAN_VERIFICATION;
+            case PHONE_VERIFICATION -> OnboardingStep.EMAIL_VERIFICATION;
+            case EMAIL_VERIFICATION -> OnboardingStep.PAN_VERIFICATION;
             case PAN_VERIFICATION -> OnboardingStep.BANK_ACCOUNT_VERIFICATION;
-            case BANK_ACCOUNT_VERIFICATION, COMPLETED -> OnboardingStep.COMPLETED;
+            case BANK_ACCOUNT_VERIFICATION -> OnboardingStep.DEMAT_VERIFICATION;
+            case DEMAT_VERIFICATION, COMPLETED -> OnboardingStep.COMPLETED;
         };
     }
 }
