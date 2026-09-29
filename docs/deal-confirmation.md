@@ -41,7 +41,9 @@ two values and a persisted deal is always `CREATED` first.
 | `DealConfirmationSheetValuesFactory` / `DealConfirmationCellMap` | `...DealConfirmation.Service` | The letter's arithmetic, then its layout. |
 | `DealConfirmationDocumentRecorder` | `...DealConfirmation.Service` | Records where the document landed; flips the status. |
 | `DealConfirmationDocumentReader` | `...DealConfirmation.Service` | Reads a stored letter back for download. |
-| `Modules/Document/*` | `...Modules.Document` | The reusable engine: template fill, PDF conversion, storage. |
+| `Modules/Document/*` | `...Modules.Document` | The reusable engine: template fill, PDF conversion, and `DocumentStorage` — the deal-shaped view of storage. |
+| `R2DocumentStorage` | `...Document.Service` | The only `DocumentStorage`: keeps letters in the shared object store. |
+| `Modules/Storage/*` | `...Modules.Storage` | The shared object store: `ObjectStore` and its Cloudflare R2 implementation. Used by anything that keeps a file, not just deals. |
 | `DealConfirmation` | `...DealConfirmation.Model` | The `deal_confirmations` table. |
 | `DealReferenceSequence` | `...DealConfirmation.Model` | The `deal_reference_sequences` daily counter. |
 | `DealConfirmationRepository` | `...DealConfirmation.Repository` | Idempotency lookup, `dealReference` lookup. |
@@ -369,7 +371,10 @@ XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
 PdfConverter                         (LibreOffice, headless)
        |
        v
-DocumentStorage                      (keeps both artefacts)
+DocumentStorage                      (the deal-shaped view)
+       |
+       v
+ObjectStore -> R2ObjectStore          (Cloudflare R2, S3 API)
        |
        v
 GET /api/deal-confirmations/{reference}/document
@@ -377,7 +382,9 @@ GET /api/deal-confirmations/{reference}/document
 
 The engine half (`Modules/Document`) knows nothing about deals: it fills a
 template, converts a workbook to PDF, and stores bytes. The deal-specific half
-lives in `Modules/DealConfirmation`.
+lives in `Modules/DealConfirmation`. The store itself (`Modules/Storage`) knows
+nothing about documents either — it takes keys and bytes, which is what lets a
+second feature keep files without building its own arrangement.
 
 ### The template
 
@@ -420,9 +427,32 @@ survives the fill anywhere in the sheet.
 > formula would have produced, and "No. of Accrued Days" shows actual days rather
 > than `COUPDAYBS` days. This is a contractual number, not a formatting choice.
 > Related questions still outstanding: the `Quantum` multiplier (the two sale
-> sheets disagree on it by 100x), the stamp-duty rule, the reference format
-> (`2026/S/SEP/121` in the template versus `DC-YYYYMMDD-nnnnnn` here), and
-> `Settlement NO.`, which the clearing house issues per deal.
+> sheets disagree on it by 100x), the reference format (`2026/S/SEP/121` in the
+> template versus `DC-YYYYMMDD-nnnnnn` here), and `Settlement NO.`, which the
+> clearing house issues per deal.
+
+### Stamp duty
+
+Stamp duty is computed, not configured. The rate is `0.0001%` of the
+consideration, rounded to the whole rupee — `ROUND(x, 0)` — and the base is the
+principal plus accrued interest, *before* duty:
+
+```
+subtotal = principal + accrued          // C26 + C27
+stampDuty = round(subtotal * 0.0001%)   // C28, whole rupees
+total     = subtotal + stampDuty        // C29
+```
+
+The base excludes the duty itself on purpose. C29 is `C26+C27+C28`, so charging
+the duty on the letter's own total would make C28 a function of itself; the
+subtotal keeps the template's sum true.
+
+Because the result is rounded to the rupee, an ordinary retail deal pays nothing
+— `1,126.41` at `0.0001%` is `0.0011`, which rounds to `0`. Only crore-scale
+deals show a stamp duty at all (`1,02,40,100` → `10.00`). The template ships this
+cell as a bare literal with no formula, so the rate is not derivable from it and
+is held as a constant in `DealConfirmationSheetValuesFactory` rather than in
+`application.yaml`.
 
 ### Selecting the implementation
 
@@ -447,22 +477,116 @@ error log, and would mark the pipeline as having run.
 
 ### Storage and the download endpoint
 
-Documents are written under `document.storage.directory`, filed as
-`yyyy/MM/<dealReference>.<ext>`. The key is relative, so a deal row is not tied
-to one host's directory layout, and deterministic, so regenerating a deal
-overwrites rather than accumulating copies.
+Documents are uploaded to a private **Cloudflare R2** bucket, reached through its
+S3-compatible API by `R2ObjectStore` (`Modules/Storage`). Keys are unchanged:
+`yyyy/MM/<dealReference>.<ext>`, relative and deterministic, so regenerating a
+deal overwrites rather than accumulating copies.
 
-`GET /api/deal-confirmations/{reference}/document` streams the letter back. It is
-scoped to the authenticated customer by the query itself, so another customer's
-deal is indistinguishable from one that does not exist.
+`R2DocumentStorage` is the only `DocumentStorage` implementation, and it is a
+thin adapter: it passes the key straight through and translates the store's
+failures into the document module's. Moving documents from the filesystem to R2
+changed no row, no key and no caller — because a deal records the key and the
+store that resolves it is configuration rather than schema. Recording an address
+*instead of* a key did change the schema; that is the next section.
+
+### Keys and addresses
+
+Two different strings name the same object, and the distinction matters:
+
+```
+key      2026/09/DC-20260929-000001.pdf
+address  https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/DC-20260929-000001.pdf
+```
+
+`deal_confirmations.document_r2_path` holds the **address**. It is readable and
+pasteable: an operator looking at a row can find the letter without being told how
+the application is configured. Three alternatives were rejected — a bare key,
+because it means nothing without the configuration; a presigned URL, because it
+expires; and a public custom-domain URL, because the bucket is private and every
+stored link would be dead.
+
+The cost is real and was accepted deliberately: an address **pins the endpoint
+that built it**. A row written against one account names that account for as long
+as it exists, so moving accounts, or fronting the bucket with a custom domain,
+leaves recorded addresses pointing at a host you no longer use.
+`R2ObjectStore.keyFor` refuses to resolve an address whose host or bucket is not
+the configured one, so such a move surfaces as a clear failure rather than as a
+silent read from the wrong bucket.
+
+The conversion happens at exactly two places, both at the persistence edge:
+`DealConfirmationDocumentRecorder` turns the key it is handed into an address
+before writing the row, and `DealConfirmationDocumentReader` turns the address
+back into a key before asking for bytes. Neither the generator nor the store has
+to know the other's vocabulary.
+
+`keyFor` also accepts a **bare relative key**, for rows written before addresses
+were recorded — see the migration note below.
+
+### R2 client settings that decide whether anything works
+
+Three settings are load-bearing, and each fails in a way that looks like a
+credential problem rather than a configuration one:
+
+- **Path-style addressing** — the client's default puts the bucket in the
+  hostname, which R2 does not serve.
+- **Chunked encoding off** — the default `aws-chunked` upload produces a 403 that
+  reads as a bad access key.
+- **Checksums pinned to `WHEN_REQUIRED`** — the AWS SDK adds a CRC32 checksum by
+  default from 2.30.0, and R2 rejects the request outright.
+
+`R2ObjectStoreTest` asserts the first two on the configuration object, because a
+mocked client cannot show them, and the two are shared between the client and the
+presigner so a signed URL cannot be signed for a different addressing style than
+the upload used.
+
+Missing configuration is **not** a startup failure. The client is built without
+touching the network, so a laptop, CI, or a deployment with `document.enabled=false`
+starts with no R2 settings at all; the first write names the property it needs. A
+*malformed* endpoint is different and does fail at construction — that is never a
+legitimate state, and catching it there beats an SDK `NullPointerException` about
+a null scheme. Production makes all four values required placeholders in
+`application-prod.yaml`, so the failure lands at bind time.
+
+`GET /api/deal-confirmations/{reference}/document` still streams the letter back
+through the application rather than redirecting to a presigned URL. The bucket
+stays private, the API is unchanged, and the customer-scoping is enforced by the
+query itself — another customer's deal is indistinguishable from one that does
+not exist. `ObjectStore` also exposes `presignedGetUrl` for a future caller that
+would rather redirect than stream.
 
 ### Schema
 
-`document_path` and `document_generated_at` on `deal_confirmations`, added by
-`db/migration/V4__add_deal_confirmation_document.sql`. **That migration must be
-applied by hand** — `application-prod.yaml` sets `ddl-auto: validate`, and the
-project has no Flyway or Liquibase dependency, so production will refuse to start
-without it.
+`document_r2_path` and `document_generated_at` on `deal_confirmations`. The first
+was added by `V4__add_deal_confirmation_document.sql` as `document_path`, holding
+a key; `V5__document_r2_path.sql` renames it and widens it to 1024 characters.
+
+It was a **rename, not an add-and-drop**. The obvious shape — add the new column,
+copy the old into it, drop the old — would have been one lie, because a key is not
+an address and SQL cannot build one without the endpoint and bucket, which live in
+configuration and must not be hardcoded into a migration. Copying a key into an
+address column would leave every historical row holding a value in the wrong
+format. A rename is honest about what happened: the contents did not change, their
+meaning did.
+
+**Both migrations must be applied by hand** — `application-prod.yaml` sets
+`ddl-auto: validate`, so production refuses to start on a schema it does not
+recognise. Flyway is on the classpath and enabled for prod with
+`baseline-on-migrate: true` and `baseline-version: 4`, so V5 is the first migration
+Flyway applies by itself; **V1–V4 are never applied by Flyway** and must already be
+present, or be applied by hand on a fresh database.
+
+**Rows written before V5 hold a bare key, not an address.** The application reads
+both, so those deals keep working with no action, and every letter generated from
+now on records a full address. Making the old rows consistent is optional; V5
+carries a commented `UPDATE` for it, with the endpoint and bucket to substitute.
+
+> **Migration note, and it is an operational one.** Letters generated *before*
+> documents moved to R2 at all are files on the host under the old
+> `document.storage.directory`. Their rows still hold the right key, but nothing
+> will resolve them until those files are uploaded to the bucket preserving the
+> `yyyy/MM/<ref>.<ext>` layout. Until then the download endpoint returns "no
+> document" for those deals. `ObjectStore.put` can be used to copy them, or
+> `rclone`/`aws s3 cp` with the R2 endpoint. New letters are unaffected.
 
 ---
 ---
@@ -521,11 +645,16 @@ it does mean the oversell guard is currently dormant rather than unused.
 **Schema is applied by hand in production.** `application-dev.yaml:169` sets
 `ddl-auto: update`, so a dev database is built by Hibernate.
 `application-prod.yaml:29` sets `ddl-auto: validate` — production refuses to
-start on a schema it does not recognise — and the project has **no Flyway or
-Liquibase dependency**, so `src/main/resources/db/migration/V1..V4` are applied
-manually. Anything that adds a column has to ship a migration script and someone
-has to run it. `V4__add_deal_confirmation_document.sql` is the one that goes with
-the document step.
+start on a schema it does not recognise.
+
+Flyway is now on the classpath (`flyway-core` and `flyway-database-postgresql` in
+`pom.xml`) and `application-prod.yaml` enables it with `baseline-on-migrate: true`
+and `baseline-version: 4`. That baseline is the important part: a database with no
+Flyway history table is stamped as already at V4, so **V1–V4 are never applied by
+Flyway** and must already be present — or be applied by hand on a fresh database.
+Migrations numbered above V4 do run automatically. So
+`V4__add_deal_confirmation_document.sql` remains a script someone has to run on an
+existing schema, but anything added after it does not.
 
 ---
 
@@ -555,14 +684,23 @@ The document step adds these, under `Modules/DealConfirmation/` unless noted:
 
 | Test class | Covers |
 |---|---|
-| `DealConfirmationSheetValuesFactoryTest` | The letter's arithmetic: coupon percent→fraction, quantum from face value, accrued interest scaled from one bond to the position, the total, 2dp rounding, and refusing a deal with no price or no accrual (15 cases). |
-| `DealConfirmationCellMapTest` | The layout: every address, that no label cell is written to, that the customer identifiers with no source stay blank, and that the template's stale echo of the counterparty line is overwritten (6 cases). |
+| `DealConfirmationSheetValuesFactoryTest` | The letter's arithmetic: the coupon printed as stored rather than divided by 100, quantum from face value, accrued interest scaled from one bond to the position, the total, stamp duty, 2dp rounding, and refusing a deal with no price or no accrual (17 cases). |
+| `DealConfirmationCellMapTest` | The layout: every address, that no label cell is written to, that the customer identifiers with no source stay blank, that the template's stale echo of the counterparty line is overwritten, and the coupon cell's format override (7 cases). |
 | `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written (7 cases). |
-| `DealConfirmationDocumentRecorderTest` | Status and key recorded together; a deal that is no longer there is warned about, not thrown. |
+| `DealConfirmationDocumentRecorderTest` | Status and address recorded together, and the address recorded is the one derived from the key rather than the key itself — a row holding a key would be unreadable to anyone but this application. A deal that is no longer there is warned about, not thrown. And a missing deal id does not demand that storage be configured. |
+| `DealConfirmationDocumentReaderTest` | That the row's address is resolved back to a key before the store is asked for bytes, the PDF-versus-spreadsheet choice made from the address, that another customer's deal and a deal with no document are both reported as missing without consulting storage at all, and that an address which cannot be resolved surfaces as a failure rather than as "no document" (5 cases). |
 | `DealConfirmationDocumentConfigTest` | *(under `Modules/DealConfirmation/Config/`)* That `document.enabled` really swaps the implementation, and never wires both. |
 | `XlsxTemplateWriterTest` | *(under `Modules/Document/Service/`)* **The keystone.** Fills the real committed template and reopens it: every mapped cell, **no formula survives**, **no sample value survives**, exactly one sheet remains, dates stay date-formatted (9 cases). |
-| `LocalFileSystemDocumentStorageTest` | Key layout, directory creation, replacement rather than accumulation, no `.part` left behind, and refusal of escaping or absolute keys (11 cases). |
+| `R2DocumentStorageTest` | *(under `Modules/Document/Service/`)* That the key a deal records is the key the object is stored under — divergence there would write objects nothing could find — that keys and addresses each convert to the other, and that a store failure arrives as a `DocumentStorageException`, the type `DealConfirmationService` knows how to treat as "the letter could not be kept" (11 cases). |
+| `R2ObjectStoreTest` | *(under `Modules/Storage/Service/`)* The two settings whose absence silently breaks R2 — path-style addressing and chunked encoding off — asserted on the configuration object because a mocked client cannot show them; that the store constructs with no configuration at all; that a missing bucket or endpoint is reported by property name; key rejection; the bucket/key/content-type mapping; a 404 as absent but a 500 as a failure; address round-tripping, including a bare legacy key and refusal of an address from another endpoint or bucket; and a real round-trip against a live bucket, skipped where none is configured (24 cases, 1 skipped in CI). |
+| `StoragePropertiesTest` | *(under `Modules/Storage/Config/`)* That the property names written in the YAML actually bind — Spring ignores keys no field claims, so a mistyped `secret-key` would silently fall back to the SDK's credential chain and surface much later as an authentication error. |
 | `LibreOfficePdfConverterTest` | The command line — headless flags, per-run profile directory, outdir, argument-list (not shell) handling of the space in the template's name — plus a real conversion where LibreOffice is installed, skipped where it is not. |
+
+`R2ObjectStoreTest` cannot prove the client works against R2 without a bucket —
+a mocked client accepts anything. That is what the `assumeTrue`-gated round-trip
+is for: it runs on a machine with R2 configured and is skipped everywhere else,
+the same pattern `LibreOfficePdfConverterTest` uses for `soffice`. The checksum
+and chunked-encoding settings are the reason it exists.
 
 `XlsxTemplateWriterTest` is the one to keep an eye on. It reads the real
 workbook, so a template the business edits by hand fails the build rather than

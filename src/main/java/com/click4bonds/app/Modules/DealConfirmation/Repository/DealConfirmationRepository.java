@@ -71,7 +71,7 @@ public interface DealConfirmationRepository
     @Query("""
             UPDATE DealConfirmation d
                SET d.status = :status,
-                   d.documentPath = :documentPath,
+                   d.documentR2Path = :documentR2Path,
                    d.documentGeneratedAt = :documentGeneratedAt,
                    d.updatedAt = :documentGeneratedAt
              WHERE d.id = :dealId
@@ -79,6 +79,6 @@ public interface DealConfirmationRepository
     int recordDocument(
             @Param("dealId") UUID dealId,
             @Param("status") DealConfirmationStatus status,
-            @Param("documentPath") String documentPath,
+            @Param("documentR2Path") String documentR2Path,
             @Param("documentGeneratedAt") Instant documentGeneratedAt);
 }

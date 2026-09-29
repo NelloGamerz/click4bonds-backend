@@ -86,6 +86,54 @@ class DealConfirmationSheetValuesFactoryTest {
     }
 
     @Test
+    void chargesStampDutyAtTheRateOnTheConsiderationBeforeDuty() {
+
+        /*
+         * A crore-scale deal, so the duty is large enough to read. Principal
+         * 1,00,00,000 plus accrued 2,40,100 is 1,02,40,100; at 0.0001% that is
+         * 10.2401, rounded to the rupee.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(100_000L)
+                        .totalAmount(new BigDecimal("10000000.0000"))));
+
+        assertEquals(new BigDecimal("10.00"), values.stampDuty());
+        assertEquals(new BigDecimal("10240110.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsStampDutyAwayFromZeroAtHalfARupee() {
+
+        /*
+         * As ROUND(x, 0) does in the sheet: 25,00,000 at 0.0001% is 2.5, which
+         * rounds to 3 rather than truncating to 2. The half is the only place
+         * this rule and a truncating one disagree, so it is pinned.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(25_000L)
+                        .totalAmount(new BigDecimal("2500000.0000"))
+                        .accruedInterestPerHundredFace(BigDecimal.ZERO)));
+
+        assertEquals(new BigDecimal("3.00"), values.stampDuty());
+        assertEquals(new BigDecimal("2500003.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsAwayStampDutyBelowHalfARupee() {
+
+        /*
+         * A retail-sized deal pays nothing under this rule: 1,126.41 at 0.0001%
+         * is 0.0011, which the sheet's ROUND(...,0) takes to zero. The letter
+         * prints 0.00 rather than a fraction of a paisa it cannot show.
+         */
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(new BigDecimal("0.00"), values.stampDuty());
+    }
+
+    @Test
     void roundsMoneyToThePaisa() {
 
         /*
@@ -104,14 +152,6 @@ class DealConfirmationSheetValuesFactoryTest {
         assertEquals(new BigDecimal("303.02"), values.totalConsideration());
     }
 
-    @Test
-    void chargesNoStampDutyUntilTheRuleIsConfirmed() {
-
-        DealConfirmationSheetValues values = factory.build(snapshot());
-
-        assertEquals(new BigDecimal("0.00"), values.stampDuty());
-    }
-
     // =========================================================
     // THE COUPON UNIT
     // =========================================================
@@ -121,10 +161,10 @@ class DealConfirmationSheetValuesFactoryTest {
 
         /*
          * Bond.couponRate holds 13.70 meaning 13.70%, and the letter prints that
-         * number as it stands. Nothing is divided by 100 here: the template's
-         * coupon cell is formatted as a percentage of a fraction, and it is that
-         * cell's format the cell map overrides rather than this class that
-         * converts the value.
+         * number as it stands, under a format that adds the sign to it. Nothing
+         * is divided by 100 here: the template's coupon cell is formatted as a
+         * percentage of a fraction, and it is that cell's format the cell map
+         * overrides rather than this class that converts the value.
          */
         DealConfirmationSheetValues values = factory.build(snapshot());
 

@@ -161,8 +161,11 @@ class DealConfirmationCellMapTest {
          * value correctly only if a fraction is written to it. We print the rate
          * as Bond stores it, a percentage, so the format has to be replaced —
          * without this, 8.80 prints as 880.00%.
+         *
+         * The percent sign is quoted, so the cell shows it without treating the
+         * value as a fraction: 8.80 prints as 8.80%, not 0.09%.
          */
-        assertEquals("0.00", cellMap.numberFormats().get("C22"));
+        assertEquals("0.00\"%\"", cellMap.numberFormats().get("C22"));
 
         /*
          * Nothing else is overridden: every other cell's value matches the format

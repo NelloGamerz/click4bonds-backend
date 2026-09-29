@@ -13,9 +13,11 @@ import com.click4bonds.app.Modules.Document.Model.DocumentFormat;
  * regenerating a document for the same deal overwrites the previous file instead
  * of accumulating a second copy, so a retry after a failure is safe to run.</p>
  *
- * <p>The {@code yyyy/MM} prefix keeps a directory from growing without bound,
- * which matters on filesystems that degrade in large directories and when the
- * files are ever archived by hand.</p>
+ * <p>The {@code yyyy/MM} prefix is kept from when documents were files in a
+ * directory, where it stopped one folder growing without bound. In a bucket it is
+ * not needed for that, and it stays because it is what every recorded key already
+ * looks like: it groups a listing by the month a letter was issued, which is how
+ * an operator looks for one.</p>
  */
 public final class DocumentKeys {
 

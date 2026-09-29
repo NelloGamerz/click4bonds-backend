@@ -15,25 +15,19 @@ email:
 
 # Generation of customer-facing documents — today, the deal confirmation letter.
 #
-# Split into three groups: how documents are produced (storage, template, pdf),
-# what they say (deal), and who we are (organisation). The first is the same in
-# every environment, the second changes with the business's arithmetic, and the
-# third changes only if a second entity is onboarded.
+# Split into two groups: how documents are produced (template, pdf) and what they
+# say (deal), plus who we are (organisation). The first is the same in every
+# environment, the second changes with the business's arithmetic, and the third
+# changes only if a second entity is onboarded.
+#
+# Where they are stored is not configured here. Generated documents go to the
+# shared object store, configured once under `storage:` further down.
 document:
   # Master switch. false wires the no-op implementation, so deals are still
   # created and simply produce no letter. This is the setting for a machine with
   # no LibreOffice — a laptop or CI — where generation would otherwise fail on
   # every purchase.
   enabled: ${DOCUMENT_ENABLED:true}
-
-  storage:
-    # Root for every generated document. Must be writable by the application
-    # user. On a container this needs a mounted volume, or documents are lost on
-    # redeploy while the database still records that they exist.
-    directory: ${DOCUMENT_STORAGE_DIR:./storage/deal-confirmations}
-    # Keeps the filled spreadsheet beside the PDF. It is what an operator needs
-    # to correct and reprint a letter.
-    keep-xlsx: ${DOCUMENT_KEEP_XLSX:true}
 
   template:
     # Read as a classpath stream, never a file: the template is packaged inside
@@ -67,9 +61,6 @@ document:
     # The customer is buying from us, so the letter is our sale. A purchase-side
     # letter is a different document with a different sheet.
     transaction-type: ${DOCUMENT_TRANSACTION_TYPE:Our Sale}
-    # Zero pending confirmation of the rule: the template carries a bare literal
-    # with no formula, so neither the rate nor its base can be derived from it.
-    stamp-duty: ${DOCUMENT_STAMP_DUTY:0}
 
   # Printed in the "Our ..." cells of the letter. These identify an organisation;
   # they are not credentials, which is why they carry real defaults rather than
@@ -88,6 +79,30 @@ document:
     # on a legal document is worse than an empty cell.
     account-number: ${DOCUMENT_ORG_ACCOUNT:}
     settlement-number: ${DOCUMENT_ORG_SETTLEMENT:}
+
+# The object store every generated file is written to.
+#
+# Top-level because it is shared: the deal confirmation letter is the first thing
+# stored here, not the reason the store exists. A second feature that keeps a file
+# uses this same configuration and chooses its own keys.
+#
+# A blank value is not a startup failure — the store is built without touching the
+# network and reports which property is missing when something is first written —
+# so a laptop or a CI machine that has switched document generation off starts
+# with nothing configured here. Production requires the four values; see
+# application-prod.yaml.
+storage:
+  r2:
+    # Account-scoped S3 endpoint: https://<account-id>.r2.cloudflarestorage.com
+    endpoint: ${R2_ENDPOINT:}
+    # Credentials for an R2 API token scoped to this bucket. Left blank, the AWS
+    # SDK's own chain is used instead — environment variables, a shared profile,
+    # or an instance role.
+    access-key-id: ${R2_ACCESS_KEY_ID:}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY:}
+    bucket: ${R2_BUCKET:}
+    # R2 is region-agnostic and expects "auto".
+    region: ${R2_REGION:auto}
 
 # Authentication with a phone number and an OTP.
 #
