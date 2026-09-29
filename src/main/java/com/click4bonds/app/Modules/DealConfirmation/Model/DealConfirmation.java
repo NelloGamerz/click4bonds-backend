@@ -31,12 +31,19 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * A confirmed purchase of a number of bond lots.
+ * The deal information for a purchase of a number of bond lots.
  *
- * <p>Created directly once the requested quantity has been reserved from the
- * bond's inventory — there is no approval workflow. The reservation and this
- * row are written in one transaction, so a deal that exists always has its
- * units already deducted from {@link Bond#getRemainingQuantity()}.</p>
+ * <p>Created directly, with no approval workflow. This row records what was
+ * agreed — quantities, the price as it stood, the reference the customer
+ * quotes — and deliberately carries no claim on stock: it neither reserves,
+ * deducts nor releases inventory, and it is written without any reference to
+ * {@link Bond#getRemainingQuantity()}.</p>
+ *
+ * <p>Inventory belongs to the reservation and payment flow around this record:
+ * units are reserved before a draft deal exists and consumed once payment
+ * settles. A deal confirmation can therefore exist while the bond's remaining
+ * quantity is unchanged, and later revisions of the deal do not touch it
+ * either.</p>
  *
  * <p><strong>Why some fields are copied rather than only referenced.</strong>
  * This row is the buyer's confirmation document, so the values it is built from
@@ -107,9 +114,9 @@ public class DealConfirmation {
     /**
      * {@code quantityPerLot * numberOfLots}, computed by the server.
      *
-     * <p>Stored rather than derived on read because it is the quantity that was
-     * actually reserved from inventory, and it is what the confirmation document
-     * has to show years later.</p>
+     * <p>Stored rather than derived on read because it is the quantity this deal
+     * is for, and it is what the confirmation document has to show years later.
+     * It is the deal's own figure — it reflects no inventory movement.</p>
      */
     @Column(name = "total_quantity", nullable = false)
     private Long totalQuantity;
