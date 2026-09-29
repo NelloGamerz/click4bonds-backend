@@ -122,7 +122,8 @@ class DealConfirmationServiceTest {
         assertEquals("DC-20260922-000001", result.response().getDealReference());
 
         /*
-         * The retry reserved nothing: it never reached the transactional writer.
+         * The retry created nothing: it never reached the transactional writer,
+         * so no second deal and no second reference were produced.
          */
         verify(writer, never()).create(any(), any(), any());
         verify(dealConfirmationRepository, never()).save(any());
@@ -172,7 +173,7 @@ class DealConfirmationServiceTest {
         /*
          * Both copies of a double click passed the lookup at the same instant.
          * The unique index on (customer, key) let one through and rejected the
-         * other, whose transaction rolled back — so no units were taken twice,
+         * other, whose transaction rolled back — so no second deal was written,
          * and the customer is answered with the deal that did get created.
          */
         DealConfirmation winner = deal("DC-20260922-000001");
