@@ -41,4 +41,3 @@ src/main/resources/application-dev.yaml
 # still listed because an older checkout may have one, and confirmation letters
 # contain a customer's name, the bonds they bought and what they paid: they must
 # never be committed.
-storage/
