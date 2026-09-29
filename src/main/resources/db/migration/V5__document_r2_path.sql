@@ -1,0 +1,128 @@
+-- Record where a deal's generated confirmation document actually lives in R2,
+-- rather than a key that only means something alongside this application's
+-- configuration.
+--
+-- Until now document_path held a relative object key, e.g.
+-- "2026/09/DC-20260929-000001.pdf". That is enough for this application to find
+-- the letter, and useless to anyone else: an operator looking at a row, or a
+-- support engineer pasting a location into a browser, had no way to reach the
+-- object without being told the account id and bucket. An address carries all
+-- three, so the row is self-describing:
+--
+--   https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/DC-...pdf
+--
+-- A RENAME, NOT AN ADD-AND-DROP.
+--
+-- The obvious shape — add the new column, copy the old into it, drop the old —
+-- would be three statements and one lie, because the two columns do not hold the
+-- same kind of value: a key is not an address, and SQL cannot build one without
+-- the endpoint and the bucket, which live in configuration and must not be
+-- hardcoded into a migration. Copying a key into an address column would leave
+-- every historical row holding a value in the wrong format.
+--
+-- Renaming is honest about what happened — the column's contents did not change,
+-- its meaning did — and it is lossless. Nothing is dropped, no row is rewritten,
+-- and no data is copied.
+--
+-- Applied as a single transaction, like V1, V2 and V4. PostgreSQL's DDL is
+-- transactional, so a failure leaves the schema exactly as it was.
+--
+-- Why ddl-auto cannot do this: application-prod.yaml sets
+-- spring.jpa.hibernate.ddl-auto=validate, so Hibernate checks the schema and
+-- refuses to start rather than altering anything. This statement has to be
+-- applied by hand before the new code is deployed.
+--
+-- Why this is V5 and not folded into V4: V4 has already been applied to the
+-- database, and a statement appended to an applied migration never runs.
+-- Flyway's prod configuration baselines at V4, so this is the first migration it
+-- will apply by itself.
+--
+-- ---------------------------------------------------------------------------
+-- BEFORE YOU RUN THIS ON A DEVELOPMENT DATABASE
+--
+-- dev sets spring.jpa.hibernate.ddl-auto=update (application-dev.yaml), and
+-- Hibernate answers a renamed entity field by ADDING a column — it never renames
+-- one. So the first time the new code loads a context against a dev database it
+-- creates document_r2_path alongside document_path, and the RENAME below then
+-- fails with "column document_r2_path already exists".
+--
+-- Flyway is configured for prod only, so this does not happen by itself; it only
+-- matters if Flyway is ever enabled for dev, or if this script is run there by
+-- hand. The fix for such a database is the add-and-drop shape this migration
+-- deliberately avoids, because the new column is already there:
+--
+--   BEGIN;
+--   UPDATE deal_confirmations
+--   SET document_r2_path = document_path
+--   WHERE document_path IS NOT NULL AND document_r2_path IS NULL;
+--   ALTER TABLE deal_confirmations DROP COLUMN document_path;
+--   COMMIT;
+--
+-- That copies keys into the address column, which is exactly the mixed state the
+-- notes at the foot of this file describe: readable by the application, and a
+-- bare key rather than an address for a human. Acceptable for a development
+-- database. Production never reaches this branch, because ddl-auto=validate
+-- creates nothing.
+-- ---------------------------------------------------------------------------
+
+BEGIN;
+
+-- The old name, to a name that says what it now holds. Values are untouched.
+ALTER TABLE deal_confirmations
+    RENAME COLUMN document_path TO document_r2_path;
+
+-- 512 was sized for "yyyy/MM/<reference>.pdf". An address adds the endpoint and
+-- the bucket in front of that: roughly 60 more characters for a typical R2
+-- account and bucket name, so this is headroom rather than a tight fit. Widening
+-- a varchar does not rewrite the table in PostgreSQL.
+ALTER TABLE deal_confirmations
+    ALTER COLUMN document_r2_path TYPE varchar(1024);
+
+COMMIT;
+
+-- ---------------------------------------------------------------------------
+-- Verification, after running:
+--
+--   SELECT column_name, data_type, is_nullable, character_maximum_length
+--   FROM information_schema.columns
+--   WHERE table_name = 'deal_confirmations'
+--     AND column_name IN ('document_r2_path', 'document_generated_at');
+--
+--   -- expect: document_r2_path       | character varying        | YES | 1024
+--   --         document_generated_at | timestamp with time zone | YES | (null)
+--
+--   -- The old name is gone:
+--   SELECT count(*) FROM information_schema.columns
+--   WHERE table_name = 'deal_confirmations' AND column_name = 'document_path';
+--   -- expect 0
+--
+--   -- Nothing was lost: this should equal the count taken before the migration.
+--   SELECT count(*) FROM deal_confirmations WHERE document_r2_path IS NOT NULL;
+--
+--   -- The two columns are still either both set or both unset:
+--   SELECT count(*) FROM deal_confirmations
+--   WHERE (document_r2_path IS NULL) <> (document_generated_at IS NULL);
+--   -- expect 0
+-- ---------------------------------------------------------------------------
+-- Rows that existed before this migration.
+--
+-- They hold a bare key, not an address, because the rename preserved whatever
+-- was there and an address could not be built in SQL. The application reads both
+-- — R2ObjectStore.keyFor accepts a bare relative key for exactly this reason —
+-- so those deals keep working with no action, and every letter generated from
+-- now on records a full address.
+--
+-- If you would rather bring the old rows into line, run this once with your own
+-- endpoint and bucket substituted:
+--
+--   UPDATE deal_confirmations
+--   SET document_r2_path = 'https://<account-id>.r2.cloudflarestorage.com'
+--                          || '/<bucket>/' || document_r2_path
+--   WHERE document_r2_path IS NOT NULL
+--     AND document_r2_path NOT LIKE 'http%';
+--
+-- It is optional, not a fix-up: without it those rows are readable by this
+-- application and only less convenient for a human. Note that it will also
+-- rewrite any row whose key legitimately started with "http", which this
+-- application's key scheme (yyyy/MM/<reference>.<ext>) cannot produce.
+-- ---------------------------------------------------------------------------

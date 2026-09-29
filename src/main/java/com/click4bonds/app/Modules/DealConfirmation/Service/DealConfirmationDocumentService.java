@@ -26,7 +26,10 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
  * PdfConverter                         (LibreOffice, headless)
  *        |
  *        v
- * DocumentStorage                      (keeps both artefacts)
+ * DocumentStorage                      (the deal-shaped view of the store)
+ *        |
+ *        v
+ * ObjectStore -> R2ObjectStore          (Cloudflare R2, S3 API)
  *        |
  *        v
  * download / email

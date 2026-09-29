@@ -144,26 +144,39 @@ public class DealConfirmation {
     private String idempotencyKey;
 
     /**
-     * Location of the generated confirmation document, relative to the
-     * configured document storage root.
+     * Address of the generated confirmation document in the object store, of the
+     * form {@code https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/<dealReference>.pdf}.
      *
-     * <p>Deliberately relative rather than absolute: an absolute path would tie
-     * this row to one host's directory layout, so moving the storage root or
-     * mounting it elsewhere in the container would leave every historical row
-     * pointing at nothing. It is resolved against the storage root when read.</p>
+     * <p><strong>An address, not a key and not a presigned URL.</strong> It is
+     * readable and pasteable — an operator looking at a row can find the letter
+     * without knowing how the application is configured — and it carries no
+     * signature, so it never expires. Three alternatives were rejected: a bare
+     * key, because it means nothing without the store's configuration; a
+     * presigned URL, because it stops working; and a public custom-domain URL,
+     * because the bucket is private and every stored link would be dead.</p>
+     *
+     * <p><strong>It pins the endpoint that built it.</strong> That is the cost of
+     * the readability, and it is worth knowing before changing accounts: a row
+     * written against one endpoint names that endpoint for as long as it exists.
+     * {@code R2ObjectStore.keyFor} refuses to resolve an address whose host or
+     * bucket is not the configured one, so a move surfaces as a clear failure
+     * rather than as a read from the wrong bucket.</p>
+     *
+     * <p>Widened from 512 to 1024 characters when it became an address: it now
+     * carries an endpoint and a bucket as well as a key.</p>
      *
      * <p>NULL means no document has been produced for this deal yet — either
      * generation has not run, or it failed. The deal's {@link #status} is the
      * other half of that answer.</p>
      */
-    @Column(name = "document_path", length = 512)
-    private String documentPath;
+    @Column(name = "document_r2_path", length = 1024)
+    private String documentR2Path;
 
     /**
-     * When {@link #documentPath} was written.
+     * When {@link #documentR2Path} was written.
      *
      * <p>Kept because "which deals are stuck waiting for a document" is a
-     * question about age, and the path alone cannot answer it.</p>
+     * question about age, and the address alone cannot answer it.</p>
      */
     @Column(name = "document_generated_at")
     private Instant documentGeneratedAt;

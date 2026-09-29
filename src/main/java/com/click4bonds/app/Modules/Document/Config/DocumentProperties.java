@@ -13,8 +13,6 @@ import lombok.Data;
  * <pre>
  * document:
  *   enabled: true
- *   storage:
- *     directory: ./storage/deal-confirmations
  *   template:
  *     path: deal_confirmation/ATSPL Deal Format.xlsx
  *     sheet-name: "PSU Private Sale "
@@ -26,6 +24,10 @@ import lombok.Data;
  *   organisation:
  *     pan: AAHCA7743E
  * </pre>
+ *
+ * <p>The bucket documents are written to is not here: it is shared with anything
+ * else that keeps a file, and is configured under {@code storage.r2.*} — see
+ * {@link com.click4bonds.app.Modules.Storage.Config.StorageProperties}.</p>
  *
  * <p>Split into engine settings, document content policy, and legal-entity
  * identity. The first is the same in every environment; the second is per-market
@@ -52,8 +54,6 @@ public class DocumentProperties {
      */
     private boolean enabled = true;
 
-    private Storage storage = new Storage();
-
     private Template template = new Template();
 
     private Pdf pdf = new Pdf();
@@ -61,30 +61,6 @@ public class DocumentProperties {
     private Deal deal = new Deal();
 
     private Organisation organisation = new Organisation();
-
-    /** Where generated documents are kept. */
-    @Data
-    public static class Storage {
-
-        /**
-         * Root directory for every generated document. Relative paths resolve
-         * against the working directory.
-         *
-         * <p>On a container this must point at a mounted volume, or every
-         * document is lost on redeploy while the database still claims one
-         * exists.</p>
-         */
-        private String directory = "./storage/deal-confirmations";
-
-        /**
-         * Whether to keep the filled spreadsheet alongside the PDF.
-         *
-         * <p>Kept by default: the spreadsheet is what an operator needs to
-         * correct and reprint a letter, and it is the only record of exactly
-         * what was filled in.</p>
-         */
-        private boolean keepXlsx = true;
-    }
 
     /** The spreadsheet that is filled in. */
     @Data
@@ -159,15 +135,6 @@ public class DocumentProperties {
 
         /** Days from the deal date to the value (settlement) date. T+0 today. */
         private int valueDateOffsetDays = 0;
-
-        /**
-         * Stamp duty printed on the letter.
-         *
-         * <p>Zero pending confirmation of the rule. The template carries a bare
-         * literal with no formula, so neither the rate nor its base can be
-         * derived from it.</p>
-         */
-        private java.math.BigDecimal stampDuty = java.math.BigDecimal.ZERO;
 
         /**
          * Which side of the trade the letter describes.

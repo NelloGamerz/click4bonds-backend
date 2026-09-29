@@ -57,7 +57,7 @@ public class DealConfirmationDocumentReader {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Deal not found: " + dealReference));
 
-        if (deal.getDocumentPath() == null) {
+        if (deal.getDocumentR2Path() == null) {
 
             /*
              * A real deal with no letter. Reported as "not found" rather than as
@@ -72,14 +72,20 @@ public class DealConfirmationDocumentReader {
                     "No document has been generated for deal: " + dealReference);
         }
 
-        byte[] content = documentStorage.read(deal.getDocumentPath());
+        /*
+         * A deal row records the document's address, not its key. Resolving it
+         * here — rather than storing a key — is what makes the row readable, and
+         * it fails loudly if the address names a different endpoint or bucket than
+         * the one configured, instead of silently fetching from the wrong place.
+         */
+        byte[] content = documentStorage.read(documentStorage.keyOf(deal.getDocumentR2Path()));
 
         /*
-         * The stored path carries the format's extension, so the content type
-         * comes from the same place the key did. Reading it from the key keeps
+         * The address carries the format's extension, so the content type comes
+         * from the same place the address did. Reading it from the address keeps
          * the two from being set independently and disagreeing.
          */
-        DocumentFormat format = deal.getDocumentPath().endsWith("." + DocumentFormat.PDF.extension())
+        DocumentFormat format = deal.getDocumentR2Path().endsWith("." + DocumentFormat.PDF.extension())
                 ? DocumentFormat.PDF
                 : DocumentFormat.XLSX;
 
