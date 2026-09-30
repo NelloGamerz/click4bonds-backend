@@ -11,7 +11,9 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Maps confirmation letter values onto cells of the {@code PSU Private Sale } sheet.
+ * Maps confirmation letter values onto cells of the {@code PSU Private Sale }
+ * sheet — the corporate bond letter, and the layout every deal gets unless the
+ * bond is a Sovereign.
  *
  * <p>The whole layout of the letter in one place, so a template revision is a
  * change to one table rather than a hunt through the codebase. Addresses are
@@ -26,17 +28,28 @@ import lombok.RequiredArgsConstructor;
  * prints "Your PAN", "DP ID", "CLIENT ID" and "Your Dp Name" with nothing after
  * them, because this application holds none of those values and inventing a
  * default would put a wrong identifier on a legal document.</p>
+ *
+ * <p>This class computes nothing. The arithmetic is
+ * {@link DealConfirmationSheetValuesFactory}'s and is shared with every other
+ * layout — see {@link DealConfirmationSheetStrategy}.</p>
  */
 @Component
 @RequiredArgsConstructor
-public class DealConfirmationCellMap {
+public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrategy {
 
     private final DocumentProperties documentProperties;
+
+    @Override
+    public String sheetName() {
+
+        return documentProperties.getTemplate().getSheetName();
+    }
 
     /**
      * @param values the letter's values
      * @return cell address to value, in sheet order
      */
+    @Override
     public Map<String, Object> toCells(DealConfirmationSheetValues values) {
 
         DocumentProperties.Organisation organisation =
@@ -118,6 +131,7 @@ public class DealConfirmationCellMap {
      * @return cell address to Excel number format, for the addresses that need
      *         one
      */
+    @Override
     public Map<String, String> numberFormats() {
 
         return Map.of("C22", "0.00\"%\"");

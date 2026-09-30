@@ -6,8 +6,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.click4bonds.app.Modules.DealConfirmation.Service.AtSplDealConfirmationDocumentService;
-import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationCellMap;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
@@ -51,7 +51,7 @@ public class DealConfirmationDocumentConfig {
             PdfConverter pdfConverter,
             DocumentStorage documentStorage,
             DealConfirmationSheetValuesFactory sheetValuesFactory,
-            DealConfirmationCellMap cellMap,
+            DealConfirmationSheetStrategyFactory sheetStrategyFactory,
             DocumentProperties documentProperties) {
 
         return new AtSplDealConfirmationDocumentService(
@@ -59,7 +59,7 @@ public class DealConfirmationDocumentConfig {
                 pdfConverter,
                 documentStorage,
                 sheetValuesFactory,
-                cellMap,
+                sheetStrategyFactory,
                 documentProperties);
     }
 

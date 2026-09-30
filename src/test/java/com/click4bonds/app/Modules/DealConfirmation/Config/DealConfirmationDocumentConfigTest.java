@@ -7,9 +7,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import com.click4bonds.app.Modules.DealConfirmation.Service.AtSplDealConfirmationDocumentService;
-import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationCellMap;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
+import com.click4bonds.app.Modules.DealConfirmation.Service.GsecAccrualCalculator;
+import com.click4bonds.app.Modules.DealConfirmation.Service.GsecSellSheetStrategy;
+import com.click4bonds.app.Modules.DealConfirmation.Service.PsuPrivateSaleSheetStrategy;
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
@@ -38,9 +41,17 @@ class DealConfirmationDocumentConfigTest {
             .withBean(PdfConverter.class, () -> mock(PdfConverter.class))
             .withBean(DocumentStorage.class, () -> mock(DocumentStorage.class))
             .withBean(DealConfirmationSheetValuesFactory.class,
-                    () -> new DealConfirmationSheetValuesFactory(new DocumentProperties()))
-            .withBean(DealConfirmationCellMap.class,
-                    () -> new DealConfirmationCellMap(new DocumentProperties()));
+                    () -> new DealConfirmationSheetValuesFactory(
+                            new DocumentProperties(),
+                            new GsecAccrualCalculator()))
+            .withBean(DealConfirmationSheetStrategyFactory.class, () -> {
+
+                DocumentProperties properties = new DocumentProperties();
+
+                return new DealConfirmationSheetStrategyFactory(
+                        new PsuPrivateSaleSheetStrategy(properties),
+                        new GsecSellSheetStrategy(properties));
+            });
 
     @Test
     void wiresTheRealImplementationByDefault() {

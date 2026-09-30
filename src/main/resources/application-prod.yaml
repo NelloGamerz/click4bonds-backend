@@ -182,6 +182,9 @@ document:
     # both sides before comparing, so the spelling here does not have to match
     # that quirk. Do not wrap this in quotes: they would become part of the name.
     sheet-name: ${DOCUMENT_TEMPLATE_SHEET:PSU Private Sale}
+    # The layout a Sovereign-rated (government) security is confirmed on. That
+    # sheet charges TDS rather than stamp duty, so it cannot be the corporate one.
+    gsec-sheet-name: ${DOCUMENT_TEMPLATE_GSEC_SHEET:gsec paper}
 
   pdf:
     # false produces the spreadsheet only. A deliberate degraded mode for an
@@ -219,10 +222,22 @@ document:
     market-type: ${DOCUMENT_ORG_MARKET_TYPE:ICDM(T+0)}
     banker: ${DOCUMENT_ORG_BANKER:ICCL Or RBI}
     mode-of-delivery: ${DOCUMENT_ORG_DELIVERY:ICCL}
+    # A government security settles in demat form. The G-Sec letter prints this
+    # instead of mode-of-delivery above, which would name the wrong route.
+    gsec-mode-of-delivery: ${DOCUMENT_ORG_GSEC_DELIVERY:Demat}
     # Left blank: this application holds neither value, and a guessed identifier
     # on a legal document is worse than an empty cell.
     account-number: ${DOCUMENT_ORG_ACCOUNT:}
     settlement-number: ${DOCUMENT_ORG_SETTLEMENT:}
+    # G-Sec letter only. The committed template carries sample values in these
+    # cells from whichever letter it was saved from, and the same two strings
+    # appear as "DP ID" and "CLIENT ID" in an older workbook — so none of them is
+    # trusted. Blank defaults clear those cells rather than reprinting them.
+    # bank-ifsc is deliberately NOT ifsc-code above: that one is the clearing
+    # corporation's, and this sheet's label asks for the bank's.
+    branch-location: ${DOCUMENT_ORG_BRANCH:}
+    bank-name: ${DOCUMENT_ORG_BANK_NAME:}
+    bank-ifsc: ${DOCUMENT_ORG_BANK_IFSC:}
 
 # The object store every generated file is written to.
 #

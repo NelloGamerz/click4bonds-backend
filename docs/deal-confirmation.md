@@ -34,11 +34,16 @@ two values and a persisted deal is always `CREATED` first.
 | `DealConfirmationMapper` | `...DealConfirmation.Service` | Entity → response DTO, entity → document snapshot. |
 | `DealReferenceGenerator` / `DealReferenceGeneratorImpl` | `...DealConfirmation.Service` | Issues `DC-YYYYMMDD-000001`. |
 | `DealConfirmationDocumentService` | `...DealConfirmation.Service` | Interface for the Excel/PDF step. |
-| `AtSplDealConfirmationDocumentService` | `...DealConfirmation.Service` | The real implementation: fills the template, renders a PDF, stores both. |
+| `AtSplDealConfirmationDocumentService` | `...DealConfirmation.Service` | The real implementation: picks a layout, fills the template, renders a PDF, stores both. |
 | `NoOpDealConfirmationDocumentService` | `...DealConfirmation.Service` | Wired when `document.enabled=false`; produces nothing and says so. |
 | `DealConfirmationDocumentConfig` | `...DealConfirmation.Config` | Chooses between the two implementations above. |
 | `DealAccrualCalculator` | `...DealConfirmation.Service` | Accrued interest and last coupon date, computed on the managed bond. |
-| `DealConfirmationSheetValuesFactory` / `DealConfirmationCellMap` | `...DealConfirmation.Service` | The letter's arithmetic, then its layout. |
+| `DealConfirmationSheetValuesFactory` | `...DealConfirmation.Service` | The letter's arithmetic, shared by every layout. |
+| `DealConfirmationSheetStrategy` | `...DealConfirmation.Service` | Interface for one letter layout: sheet name, cells, number formats. |
+| `DealConfirmationSheetStrategyFactory` | `...DealConfirmation.Service` | Picks the layout from the bond's rating. The Sovereign rule lives here. |
+| `PsuPrivateSaleSheetStrategy` | `...DealConfirmation.Service` | The corporate letter's layout. Every deal unless the bond is a Sovereign. |
+| `GsecSellSheetStrategy` | `...DealConfirmation.Service` | The G-Sec letter's layout. Deducts TDS where the corporate one adds stamp duty — see [§7](#which-layout-a-deal-gets). |
+| `GsecAccrualCalculator` | `...DealConfirmation.Service` | `COUPDAYBS(valueDate, maturity, 2, 4)`: the G-Sec sheet's accrued days, semi-annual on a European 30/360 count. |
 | `DealConfirmationDocumentRecorder` | `...DealConfirmation.Service` | Records where the document landed; flips the status. |
 | `DealConfirmationDocumentReader` | `...DealConfirmation.Service` | Reads a stored letter back for download. |
 | `Modules/Document/*` | `...Modules.Document` | The reusable engine: template fill, PDF conversion, and `DocumentStorage` — the deal-shaped view of storage. |
@@ -362,7 +367,10 @@ DealConfirmation
 DealConfirmationSheetValuesFactory   (snapshot -> the letter's values)
        |
        v
-DealConfirmationCellMap              (values -> cells of the template)
+DealConfirmationSheetStrategyFactory (rating -> which layout)
+       |
+       v
+DealConfirmationSheetStrategy        (values -> cells of that sheet)
        |
        v
 XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
@@ -386,6 +394,89 @@ lives in `Modules/DealConfirmation`. The store itself (`Modules/Storage`) knows
 nothing about documents either — it takes keys and bytes, which is what lets a
 second feature keep files without building its own arrangement.
 
+### Which layout a deal gets
+
+A G-Sec is not a corporate bond and must not print on the corporate letter — the
+G-Sec sheet charges **TDS (0.10%)** where the corporate sheet charges **stamp
+duty**, and prints a different field set. So the layout is chosen per deal:
+
+```
+bond rating == "Sovereign"  →  GsecSellSheetStrategy      (sheet "gsec paper")
+otherwise                   →  PsuPrivateSaleSheetStrategy (sheet "PSU Private Sale")
+```
+
+The rule lives in `DealConfirmationSheetStrategyFactory`, in one place. A
+strategy knows how to lay a letter out; which letter a deal deserves is a
+decision about deals, not about layouts, so it is not a branch inside either
+strategy. The match is `rating != null && rating.trim().equalsIgnoreCase(...)`,
+because `Bond.rating` is free text (`String(100)`, no enum, no constraint):
+`"Sovereign"` and `" sovereign "` match, `"Sovereign GOLD"` and `null` do not.
+A null rating deliberately keeps the corporate letter, which is what every deal
+got before this rule existed.
+
+The strategies share `DealConfirmationSheetValuesFactory` — two sheets must not
+become two definitions of accrued interest. A strategy decides *where* a value is
+printed, never *what* it is.
+
+Both charges are computed in `DealConfirmationSheetValuesFactory`, so neither
+sheet's arithmetic lives in a layout class. The record carries both: stamp duty
+and the corporate total for one sheet, TDS and the G-Sec total for the other.
+Each sheet prints the pair that belongs to it and ignores the other.
+
+**The G-Sec sheet deducts where the corporate one adds.** Its money runs
+consideration (principal + accrued, no duty) → TDS → total, and the total is
+`consideration − TDS`. The corporate sheet's is `consideration + stamp duty`.
+That is two different instruments' charges, not two ways of writing one sum.
+
+**The G-Sec sheet has its own accrued interest, and it is not the corporate
+figure.** That sheet's rule is `quantum × coupon × days / 360`, with the days from
+`COUPDAYBS(valueDate, maturity, 2, 4)` — **semi-annual coupons on a European 30/360
+count**. The corporate letter's accrued interest comes from the bond's own schedule
+on an actual/actual count. They are different numbers for the same deal and neither
+is a rounding of the other, so they travel as separate fields rather than being
+derived from one another. `GsecAccrualCalculator` implements the count, pinned
+against the template's own cached result (159 days) rather than a restatement of it.
+
+**Everything on both sheets is written as a literal, never as a live formula.**
+The G-Sec sheet is formula-heavy, and its formulas are *right about the shape of
+each sum* — the accrued interest is the platform's own convention here, unlike on
+the corporate sheet where the day-count differs. They are still replaced. A formula
+left in the sheet carries the cached result from whichever deal the template was
+last saved with, and nothing guarantees the application that opens it recalculates
+before rendering; the printed figure must not depend on the renderer. So the values
+are computed in Java and written flat, and `XlsxTemplateWriterTest` sweeps the real
+sheet to prove no formula survives.
+
+**TDS is charged on the accrued interest, and this deliberately disagrees with the
+template's own cell.** The committed sheet holds `=C28*0.1%` — 0.10% of the
+*consideration* — under a label reading "Tds ( 0.10%)". The agreed rule is **10%
+of the accrued-interest component**, a different base and a different rate. This is
+the one formula on the sheet that is replaced because it computes the *wrong rule*
+rather than the right one at the wrong moment.
+
+> **Open, and it is on the letter, not just in the code.** That cell's label still
+> reads "0.10%" while the figure printed beside it is 10% of the interest. One of
+> the two is wrong and the letter currently shows both. This is a finance question
+> — the rate, or the wording, has to change before a G-Sec letter goes to a
+> customer. Recorded in `DealConfirmationSheetValues` and pinned by
+> `DealConfirmationSheetValuesFactoryTest.chargesGsecTdsOnTheInterestRatherThanTheConsideration`,
+> which asserts the figure, asserts it is *not* the template's 0.1%-of-consideration,
+> and names the discrepancy, so it cannot be resolved by accident.
+
+**The coupon is written as a fraction on this sheet, not a percentage.** The G-Sec
+coupon cell is formatted `0.00%` and its own sample holds `0.0734`, so the fraction
+goes straight in and the format is left alone — the opposite of the corporate sheet,
+which writes `7.34` and replaces the format. Two consequences worth knowing:
+swapping the conventions is a hundred-fold error, and the value must be written as a
+`double`, because `XlsxTemplateWriter` rounds every `BigDecimal` to two decimals —
+correct for money, and it would turn `0.0734` into `0.07`, printing "7.00%".
+
+**The rating travels on the snapshot.** `DealConfirmationDocumentData.rating` is
+captured inside the deal's transaction, because the document step runs after it
+commits and may not load a `Bond` — the same reason the interest figures travel
+(see [§7](#why-the-interest-figures-travel-on-the-snapshot)). It is a snapshot like
+everything else there: editing a bond's rating does not re-letter an existing deal.
+
 ### The template
 
 `src/main/resources/deal_confirmation/ATSPL Deal Format.xlsx`, sheet
@@ -396,6 +487,22 @@ second feature keep files without building its own arrangement.
 - **The workbook has four sheets**, and a PDF conversion renders all of them. The
   writer removes every sheet but the one being filled, or the customer would
   receive the purchase-side layouts too.
+
+`gsec paper` is the fifth sheet of the same workbook, added by hand — one
+workbook, two sheets, two strategies, named by
+`document.template.gsec-sheet-name`. It is *sample-filled* like the other four,
+and its particulars block holds a branch address, a bank name, a bank IFSC and an
+account number that this repository cannot verify — the same two strings appear as
+"DP ID" and "CLIENT ID" in an older workbook. Those four cells are therefore
+configured blank and **written as blanks on purpose**: writing them is what clears
+the samples. `organisation.bank-ifsc` is deliberately a separate key from
+`organisation.ifsc-code`, which holds the clearing corporation's IFSC and has no
+business appearing under this sheet's bank-IFSC label.
+
+`XlsxTemplateWriterTest` now asserts against this sheet directly — the real
+workbook, the real cell map, no formula and no sample value surviving. If the
+workbook is ever re-saved without the sheet, the build fails rather than silently
+lettering Sovereign deals from a layout that is no longer there.
 
 The committed template is *sample-filled* — it holds a previous deal's ISIN,
 security name and quantity. Every mapped cell is overwritten, and a test asserts
@@ -431,7 +538,10 @@ survives the fill anywhere in the sheet.
 > template versus `DC-YYYYMMDD-nnnnnn` here), and `Settlement NO.`, which the
 > clearing house issues per deal.
 
-### Stamp duty
+### Stamp duty (corporate sheet only)
+
+The G-Sec sheet charges TDS instead of stamp duty, in the opposite direction —
+see [§7](#which-layout-a-deal-gets). Everything below is the corporate letter.
 
 Stamp duty is computed, not configured. The rate is `0.0001%` of the
 consideration, rounded to the whole rupee — `ROUND(x, 0)` — and the base is the
@@ -684,13 +794,16 @@ The document step adds these, under `Modules/DealConfirmation/` unless noted:
 
 | Test class | Covers |
 |---|---|
-| `DealConfirmationSheetValuesFactoryTest` | The letter's arithmetic: the coupon printed as stored rather than divided by 100, quantum from face value, accrued interest scaled from one bond to the position, the total, stamp duty, 2dp rounding, and refusing a deal with no price or no accrual (17 cases). |
-| `DealConfirmationCellMapTest` | The layout: every address, that no label cell is written to, that the customer identifiers with no source stay blank, that the template's stale echo of the counterparty line is overwritten, and the coupon cell's format override (7 cases). |
-| `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written (7 cases). |
+| `DealConfirmationSheetValuesFactoryTest` | The letter's arithmetic: the coupon printed as stored rather than divided by 100, quantum from face value, accrued interest scaled from one bond to the position, the total, stamp duty, 2dp rounding, refusing a deal with no price or no accrual — and the G-Sec side, which is a **second calculation rather than a reuse of the first**: its own day count, interest from quantum × coupon × days / 360, the consideration before its charge, TDS deducted and **charged on the interest rather than the consideration**, and all five figures null when the deal has no maturity or no coupon (22 cases). |
+| `PsuPrivateSaleSheetStrategyTest` | The corporate layout: every address, that no label cell is written to, that the customer identifiers with no source stay blank, that the template's stale echo of the counterparty line is overwritten, the coupon cell's format override, and that the sheet name comes from config (8 cases). **No assertion here may change**: it is what pins the corporate letter while the G-Sec work goes on around it. |
+| `GsecAccrualCalculatorTest` | The day count, pinned against the template's own cached 159: measuring from the previous coupon date rather than maturity, stepping back when settlement falls earlier in the same month as the coupon, the 31st counting as the 30th, thirty-day months rather than calendar ones, and not accruing on or after maturity (9 cases). |
+| `GsecSellSheetStrategyTest` | The G-Sec layout: every address, that it prints **Demat** rather than the corporate settlement route, the coupon as a **fraction** (and as a `double`, so the writer's 2dp rounding cannot make it 0.07), that it takes the **G-Sec** accrued days and interest and not the corporate pair, that it **deducts** TDS rather than adding stamp duty and never prints the stamp-duty figure, that a deal with no maturity or no coupon is **refused** rather than printed blank, that our particulars are written blank so the template's samples clear, that the customer's own identifiers are left alone, that no label cell is written, and that nothing needs a format override (11 cases). |
+| `DealConfirmationSheetStrategyFactoryTest` | The routing rule: `"Sovereign"` in any case or surrounding whitespace goes to the G-Sec sheet; `null`, blank, `"AAA"` and `"Sovereign GOLD"` keep the corporate one; the predicate accepts only the whole trimmed word; and no route returns null or an unnamed sheet (7 cases). |
+| `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written, and that a Sovereign deal fills the **G-Sec** sheet while an unrated one keeps the corporate sheet (11 cases). |
 | `DealConfirmationDocumentRecorderTest` | Status and address recorded together, and the address recorded is the one derived from the key rather than the key itself — a row holding a key would be unreadable to anyone but this application. A deal that is no longer there is warned about, not thrown. And a missing deal id does not demand that storage be configured. |
 | `DealConfirmationDocumentReaderTest` | That the row's address is resolved back to a key before the store is asked for bytes, the PDF-versus-spreadsheet choice made from the address, that another customer's deal and a deal with no document are both reported as missing without consulting storage at all, and that an address which cannot be resolved surfaces as a failure rather than as "no document" (5 cases). |
 | `DealConfirmationDocumentConfigTest` | *(under `Modules/DealConfirmation/Config/`)* That `document.enabled` really swaps the implementation, and never wires both. |
-| `XlsxTemplateWriterTest` | *(under `Modules/Document/Service/`)* **The keystone.** Fills the real committed template and reopens it: every mapped cell, **no formula survives**, **no sample value survives**, exactly one sheet remains, dates stay date-formatted (9 cases). |
+| `XlsxTemplateWriterTest` | *(under `Modules/Document/Service/`)* **The keystone.** Fills the real committed template and reopens it: every mapped cell, **no formula survives**, **no sample value survives**, exactly one sheet remains, dates stay date-formatted — and the same four sweeps again against the **G-Sec sheet**, which is formula-heavy (COUPDAYBS on the accrued days, and a formula on every money cell including the TDS) and carries a branch, bank and account number that must not print. The G-Sec cases also pin the coupon arriving as `0.0734` under the template's own `0.00%` format and the total landing *below* the consideration, which is what proves TDS was deducted rather than added (15 cases). |
 | `R2DocumentStorageTest` | *(under `Modules/Document/Service/`)* That the key a deal records is the key the object is stored under — divergence there would write objects nothing could find — that keys and addresses each convert to the other, and that a store failure arrives as a `DocumentStorageException`, the type `DealConfirmationService` knows how to treat as "the letter could not be kept" (11 cases). |
 | `R2ObjectStoreTest` | *(under `Modules/Storage/Service/`)* The two settings whose absence silently breaks R2 — path-style addressing and chunked encoding off — asserted on the configuration object because a mocked client cannot show them; that the store constructs with no configuration at all; that a missing bucket or endpoint is reported by property name; key rejection; the bucket/key/content-type mapping; a 404 as absent but a 500 as a failure; address round-tripping, including a bare legacy key and refusal of an address from another endpoint or bucket; and a real round-trip against a live bucket, skipped where none is configured (24 cases, 1 skipped in CI). |
 | `StoragePropertiesTest` | *(under `Modules/Storage/Config/`)* That the property names written in the YAML actually bind — Spring ignores keys no field claims, so a mistyped `secret-key` would silently fall back to the SDK's credential chain and surface much later as an authentication error. |
