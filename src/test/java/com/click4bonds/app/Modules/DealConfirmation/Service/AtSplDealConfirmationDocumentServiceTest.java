@@ -70,8 +70,10 @@ class AtSplDealConfirmationDocumentServiceTest {
                 templateWriter,
                 pdfConverter,
                 storage,
-                new DealConfirmationSheetValuesFactory(properties),
-                new DealConfirmationCellMap(properties),
+                new DealConfirmationSheetValuesFactory(properties, new GsecAccrualCalculator()),
+                new DealConfirmationSheetStrategyFactory(
+                        new PsuPrivateSaleSheetStrategy(properties),
+                        new GsecSellSheetStrategy(properties)),
                 properties);
     }
 
@@ -141,6 +143,86 @@ class AtSplDealConfirmationDocumentServiceTest {
          * sheets. If the configured name were wrong the fill would throw, but
          * asserting the wiring here makes a config regression obvious.
          */
+        verify(templateWriter).fill(
+                eq(properties.getTemplate().getSheetName()),
+                anyMap(),
+                anyMap());
+    }
+
+    // =========================================================
+    // WHICH LAYOUT THE DEAL GETS
+    // =========================================================
+
+    @Test
+    void printsARatedBondOnTheCorporateSheet() {
+
+        givenTheSpreadsheetIsFilled();
+        givenThePdfRenders();
+
+        service.generate(snapshot("AAA"));
+
+        /*
+         * Anything that is not a Sovereign keeps the letter it has always had.
+         * This is the regression guard for the whole feature: the new rule must
+         * not move ordinary deals onto another sheet.
+         */
+        verify(templateWriter).fill(
+                eq(properties.getTemplate().getSheetName()),
+                anyMap(),
+                anyMap());
+    }
+
+    @Test
+    void printsASovereignBondOnTheGsecSheet() {
+
+        givenTheSpreadsheetIsFilled();
+        givenThePdfRenders();
+
+        service.generate(snapshot("Sovereign"));
+
+        /*
+         * The whole point of the routing: a government security is confirmed on
+         * the G-Sec layout, not the corporate one. Asserting the sheet name is
+         * what proves the strategy was selected — the cells themselves are pinned
+         * in GsecSellSheetStrategyTest.
+         */
+        verify(templateWriter).fill(
+                eq(properties.getTemplate().getGsecSheetName()),
+                anyMap(),
+                anyMap());
+    }
+
+    @Test
+    void matchesTheSovereignRatingRegardlessOfCaseOrSurroundingSpace() {
+
+        givenTheSpreadsheetIsFilled();
+        givenThePdfRenders();
+
+        /*
+         * The rating is free text typed into an admin form, so it arrives in
+         * whatever case the operator used. The layout must not depend on that.
+         */
+        service.generate(snapshot(" sovereign "));
+
+        verify(templateWriter).fill(
+                eq(properties.getTemplate().getGsecSheetName()),
+                anyMap(),
+                anyMap());
+    }
+
+    @Test
+    void printsAnUnratedBondOnTheCorporateSheet() {
+
+        givenTheSpreadsheetIsFilled();
+        givenThePdfRenders();
+
+        /*
+         * A bond with no rating recorded keeps the letter every deal had before
+         * the G-Sec layout existed. Treating a missing rating as Sovereign would
+         * move every unrated bond onto a letter with TDS on it, silently.
+         */
+        service.generate(snapshot(null));
+
         verify(templateWriter).fill(
                 eq(properties.getTemplate().getSheetName()),
                 anyMap(),
@@ -243,6 +325,7 @@ class AtSplDealConfirmationDocumentServiceTest {
                 "TEST BOND 2027",
                 "INE123A07012",
                 "SECURED",
+                null,
                 new BigDecimal("13.70"),
                 LocalDate.of(2027, 8, 23),
                 "23rd Of Every Month",
@@ -266,6 +349,15 @@ class AtSplDealConfirmationDocumentServiceTest {
     // FIXTURES
     // =========================================================
 
+    /**
+     * The corporate letter: a bond with no rating, which is what every deal was
+     * before the G-Sec layout existed.
+     */
+    private DealConfirmationDocumentData snapshot() {
+
+        return snapshot(null);
+    }
+
     private void givenTheSpreadsheetIsFilled() {
 
         when(templateWriter.fill(anyString(), any(), any())).thenReturn(XLSX);
@@ -283,7 +375,7 @@ class AtSplDealConfirmationDocumentServiceTest {
                         ((byte[]) call.getArgument(3)).length));
     }
 
-    private DealConfirmationDocumentData snapshot() {
+    private DealConfirmationDocumentData snapshot(String rating) {
 
         return new DealConfirmationDocumentData(
                 REFERENCE,
@@ -295,6 +387,7 @@ class AtSplDealConfirmationDocumentServiceTest {
                 "TEST BOND 2027",
                 "INE123A07012",
                 "SECURED",
+                rating,
                 new BigDecimal("13.70"),
                 LocalDate.of(2027, 8, 23),
                 "23rd Of Every Month",

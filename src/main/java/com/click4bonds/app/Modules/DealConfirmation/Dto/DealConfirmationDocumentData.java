@@ -49,6 +49,16 @@ public record DealConfirmationDocumentData(
         /** {@code SecurityType} name, or null when the bond has none. */
         String securityType,
 
+        /**
+         * The bond's credit rating as stored, e.g. {@code "Sovereign"} for a
+         * government security, or null when the bond has none.
+         *
+         * <p>Carried so the document step can choose a layout without loading the
+         * bond it may no longer reach. It is a snapshot like everything else here:
+         * editing the bond afterwards does not re-letter an existing deal.</p>
+         */
+        String rating,
+
         /** The bond's coupon as stored, a percentage: 8.80 means 8.80%. */
         BigDecimal couponRate,
 
@@ -115,6 +125,7 @@ public record DealConfirmationDocumentData(
                 bond == null || bond.getSecurityType() == null
                         ? null
                         : bond.getSecurityType().name(),
+                bond == null ? null : bond.getRating(),
                 bond == null ? null : bond.getCouponRate(),
                 bond == null ? null : bond.getMaturityDate(),
                 bond == null ? null : bond.getIpDateDescription(),

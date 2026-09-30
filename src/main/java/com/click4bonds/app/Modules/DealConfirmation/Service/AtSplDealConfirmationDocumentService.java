@@ -25,6 +25,14 @@ import lombok.extern.slf4j.Slf4j;
  * knows nothing about how a deal is created — the snapshot it is handed is
  * complete.</p>
  *
+ * <p><strong>Which sheet it fills is not decided here.</strong> A Sovereign-rated
+ * bond is confirmed on the G-Sec sell sheet and everything else on the corporate
+ * PSU sheet; {@link DealConfirmationSheetStrategyFactory} makes that choice and
+ * the {@link DealConfirmationSheetStrategy} it returns supplies the sheet name,
+ * the cells and any number-format overrides. This class is only the pipeline
+ * around it — fill, render, store — so adding a third layout does not touch
+ * it.</p>
+ *
  * <p><strong>Order of operations matters.</strong> The spreadsheet is filled and
  * stored first, then rendered. If rendering fails, the filled spreadsheet is
  * still on disk for an operator to convert by hand, and the deal is left
@@ -47,7 +55,7 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
     private final PdfConverter pdfConverter;
     private final DocumentStorage storage;
     private final DealConfirmationSheetValuesFactory valuesFactory;
-    private final DealConfirmationCellMap cellMap;
+    private final DealConfirmationSheetStrategyFactory sheetStrategyFactory;
     private final DocumentProperties properties;
 
     @Override
@@ -55,7 +63,16 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
 
         DealConfirmationSheetValues values = valuesFactory.build(dealConfirmation);
 
-        Map<String, Object> cells = cellMap.toCells(values);
+        /*
+         * Which sheet this deal is printed on. A Sovereign-rated bond gets the
+         * G-Sec layout; every other deal gets the corporate one it has always
+         * had. The choice is made from the rating carried on the snapshot,
+         * because the bond itself is no longer reachable here.
+         */
+        DealConfirmationSheetStrategy strategy =
+                sheetStrategyFactory.strategyFor(dealConfirmation.rating());
+
+        Map<String, Object> cells = strategy.toCells(values);
 
         /*
          * Filed under the value date, which is the date the trade settles and
@@ -66,9 +83,9 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
                 values.valueDate());
 
         byte[] xlsx = templateWriter.fill(
-                properties.getTemplate().getSheetName(),
+                strategy.sheetName(),
                 cells,
-                cellMap.numberFormats());
+                strategy.numberFormats());
 
         String xlsxKey = stem + "." + DocumentFormat.XLSX.extension();
 
