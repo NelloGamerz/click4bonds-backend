@@ -18,6 +18,7 @@ import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
+import org.apache.poi.ss.usermodel.PrintSetup;
 
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
@@ -96,19 +97,16 @@ public class XlsxTemplateWriter {
      *                                     sheet does not exist, or a value
      *                                     cannot be written
      */
-    public byte[] fill(
-            String sheetName,
-            Map<String, Object> cells,
-            Map<String, String> numberFormats) {
+    public byte[] fill(String sheetName, Map<String, Object> cells, Map<String, String> numberFormats) {
 
         String templatePath = properties.getTemplate().getPath();
 
-        try (InputStream template = open(templatePath);
-                Workbook workbook = new XSSFWorkbook(template)) {
+        try (InputStream template = open(templatePath); Workbook workbook = new XSSFWorkbook(template)) {
 
             Sheet sheet = requireSheet(workbook, sheetName);
 
             keepOnly(workbook, sheet);
+            configureForPdf(workbook, sheet);
 
             writeAll(workbook, sheet, cells, numberFormats);
 
@@ -116,14 +114,11 @@ public class XlsxTemplateWriter {
 
         } catch (IOException failure) {
 
-            throw new DocumentGenerationException(
-                    "Failed to fill template " + templatePath, failure);
+            throw new DocumentGenerationException("Failed to fill template " + templatePath, failure);
 
         } catch (IllegalArgumentException malformed) {
 
-            throw new DocumentGenerationException(
-                    "Failed to fill template " + templatePath
-                            + ": " + malformed.getMessage(), malformed);
+            throw new DocumentGenerationException("Failed to fill template " + templatePath + ": " + malformed.getMessage(), malformed);
         }
     }
 
@@ -138,8 +133,7 @@ public class XlsxTemplateWriter {
         ClassPathResource resource = new ClassPathResource(templatePath);
 
         if (!resource.exists()) {
-            throw new DocumentGenerationException(
-                    "Document template not found on the classpath: " + templatePath);
+            throw new DocumentGenerationException("Document template not found on the classpath: " + templatePath);
         }
 
         try {
@@ -148,8 +142,7 @@ public class XlsxTemplateWriter {
 
         } catch (IOException failure) {
 
-            throw new DocumentGenerationException(
-                    "Document template could not be opened: " + templatePath, failure);
+            throw new DocumentGenerationException("Document template could not be opened: " + templatePath, failure);
         }
     }
 
@@ -176,13 +169,10 @@ public class XlsxTemplateWriter {
 
         for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
 
-            available.append(i > 0 ? ", " : "")
-                    .append('[').append(workbook.getSheetName(i)).append(']');
+            available.append(i > 0 ? ", " : "").append('[').append(workbook.getSheetName(i)).append(']');
         }
 
-        throw new DocumentGenerationException(
-                "Sheet \"" + sheetName + "\" not found in the document template."
-                        + " Available: " + available);
+        throw new DocumentGenerationException("Sheet \"" + sheetName + "\" not found in the document template." + " Available: " + available);
     }
 
     /**
@@ -208,11 +198,7 @@ public class XlsxTemplateWriter {
         workbook.setSelectedTab(index);
     }
 
-    private void writeAll(
-            Workbook workbook,
-            Sheet sheet,
-            Map<String, Object> cells,
-            Map<String, String> numberFormats) {
+    private void writeAll(Workbook workbook, Sheet sheet, Map<String, Object> cells, Map<String, String> numberFormats) {
 
         if (cells == null || cells.isEmpty()) {
 
@@ -223,12 +209,7 @@ public class XlsxTemplateWriter {
 
         for (Map.Entry<String, Object> entry : cells.entrySet()) {
 
-            write(
-                    workbook,
-                    sheet,
-                    entry.getKey(),
-                    entry.getValue(),
-                    numberFormats.get(entry.getKey()));
+            write(workbook, sheet, entry.getKey(), entry.getValue(), numberFormats.get(entry.getKey()));
         }
     }
 
@@ -242,12 +223,7 @@ public class XlsxTemplateWriter {
      * cells is meant to prevent. Re-creating the cell removes any formula and any
      * stale cached result unambiguously.</p>
      */
-    private void write(
-            Workbook workbook,
-            Sheet sheet,
-            String address,
-            Object value,
-            String numberFormat) {
+    private void write(Workbook workbook, Sheet sheet, String address, Object value, String numberFormat) {
 
         CellReference reference;
 
@@ -257,8 +233,7 @@ public class XlsxTemplateWriter {
 
         } catch (RuntimeException malformed) {
 
-            throw new DocumentGenerationException(
-                    "Not a valid cell address: " + address, malformed);
+            throw new DocumentGenerationException("Not a valid cell address: " + address, malformed);
         }
 
         Row row = sheet.getRow(reference.getRow());
@@ -269,10 +244,7 @@ public class XlsxTemplateWriter {
 
         Cell existing = row.getCell(reference.getCol());
 
-        CellStyle style = styleFor(
-                workbook,
-                existing == null ? null : existing.getCellStyle(),
-                numberFormat);
+        CellStyle style = styleFor(workbook, existing == null ? null : existing.getCellStyle(), numberFormat);
 
         if (existing != null) {
             row.removeCell(existing);
@@ -299,10 +271,7 @@ public class XlsxTemplateWriter {
      * the template's style in place would change every other cell that shares
      * it.</p>
      */
-    private CellStyle styleFor(
-            Workbook workbook,
-            CellStyle inherited,
-            String numberFormat) {
+    private CellStyle styleFor(Workbook workbook, CellStyle inherited, String numberFormat) {
 
         if (numberFormat == null) {
             return inherited;
@@ -314,18 +283,12 @@ public class XlsxTemplateWriter {
             overridden.cloneStyleFrom(inherited);
         }
 
-        overridden.setDataFormat(
-                workbook.createDataFormat().getFormat(numberFormat));
+        overridden.setDataFormat(workbook.createDataFormat().getFormat(numberFormat));
 
         return overridden;
     }
 
-    private void applyValue(
-            Workbook workbook,
-            Cell cell,
-            String address,
-            Object value,
-            CellStyle style) {
+    private void applyValue(Workbook workbook, Cell cell, String address, Object value, CellStyle style) {
 
         if (value == null) {
             return;
@@ -383,8 +346,7 @@ public class XlsxTemplateWriter {
             return;
         }
 
-        throw new DocumentGenerationException(
-                "Unsupported value for cell " + address + ": " + value.getClass().getName());
+        throw new DocumentGenerationException("Unsupported value for cell " + address + ": " + value.getClass().getName());
     }
 
     private CellStyle dateStyle(Workbook workbook) {
@@ -407,4 +369,37 @@ public class XlsxTemplateWriter {
             return out.toByteArray();
         }
     }
+
+    private void configureForPdf(Workbook workbook, Sheet sheet) {
+
+        int sheetIndex = workbook.getSheetIndex(sheet);
+
+        workbook.setPrintArea(sheetIndex, 0, 3, 0, 45);
+
+        PrintSetup printSetup = sheet.getPrintSetup();
+
+        // Enable fit-to-page FIRST
+        sheet.setFitToPage(true);
+        sheet.setAutobreaks(false);
+
+        // Then define the scaling
+        printSetup.setFitWidth((short) 1);
+        printSetup.setFitHeight((short) 1);
+
+        // Paper
+        printSetup.setPaperSize(PrintSetup.A4_PAPERSIZE);
+        printSetup.setLandscape(false);
+
+        sheet.setMargin(Sheet.LeftMargin, 0.50);
+        sheet.setMargin(Sheet.RightMargin, 0.50);
+
+        sheet.setMargin(Sheet.TopMargin, 0.45);
+        sheet.setMargin(Sheet.BottomMargin, 0.30);
+
+        sheet.setMargin(Sheet.HeaderMargin, 0.10);
+        sheet.setMargin(Sheet.FooterMargin, 0.10);
+
+    }
+
+
 }

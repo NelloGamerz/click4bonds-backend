@@ -34,10 +34,3 @@ build/
 src/main/resources/application-dev.yaml
 .env
 .github/workflows/qodana_code_quality.yml
-
-### Generated documents ###
-# Confirmation letters are no longer written to disk — they go to a private
-# Cloudflare R2 bucket — so there is no local directory to ignore. `storage/` is
-# still listed because an older checkout may have one, and confirmation letters
-# contain a customer's name, the bonds they bought and what they paid: they must
-# never be committed.
