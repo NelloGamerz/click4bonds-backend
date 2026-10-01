@@ -4,6 +4,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -125,6 +127,74 @@ public class UserService {
     public User getUser(UUID userId) {
 
         return userRepository.findById(userId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+    }
+
+    /**
+     * Pages through accounts for the admin listing.
+     *
+     * <p>A blank search term is not a filter that matches everything — it means
+     * no search was asked for, and the unfiltered query is cheaper.</p>
+     *
+     * @param role     restrict to this role, or {@code null} for every role
+     * @param search   term matched against name and address, or blank for none
+     * @param pageable page request
+     * @return one page of matching accounts
+     */
+    public Page<User> getUsers(UserRole role, String search, Pageable pageable) {
+
+        if (search == null || search.isBlank()) {
+            return userRepository.findUsers(role, pageable);
+        }
+
+        return userRepository.searchUsers(role, search, pageable);
+    }
+
+    /**
+     * Moves the user to a different status.
+     *
+     * @param userId account identifier
+     * @param status status the account should hold
+     * @return the updated account
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User updateStatus(UUID userId, UserStatus status) {
+
+        User user = getUser(userId);
+        user.setStatus(status);
+
+        log.info("Updated status for user {} to {}", user.getId(), status);
+
+        return userRepository.save(user);
+    }
+
+    /**
+     * Changes a user's role.
+     *
+     * <p>The change is the whole operation. It used to also enqueue an outbox
+     * event so the role could be pushed to the external identity provider that
+     * held the authoritative copy; that provider is gone and this database is
+     * now the only place a role lives, so there is no second system to notify.
+     * Authorization reads the role from here — via the access token's
+     * {@code role} claim — so the change takes effect at the user's next token
+     * refresh.</p>
+     *
+     * @param userId account identifier
+     * @param role   role the account should hold
+     * @return the updated account
+     * @throws ResponseStatusException 404 when no such account exists
+     */
+    public User updateRole(UUID userId, UserRole role) {
+
+        User user = getUser(userId);
+
+        if (user.getRole() != role) {
+            user.setRole(role);
+            user = userRepository.save(user);
+
+            log.info("Updated role for user {} to {}", user.getId(), role);
+        }
+
+        return user;
     }
 
     /**
