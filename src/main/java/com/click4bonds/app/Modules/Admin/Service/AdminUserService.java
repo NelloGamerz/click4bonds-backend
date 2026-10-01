@@ -45,11 +45,11 @@ public class AdminUserService {
                 return toUserDetailsResponse(userService.getUser(userId));
         }
 
-        public User updateUserStatus(
+        public AdminUserDetailsResponse updateUserStatus(
                         UUID userId,
                         UserStatus status) {
 
-                return userService.updateStatus(userId, status);
+                return toUserDetailsResponse(userService.updateStatus(userId, status));
         }
 
         public AdminUserDetailsResponse updateUserRole(
