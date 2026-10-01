@@ -60,7 +60,7 @@ public class AdminUserController {
         }
 
         @PatchMapping("/{id}/status")
-        public ResponseEntity<User> updateStatus(
+        public ResponseEntity<AdminUserDetailsResponse> updateStatus(
                         @PathVariable UUID id,
                         @RequestParam UserStatus status) {
 
