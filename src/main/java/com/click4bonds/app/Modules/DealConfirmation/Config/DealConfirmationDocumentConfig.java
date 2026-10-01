@@ -1,5 +1,8 @@
 package com.click4bonds.app.Modules.DealConfirmation.Config;
 
+import java.util.concurrent.Executor;
+
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -52,7 +55,8 @@ public class DealConfirmationDocumentConfig {
             DocumentStorage documentStorage,
             DealConfirmationSheetValuesFactory sheetValuesFactory,
             DealConfirmationSheetStrategyFactory sheetStrategyFactory,
-            DocumentProperties documentProperties) {
+            DocumentProperties documentProperties,
+            @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
 
         return new AtSplDealConfirmationDocumentService(
                 templateWriter,
@@ -60,7 +64,8 @@ public class DealConfirmationDocumentConfig {
                 documentStorage,
                 sheetValuesFactory,
                 sheetStrategyFactory,
-                documentProperties);
+                documentProperties,
+                documentTaskExecutor);
     }
 
     /**

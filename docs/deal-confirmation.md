@@ -11,9 +11,19 @@ through the module, and what is deliberately left for later.
 lots sold to the authenticated customer. It does two things, in this order:
 
 1. **Writes the deal** as a `deal_confirmations` row holding a snapshot of what
-   was agreed — quantities, the price as it stood, the reference.
-2. **Generates the confirmation document** — the Excel/PDF step. Fills the ATSPL
-   template, renders a PDF, stores both. See [§7](#7-the-document-step).
+   was agreed — quantities, the price as it stood, the reference, and every
+   figure the confirmation letter prints.
+2. **Asks for the confirmation document** — publishes a request to Kafka and
+   returns. The Excel/PDF step runs on the other side of that topic: a listener
+   fills the ATSPL template, renders a PDF, uploads both to R2. See
+   [§7](#7-the-document-step).
+
+**The customer does not wait for the letter.** Filling a spreadsheet, rendering
+it with LibreOffice and uploading two artefacts is seconds of work, and the
+request used to block on all of it for an answer that only needed the deal row to
+exist. Now the response carries the same figures the letter will print, so the
+frontend can show the customer what they bought immediately, and the document
+catches up.
 
 **This module does not touch bond inventory.** It does not reserve, deduct,
 release or lock units, and it makes no decision based on how many a bond has
@@ -29,10 +39,15 @@ two values and a persisted deal is always `CREATED` first.
 | File | Package | Responsibility |
 |---|---|---|
 | `DealConfirmationController` | `...DealConfirmation.Controller` | The HTTP endpoint. Reads the buyer from the JWT. |
-| `DealConfirmationService` | `...DealConfirmation.Service` | Idempotent retry handling, then hands off. Not transactional. |
+| `DealConfirmationService` | `...DealConfirmation.Service` | Idempotent retry handling, letter values on the response, then publishes a document request. Not transactional. |
 | `DealConfirmationWriter` | `...DealConfirmation.Service` | The transactional half: validate, allocate the reference, persist. Touches no inventory. |
 | `DealConfirmationMapper` | `...DealConfirmation.Service` | Entity → response DTO, entity → document snapshot. |
 | `DealReferenceGenerator` / `DealReferenceGeneratorImpl` | `...DealConfirmation.Service` | Issues `DC-YYYYMMDD-000001`. |
+| `DealConfirmationDocumentProducer` | `...DealConfirmation.Producer` | Publishes the document request to Kafka. Async; never fails a purchase. |
+| `DealConfirmationDocumentConsumer` | `...DealConfirmation.Consumer` | The listener: renders the letter and records where it landed. |
+| `DealConfirmationDocumentKafkaConfig` | `...DealConfirmation.Config` | The topic, the consumer group, and the container factory pinned to the deal payload type. |
+| `DealConfirmationDocumentEvent` | `...DealConfirmation.Dto` | The message: the deal id plus the complete snapshot. |
+| `DocumentTaskExecutorConfig` | `...Document.Config` | The pool the upload and the render run on, sized from the PDF converter's own limit. |
 | `DealConfirmationDocumentService` | `...DealConfirmation.Service` | Interface for the Excel/PDF step. |
 | `AtSplDealConfirmationDocumentService` | `...DealConfirmation.Service` | The real implementation: picks a layout, fills the template, renders a PDF, stores both. |
 | `NoOpDealConfirmationDocumentService` | `...DealConfirmation.Service` | Wired when `document.enabled=false`; produces nothing and says so. |
@@ -100,21 +115,55 @@ DealConfirmationService.createDeal                          (not transactional)
   │       re-read by key → answer with the winner, replayed=true
   │       nothing found → rethrow
   │
-  ├─ 6. generateDocument(snapshot)     ← after commit, no transaction
+  ├─ 6. build the response's letter values   ← after commit, no transaction
+  │       DealConfirmationSheetValuesFactory.build(snapshot)
+  │       refuses a deal with no price/accrual → letterValues = null,
+  │       logged, never propagated
+  │
+  ├─ 7. publish DealConfirmationDocumentEvent(dealId, snapshot)
+  │       to click4bonds.deal-confirmation.document   ← async, non-blocking
+  │       switched off with document.enabled=false
   │       failure is logged, never propagated
   │
   v
 201 Created  (new deal)   |   200 OK  (replayed request)
 ```
 
-The two rules that shape this split:
+...and then, on the consumer side, entirely off the request thread:
+
+```
+click4bonds.deal-confirmation.document
+  │
+  v
+DealConfirmationDocumentConsumer          @KafkaListener, group
+  │                                       click4bonds-deal-documents
+  ├─ DealConfirmationDocumentService.generate(snapshot)
+  │     fill → upload xlsx ∥ render pdf → upload pdf
+  │
+  ├─ none()?  ── documents switched off, record nothing
+  │
+  └─ DealConfirmationDocumentRecorder.record(dealId, key)
+        status → CONFIRMATION_GENERATED, address + timestamp
+        (a short transaction of its own)
+
+  a failure anywhere is logged and dropped, never rethrown — see §7
+```
+
+The three rules that shape this split:
 
 - **`DealConfirmationService` is not transactional, `DealConfirmationWriter` is.**
-  The document step is an external operation (eventually a spreadsheet fill and a
-  PDF render) and holding a database transaction open across it would pin a
+  The document step is an external operation (a spreadsheet fill, a PDF render
+  and two uploads) and holding a database transaction open across it would pin a
   connection for its duration. Splitting them into two beans is also what makes
   `@Transactional` actually apply — a self-invocation inside one class would
-  silently bypass Spring's proxy.
+  silently bypass Spring's proxy. The publish itself is also deliberately outside
+  the transaction: a request published for a deal that then rolls back would
+  letter a deal that does not exist.
+- **The response is answered before the letter exists.** The figures travel on
+  the response rather than being read back later, because the frontend needs
+  something to show and there is no read endpoint (§8). The deal's `status` is
+  still `CREATED` on the wire — it only becomes `CONFIRMATION_GENERATED` once the
+  consumer has stored the letter.
 - **The reference and the insert share one transaction.** The daily counter is
   incremented inside the writer's transaction, so a failed insert returns the
   number and leaves no deal behind ([§6](#6-deal-references)). Nothing on the
@@ -170,13 +219,41 @@ could disagree with the parts it is made of.
   "pricePerUnit": 1000.0000,
   "totalAmount": 50000.0000,
   "status": "CREATED",
-  "createdAt": "2026-09-22T06:08:27Z"
+  "createdAt": "2026-09-22T06:08:27Z",
+  "letterValues": {
+    "letterDate": "2026-09-22",
+    "valueDate": "2026-09-22",
+    "quantum": 50000.00,
+    "principalAmount": 50000.00,
+    "accruedInterest": 1189.04,
+    "stampDuty": 0.00,
+    "totalConsideration": 51189.04,
+    "accruedDays": 64,
+    "gsecAccruedDays": null,
+    "gsecTds": null
+  }
 }
 ```
 
 `pricePerUnit` and `totalAmount` are `null` when the bond has no price recorded.
 A null price stays null rather than becoming zero, because a zero total would
 read as a free purchase (`DealConfirmationWriter.buildDeal`).
+
+**`letterValues` is the same record the spreadsheet is filled from**
+(`DealConfirmationSheetValues`), computed by the same factory, so the figure on
+screen and the figure on the letter cannot drift. It carries both sheets'
+charges — stamp duty for a corporate bond, TDS for a G-Sec — and the frontend
+prints whichever belongs to the bond. The abbreviated example above omits the
+fields that are null for a corporate deal.
+
+It is **`null`** in two cases, neither of which fails the request:
+
+- the deal cannot support it — no price, or no accrued interest — which is the
+  same condition that stops a letter being produced;
+- the request was **replayed**. The figures are computed inside the creating
+  transaction, from the interest schedule as it stood then; rebuilding them
+  outside it against a bond that may since have been edited would risk showing a
+  different number from the one the customer saw the first time.
 
 **Status codes**
 
@@ -361,7 +438,16 @@ spreadsheet and a PDF.
 ### Pipeline
 
 ```
-DealConfirmation
+POST /api/deal-confirmations
+       |
+       v
+DealConfirmationDocumentProducer     (KafkaTemplate.send, async)
+       |
+       v
+click4bonds.deal-confirmation.document      <-- the request ends here
+       |
+       v
+DealConfirmationDocumentConsumer     (@KafkaListener, its own group)
        |
        v
 DealConfirmationSheetValuesFactory   (snapshot -> the letter's values)
@@ -375,18 +461,70 @@ DealConfirmationSheetStrategy        (values -> cells of that sheet)
        v
 XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
        |
-       v
-PdfConverter                         (LibreOffice, headless)
-       |
-       v
-DocumentStorage                      (the deal-shaped view)
-       |
-       v
+       +-------------------------------+
+       |                               |
+       v                               v
+DocumentStorage                    PdfConverter
+ (upload the .xlsx)                 (LibreOffice, headless)
+       |                               |
+       |                               v
+       |                          DocumentStorage
+       |                           (upload the .pdf)
+       +---------------+---------------+
+                       |
+                       v
 ObjectStore -> R2ObjectStore          (Cloudflare R2, S3 API)
-       |
-       v
+                       |
+                       v
 GET /api/deal-confirmations/{reference}/document
 ```
+
+### The Kafka hop
+
+`DealConfirmationDocumentEvent` carries **the deal id and the whole snapshot**,
+not an id to look up. The document step has always been forbidden from touching
+the database — it runs after the deal's transaction has committed — so the
+snapshot was already a complete, flat record. That is exactly what a Kafka
+payload wants: the consumer needs no repository and no session, and a message
+that arrives late still renders the letter the deal was actually struck on. The
+id travels beside it because recording the result is a bulk UPDATE keyed on the
+primary key, which the customer-facing reference does not give you.
+
+The topic is `click4bonds.deal-confirmation.document`, keyed by the deal id, so
+every message about one deal lands on the same partition and in order. It has
+**its own consumer group** (`click4bonds-deal-documents`), deliberately not the
+analytics group: the two pipelines are scaled and tuned independently.
+
+**The listener needs a container factory of its own, and this is load-bearing.**
+Kafka's JSON deserialiser resolves a payload to one fixed class, and the shared
+`spring.kafka.consumer` configuration names `AnalyticsEvent`. Without the
+override in `DealConfirmationDocumentKafkaConfig`, a document request would be
+deserialised as the wrong type and discarded — and the application would still
+start and deals would still be created, so the only symptom would be letters that
+never appear. That factory is built **inline rather than declared as a bean**:
+Boot's own `ConsumerFactory` backs off when another one exists, which would leave
+the default `kafkaListenerContainerFactory` — and therefore the analytics
+listener — without the factory it was configured against.
+
+### Uploading and rendering at the same time
+
+Once the workbook is filled, the upload and the render are independent: the
+render is handed the bytes in memory, never the stored object, so it does not
+wait on the upload. Running them together overlaps a network round trip with a
+LibreOffice subprocess.
+
+**The spreadsheet is still always stored before the PDF.** The upload is awaited
+first, so a deal whose spreadsheet did not land is reported as a storage failure
+with no PDF stored against it; and a render failure leaves the filled workbook in
+the bucket for an operator to convert by hand. The render may briefly outlive a
+failed upload on that path — it is never read, so one conversion is wasted and
+nothing is corrupted.
+
+Both run on `documentTaskExecutor`, a pool sized one wider than
+`document.pdf.max-concurrent-conversions`. Deliberately not Boot's
+`applicationTaskExecutor`: a LibreOffice conversion holds its thread for up to
+the configured timeout, and a basket of those on the shared pool would starve the
+HTTP requests it exists to serve.
 
 The engine half (`Modules/Document`) knows nothing about deals: it fills a
 template, converts a workbook to PDF, and stores bytes. The deal-specific half
@@ -574,12 +712,33 @@ all and the context would fail to start.
 `@ConditionalOnMissingBean` is order-dependent against a component-scanned
 candidate, which is why neither class carries `@Service`.
 
+The switch is honoured on **both** sides of the topic, which is deliberate. The
+producer checks it before publishing, so a machine with documents off does not
+fill the topic with requests whose only possible outcome is a refusal; and the
+consumer asks the bean either way, so a request that arrives after the setting
+was flipped is declined by the no-op rather than failing on a missing
+implementation.
+
 ### Failure
 
-Generation throws; `DealConfirmationService` catches and logs, and the deal stays
-`CREATED` with no document recorded. A failure must never fail the purchase — by
-the time the document step runs, the deal is committed and its inventory
-reserved.
+Generation throws; `DealConfirmationDocumentConsumer` catches and logs, and the
+deal stays `CREATED` with no document recorded. A failure must never fail the
+purchase — by the time the document step runs the deal is committed, its
+inventory is reserved, and the customer has already been answered.
+
+**The listener swallows the exception rather than letting it escape.** A
+`@KafkaListener` that throws has its record redelivered, which would retry a deal
+that cannot be lettered — a G-Sec layout with no maturity date, say — forever,
+blocking its partition. The behaviour is what it was before the move: the failure
+is logged, the deal is left unlettered and retryable, and one bad deal does not
+hold up every other deal behind it. A bounded retry for transient failures (an R2
+outage) is a reasonable future change; it is not what this does today.
+
+**A publish failure is swallowed too, and it is the one gap the move
+introduced.** The deal is committed and the customer is answered, so the purchase
+must not fail — but the request dies with nothing but a log line, and nothing
+will ever re-publish it. Before the move, a failed generation at least left a
+`CREATED` deal that the next retry could pick up. See §8.
 
 `soffice` being absent throws rather than returning `none()`. Returning `none()`
 would be indistinguishable from "documents are switched off", would produce no
@@ -729,12 +888,30 @@ idempotency key. The generated *document* can be downloaded
 
 **No way to regenerate a document.** A deal whose generation failed stays
 `CREATED` with no document, and nothing moves it forward: `@EnableScheduling` is
-commented out in `AppApplication`, there is no `@Async` anywhere, and there is no
-admin re-run endpoint. Because the storage key is deterministic
-(`yyyy/MM/<reference>.<ext>`), a future re-run would overwrite rather than
-accumulate, so adding one is safe. Until then, a stuck deal needs a manual
-intervention and there is no query surface to find stuck deals other than
-database access — `document_generated_at` is the column to age against.
+commented out in `AppApplication`, there is no admin re-run endpoint, and the
+Kafka listener consumes each request exactly once. A dead-letter topic or a
+retry is a natural home for this now that there is a topic in the path, but
+neither exists. Because the storage key is deterministic
+(`yyyy/MM/<reference>.<ext>`), a re-run would overwrite rather than accumulate,
+so adding one is safe. Until then, a stuck deal needs a manual intervention and
+there is no query surface to find stuck deals other than database access —
+`document_generated_at` is the column to age against.
+
+**A publish failure loses the document request entirely.** If
+`KafkaTemplate.send` cannot reach the broker, the deal is still created and the
+customer is still answered — correctly, since the purchase must not fail — but
+the request is gone. Nothing retries it and nothing records that it happened
+beyond an error log, so the deal stays `CREATED` with no letter and no way to
+tell it apart from a generation that failed later. This is the one gap the move
+off the request thread introduced; before it, a failed generation was at least
+attached to a deal the client could retry.
+
+**Documents are not transactional with the deal.** Publishing after the commit
+is deliberate — a request published for a deal that then rolled back would letter
+a deal that does not exist — but the two are not atomic, so a crash between the
+commit and the send leaves a deal with no request. The alternative, publishing
+inside the transaction, trades a rare silent gap for a guaranteed wrong letter,
+which is the worse of the two.
 
 **No analytics event.** Deal creation emits no `AnalyticsService.track(...)` call,
 unlike `BondService` and `OrderService` (see `docs/analytics.md`), so purchases do
@@ -776,7 +953,10 @@ All under `src/test/java/com/click4bonds/app/Modules/DealConfirmation/`.
 |---|---|
 | `CreateDealConfirmationRequestTest` | Every validation rule, including all broken fields reported at once (13 cases). |
 | `DealConfirmationWriterTest` | Inventory-neutrality (each success ends with `verifyNoMoreInteractions(bondRepository)`), no status flip at zero units, deals created with `null` or insufficient inventory, ISIN normalisation, overflow, null price, each rejection path, write failure propagating (13 cases). |
-| `DealConfirmationServiceTest` | Idempotency: no key, blank key, retry replays, replay does not regenerate the document, key scoped per customer, concurrent duplicate collapsed, constraint violation rethrown when no deal matches, document failure does not fail the purchase, the document is recorded when produced, not recorded when absent, and a recording failure does not fail the purchase (12 cases). |
+| `DealConfirmationServiceTest` | Idempotency: no key, blank key, retry replays, a replay asks for no second document and carries no letter values, key scoped per customer, concurrent duplicate collapsed, constraint violation rethrown when no deal matches. Plus the hand-off: the request publishes a document request carrying the deal id and the full snapshot, nothing is published when documents are switched off, a publish failure does not fail the purchase, the response carries the letter values, and a deal that cannot support them answers without them rather than failing (14 cases). |
+| `DealConfirmationDocumentProducerTest` | The topic is the one the consumer listens on, each request is keyed by its own deal id, and the topic name is pinned so a rename cannot silently strand every document request (3 cases). |
+| `DealConfirmationDocumentConsumerTest` | The render-and-record path, `none()` recording nothing, a generation failure swallowed rather than redelivered, a recording failure swallowed, a request with no snapshot discarded, the listener naming the right topic and **the right container factory** — the default one deserialises the analytics payload and would drop the message — and that the consumer holds no `KafkaTemplate` (7 cases). |
+| `DealConfirmationDocumentKafkaConfigTest` | The topic's name and partition count, its own consumer group, that it is not the analytics topic, that the deserialiser is pinned to the deal payload type with type headers off and the group overridden, that broker settings still come from the shared configuration, and that building the factory touches no broker (6 cases). |
 | `DealConfirmationConcurrencyTest` | Eight concurrent requests against a bond with 1000 units, each asking for 500 — all succeed, inventory is bit-for-bit unchanged, and the repository's working reservation stand-in is never reached. |
 | `DealReferenceGeneratorImplTest` | Format, zero-padding, reads back the counter it just incremented, fails loudly when unreadable. |
 | `BondRepositoryReserveQuantityContractTest` | *(under `Modules/Bond/Repository/`)* That `reserveQuantity` still exists, is `@Modifying`, binds both parameters, remains a single `UPDATE` carrying the `>= :quantity` guard with no `SELECT`, and is the repository's only mutating statement. |
@@ -799,7 +979,7 @@ The document step adds these, under `Modules/DealConfirmation/` unless noted:
 | `GsecAccrualCalculatorTest` | The day count, pinned against the template's own cached 159: measuring from the previous coupon date rather than maturity, stepping back when settlement falls earlier in the same month as the coupon, the 31st counting as the 30th, thirty-day months rather than calendar ones, and not accruing on or after maturity (9 cases). |
 | `GsecSellSheetStrategyTest` | The G-Sec layout: every address, that it prints **Demat** rather than the corporate settlement route, the coupon as a **fraction** (and as a `double`, so the writer's 2dp rounding cannot make it 0.07), that it takes the **G-Sec** accrued days and interest and not the corporate pair, that it **deducts** TDS rather than adding stamp duty and never prints the stamp-duty figure, that a deal with no maturity or no coupon is **refused** rather than printed blank, that our particulars are written blank so the template's samples clear, that the customer's own identifiers are left alone, that no label cell is written, and that nothing needs a format override (11 cases). |
 | `DealConfirmationSheetStrategyFactoryTest` | The routing rule: `"Sovereign"` in any case or surrounding whitespace goes to the G-Sec sheet; `null`, blank, `"AAA"` and `"Sovereign GOLD"` keep the corporate one; the predicate accepts only the whole trimmed word; and no route returns null or an unnamed sheet (7 cases). |
-| `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written, and that a Sovereign deal fills the **G-Sec** sheet while an unrated one keeps the corporate sheet (11 cases). |
+| `AtSplDealConfirmationDocumentServiceTest` | Both artefacts stored under one stem, the spreadsheet-only mode, nothing stored when the fill fails, the spreadsheet kept when rendering fails, refusal before anything is written, and that a Sovereign deal fills the **G-Sec** sheet while an unrated one keeps the corporate sheet (11 cases). The upload and the render run on a **direct executor** here, so both stages are still submitted and awaited exactly as they are in production — only the pool is removed, which is what keeps the storage and converter interactions verifiable. |
 | `DealConfirmationDocumentRecorderTest` | Status and address recorded together, and the address recorded is the one derived from the key rather than the key itself — a row holding a key would be unreadable to anyone but this application. A deal that is no longer there is warned about, not thrown. And a missing deal id does not demand that storage be configured. |
 | `DealConfirmationDocumentReaderTest` | That the row's address is resolved back to a key before the store is asked for bytes, the PDF-versus-spreadsheet choice made from the address, that another customer's deal and a deal with no document are both reported as missing without consulting storage at all, and that an address which cannot be resolved surfaces as a failure rather than as "no document" (5 cases). |
 | `DealConfirmationDocumentConfigTest` | *(under `Modules/DealConfirmation/Config/`)* That `document.enabled` really swaps the implementation, and never wires both. |

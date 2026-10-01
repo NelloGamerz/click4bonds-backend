@@ -4,11 +4,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
-import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
+import com.click4bonds.app.Modules.DealConfirmation.Producer.DealConfirmationDocumentProducer;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,11 +23,20 @@ import java.util.UUID;
  *
  * <p>Wraps the transactional {@link DealConfirmationWriter} with the two things
  * that must happen outside its transaction: recognising a retried request, and
- * generating the confirmation document.</p>
+ * asking for the confirmation document to be produced.</p>
  *
- * <p>This class is deliberately not transactional. The document step fills a
- * spreadsheet and renders a PDF, and holding a database transaction open across
- * it would pin a connection for the duration.</p>
+ * <p><strong>The document step is no longer performed here.</strong> Filling a
+ * spreadsheet, rendering it with LibreOffice and uploading two artefacts is
+ * seconds of work, and the customer was made to wait through all of it for an
+ * answer that only needed the deal row to exist. The request now ends as soon as
+ * the deal is committed: the response carries every figure the letter prints, and
+ * a request to produce the letter is published to Kafka, where
+ * {@code DealConfirmationDocumentConsumer} picks it up.</p>
+ *
+ * <p>This class is deliberately not transactional. Building the response's
+ * letter values and publishing to Kafka are both things that must not happen
+ * inside the writer's transaction, and the publish is asynchronous in any
+ * case.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -34,8 +46,9 @@ public class DealConfirmationService {
     private final DealConfirmationWriter writer;
     private final DealConfirmationRepository dealConfirmationRepository;
     private final DealConfirmationMapper mapper;
-    private final DealConfirmationDocumentService documentService;
-    private final DealConfirmationDocumentRecorder documentRecorder;
+    private final DealConfirmationSheetValuesFactory sheetValuesFactory;
+    private final DealConfirmationDocumentProducer documentProducer;
+    private final DocumentProperties documentProperties;
 
     /**
      * Outcome of a create request.
@@ -107,9 +120,18 @@ public class DealConfirmationService {
             return new Result(mapper.toResponse(existing), true);
         }
 
-        generateDocument(created.response().getDealConfirmationId(), created.documentData());
+        DealConfirmationResponse response = created.response();
 
-        return new Result(created.response(), false);
+        /*
+         * The figures the letter prints travel back with the deal, so the
+         * frontend can show the customer what they bought without waiting for a
+         * document that is now produced asynchronously.
+         */
+        response.setLetterValues(letterValues(created.documentData()));
+
+        requestDocument(created.response().getDealConfirmationId(), created.documentData());
+
+        return new Result(response, false);
     }
 
     // =========================================================
@@ -117,45 +139,75 @@ public class DealConfirmationService {
     // =========================================================
 
     /**
-     * Hands the created deal to the document step, then records the result.
+     * Computes the figures the confirmation letter will print.
      *
-     * <p>Called after the deal has been committed, and outside any transaction —
-     * rendering a document is slow, and holding a database transaction open
-     * across it would pin a connection for its duration.</p>
+     * <p>Best-effort: the same factory the letter is built from refuses a deal
+     * with no price or no accrued interest, and the same refusal must not fail a
+     * purchase the customer has already made. A deal that cannot be lettered
+     * simply answers without these figures.</p>
      *
-     * <p>The two halves are deliberately separate. Producing the document is
-     * {@link DealConfirmationDocumentService}'s job and is forbidden from
-     * touching the database; recording where it landed is a short transaction of
-     * its own, in {@link DealConfirmationDocumentRecorder}. A document is only
-     * recorded once its bytes have actually been stored.</p>
-     *
-     * <p>A failure anywhere here is logged, never propagated: the customer's
-     * purchase is already confirmed and inventory already reserved, and failing
-     * the request now would make the client believe the deal did not happen. The
-     * deal stays {@code CREATED} so it can be retried.</p>
+     * @return the letter's values, or null when the deal cannot support them
      */
-    private void generateDocument(UUID dealId, DealConfirmationDocumentData dealData) {
+    private DealConfirmationSheetValues letterValues(DealConfirmationDocumentData dealData) {
 
         try {
 
-            DealConfirmationDocument document = documentService.generate(dealData);
+            return sheetValuesFactory.build(dealData);
 
-            if (!document.isPresent()) {
-                return;
-            }
+        } catch (RuntimeException cannotBePrinted) {
 
-            documentRecorder.record(dealId, document.storageKey());
-
-            log.info(
-                    "Deal confirmation document produced for deal {}: fileName={} contentType={}",
+            log.warn(
+                    "Letter values could not be computed for deal {}; the response carries none",
                     dealData.dealReference(),
-                    document.fileName(),
-                    document.contentType());
+                    cannotBePrinted);
 
-        } catch (Exception failure) {
+            return null;
+        }
+    }
+
+    /**
+     * Asks for the deal's confirmation letter to be produced.
+     *
+     * <p>Called after the deal has been committed: publishing a request for a
+     * row that then rolls back would letter a deal that does not exist. The send
+     * is asynchronous, so this returns as soon as the record is buffered and the
+     * customer is answered immediately.</p>
+     *
+     * <p>The snapshot travels on the message rather than a deal id to look up,
+     * because the document step has always run outside the creating transaction
+     * and may not read the database — see {@link DealConfirmationDocumentData}.</p>
+     *
+     * <p>A failure here is logged, never propagated: the purchase is already
+     * confirmed and its inventory already reserved, and failing the request now
+     * would tell the customer their deal did not happen when it did. The deal
+     * stays {@code CREATED} with no document, which is what a failed generation
+     * left behind before this moved to Kafka.</p>
+     */
+    private void requestDocument(UUID dealId, DealConfirmationDocumentData dealData) {
+
+        /*
+         * With documents switched off there is no letter to ask for, and
+         * publishing anyway would fill the topic with requests whose only
+         * possible outcome is the no-op implementation declining them.
+         */
+        if (!documentProperties.isEnabled()) {
+
+            log.debug(
+                    "Documents are switched off; no letter requested for deal {}",
+                    dealData.dealReference());
+
+            return;
+        }
+
+        try {
+
+            documentProducer.publish(new DealConfirmationDocumentEvent(dealId, dealData));
+
+        } catch (RuntimeException failure) {
 
             log.error(
-                    "Deal confirmation document generation failed for deal {}; the deal itself stands",
+                    "Deal {} was created but its document request could not be published;"
+                            + " the deal itself stands",
                     dealData.dealReference(),
                     failure);
         }
