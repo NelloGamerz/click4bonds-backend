@@ -74,7 +74,15 @@ class AtSplDealConfirmationDocumentServiceTest {
                 new DealConfirmationSheetStrategyFactory(
                         new PsuPrivateSaleSheetStrategy(properties),
                         new GsecSellSheetStrategy(properties)),
-                properties);
+                properties,
+                /*
+                 * A direct executor, so the upload and the render run on the
+                 * calling thread in the order they are submitted. The stages are
+                 * still submitted and awaited exactly as they are in production —
+                 * only the pool is removed, which is what makes the interaction
+                 * with storage and the converter verifiable here.
+                 */
+                Runnable::run);
     }
 
     // =========================================================

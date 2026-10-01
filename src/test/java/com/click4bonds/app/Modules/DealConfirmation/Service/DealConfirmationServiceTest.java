@@ -6,6 +6,9 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,22 +19,26 @@ import static org.mockito.Mockito.when;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
-import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
+import com.click4bonds.app.Modules.DealConfirmation.Producer.DealConfirmationDocumentProducer;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.User.Model.User;
 
 /**
  * Retry handling: a double click, a network retry or a frontend retry must not
- * buy the bond twice.
+ * buy the bond twice — and the request must end at the deal, not at the letter.
  */
 @ExtendWith(MockitoExtension.class)
 class DealConfirmationServiceTest {
@@ -48,21 +55,27 @@ class DealConfirmationServiceTest {
     private DealConfirmationRepository dealConfirmationRepository;
 
     @Mock
-    private DealConfirmationDocumentService documentService;
+    private DealConfirmationSheetValuesFactory sheetValuesFactory;
 
     @Mock
-    private DealConfirmationDocumentRecorder documentRecorder;
+    private DealConfirmationDocumentProducer documentProducer;
+
+    private DocumentProperties documentProperties;
 
     private DealConfirmationService service;
 
     @BeforeEach
     void setUp() {
+
+        documentProperties = new DocumentProperties();
+
         service = new DealConfirmationService(
                 writer,
                 dealConfirmationRepository,
                 new DealConfirmationMapper(),
-                documentService,
-                documentRecorder);
+                sheetValuesFactory,
+                documentProducer,
+                documentProperties);
     }
 
     // ============================================================
@@ -130,8 +143,14 @@ class DealConfirmationServiceTest {
     }
 
     @Test
-    void aReplayDoesNotRegenerateTheDocument() {
+    void aReplayDoesNotAskForASecondDocument() {
 
+        /*
+         * The retry bought nothing, so the letter for the deal it replayed is
+         * already requested — or already produced. Asking again would render a
+         * second time, overwrite the same key, and tell the customer their
+         * document is new when it is not.
+         */
         DealConfirmation original = deal("DC-20260922-000001");
 
         when(dealConfirmationRepository
@@ -140,7 +159,30 @@ class DealConfirmationServiceTest {
 
         service.createDeal(USER_ID, request(), KEY);
 
-        verify(documentService, never()).generate(any());
+        verify(documentProducer, never()).publish(any());
+    }
+
+    @Test
+    void aReplayCarriesNoLetterValues() {
+
+        /*
+         * The figures are computed inside the creating transaction, from the
+         * interest schedule as it stood then. Reconstructing them here, outside
+         * any transaction and against a bond that may have been edited since,
+         * would risk showing a different number from the one the customer was
+         * given the first time.
+         */
+        DealConfirmation original = deal("DC-20260922-000001");
+
+        when(dealConfirmationRepository
+                .findByCustomer_IdAndIdempotencyKey(USER_ID, KEY))
+                .thenReturn(Optional.of(original));
+
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), KEY);
+
+        assertNull(result.response().getLetterValues());
+        verify(sheetValuesFactory, never()).build(any());
     }
 
     @Test
@@ -208,31 +250,72 @@ class DealConfirmationServiceTest {
     }
 
     // ============================================================
-    // DOCUMENT EXTENSION POINT
+    // THE DOCUMENT IS REQUESTED, NOT PRODUCED
     // ============================================================
 
     @Test
-    void handsTheCreatedDealToTheDocumentStep() {
+    void asksForTheDocumentToBeProducedRatherThanProducingIt() {
+
+        /*
+         * The whole point of the split. The request publishes a request and ends;
+         * filling the template, rendering it and uploading two artefacts happens
+         * on the other side of the topic, where a customer is not waiting for it.
+         */
+        givenWriterCreatesDeal();
+
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), null);
+
+        ArgumentCaptor<DealConfirmationDocumentEvent> published =
+                ArgumentCaptor.forClass(DealConfirmationDocumentEvent.class);
+
+        verify(documentProducer).publish(published.capture());
+
+        DealConfirmationDocumentEvent event = published.getValue();
+
+        /*
+         * The snapshot is what the consumer renders from, and it may not read the
+         * database — so every figure has to travel on the message.
+         */
+        assertEquals(
+                result.response().getDealConfirmationId(),
+                event.dealId());
+        assertEquals(
+                "DC-20260922-000001",
+                event.documentData().dealReference());
+        assertNotNull(event.documentData().valueDate());
+    }
+
+    @Test
+    void asksForNothingWhenDocumentsAreSwitchedOff() {
+
+        /*
+         * With generation switched off there is no letter to ask for. Publishing
+         * anyway would fill the topic with requests whose only possible outcome
+         * is the no-op implementation declining them.
+         */
+        documentProperties.setEnabled(false);
 
         givenWriterCreatesDeal();
 
         service.createDeal(USER_ID, request(), null);
 
-        verify(documentService).generate(any(DealConfirmationDocumentData.class));
+        verify(documentProducer, never()).publish(any());
     }
 
     @Test
-    void aDocumentFailureDoesNotFailThePurchase() {
+    void aPublishFailureDoesNotFailThePurchase() {
 
         /*
-         * The deal is committed by the time the document step runs. Reporting a
+         * The deal is committed by the time the request is published. Reporting a
          * failure now would tell the customer their purchase did not happen when
-         * it did.
+         * it did — the deal stands, and only the letter is missing.
          */
-        givenWriterReturnsCreatedDeal();
+        givenWriterCreatesDeal();
 
-        when(documentService.generate(any()))
-                .thenThrow(new IllegalStateException("template missing"));
+        org.mockito.Mockito.doThrow(new IllegalStateException("broker is down"))
+                .when(documentProducer)
+                .publish(any());
 
         DealConfirmationService.Result result =
                 service.createDeal(USER_ID, request(), null);
@@ -241,72 +324,49 @@ class DealConfirmationServiceTest {
         assertFalse(result.replayed());
     }
 
+    // ============================================================
+    // THE RESPONSE CARRIES THE LETTER'S FIGURES
+    // ============================================================
+
     @Test
-    void recordsWhereTheGeneratedDocumentWasStored() {
-
-        givenWriterCreatesDeal();
-
-        when(documentService.generate(any()))
-                .thenReturn(new DealConfirmationDocument(
-                        "DC-20260922-000001.pdf",
-                        "application/pdf",
-                        "pdf bytes".getBytes(),
-                        "2026/09/DC-20260922-000001.pdf"));
-
-        service.createDeal(USER_ID, request(), null);
+    void answersWithTheFiguresTheLetterPrints() {
 
         /*
-         * The recording is a separate transactional step from the generation,
-         * because the generation must not hold a database transaction open.
-         * Tying them together here is what lets a deal say whether it has a
-         * letter.
+         * The frontend renders the confirmation from these, so they have to be in
+         * the response rather than only in the spreadsheet the customer will
+         * eventually download.
          */
-        verify(documentRecorder).record(
-                any(),
-                eq("2026/09/DC-20260922-000001.pdf"));
+        givenWriterCreatesDeal();
+
+        DealConfirmationSheetValues values = sheetValues();
+
+        when(sheetValuesFactory.build(any())).thenReturn(values);
+
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), null);
+
+        assertSame(values, result.response().getLetterValues());
     }
 
     @Test
-    void doesNotRecordAnythingWhenNoDocumentWasProduced() {
+    void answersWithoutFiguresWhenTheDealCannotSupportThem() {
 
         /*
-         * none() means "documents are switched off", which is a normal outcome.
-         * Recording it would mark every deal in a LibreOffice-less environment
-         * as documented when no file exists.
+         * The factory refuses a deal with no price or no accrued interest,
+         * because a letter with a hole in it is worse than no letter. That is a
+         * reason not to letter the deal — never a reason to fail a purchase the
+         * customer has already made.
          */
         givenWriterCreatesDeal();
 
-        service.createDeal(USER_ID, request(), null);
+        when(sheetValuesFactory.build(any()))
+                .thenThrow(new IllegalStateException("no accrued interest"));
 
-        verify(documentRecorder, never()).record(any(), any());
-    }
-
-    @Test
-    void aRecordingFailureDoesNotFailThePurchase() {
-
-        givenWriterCreatesDeal();
-
-        when(documentService.generate(any()))
-                .thenReturn(new DealConfirmationDocument(
-                        "DC-20260922-000001.pdf",
-                        "application/pdf",
-                        "pdf bytes".getBytes(),
-                        "2026/09/DC-20260922-000001.pdf"));
-
-        org.mockito.Mockito.doThrow(new IllegalStateException("database is down"))
-                .when(documentRecorder)
-                .record(any(), any());
-
-        /*
-         * The document was produced; only recording it failed. The purchase is
-         * unaffected either way — the deal is already committed and its
-         * inventory already reserved.
-         */
         DealConfirmationService.Result result =
                 service.createDeal(USER_ID, request(), null);
 
         assertEquals("DC-20260922-000001", result.response().getDealReference());
-        assertFalse(result.replayed());
+        assertNull(result.response().getLetterValues());
     }
 
     // ============================================================
@@ -317,15 +377,38 @@ class DealConfirmationServiceTest {
         return new CreateDealConfirmationRequest(ISIN, 5L);
     }
 
-    private void givenWriterCreatesDeal() {
+    private DealConfirmationSheetValues sheetValues() {
 
-        givenWriterReturnsCreatedDeal();
-
-        when(documentService.generate(any()))
-                .thenReturn(DealConfirmationDocument.none());
+        return new DealConfirmationSheetValues(
+                LocalDate.of(2026, 9, 22),
+                "DC-20260922-000001",
+                "Counterparty Name- Test Customer",
+                "Our Sale",
+                "ICCL",
+                LocalDate.of(2026, 9, 22),
+                LocalDate.of(2026, 9, 22),
+                ISIN,
+                null,
+                "Test Bond",
+                null,
+                null,
+                null,
+                null,
+                null,
+                500L,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 
-    private void givenWriterReturnsCreatedDeal() {
+    private void givenWriterCreatesDeal() {
 
         DealConfirmation deal = deal("DC-20260922-000001");
 

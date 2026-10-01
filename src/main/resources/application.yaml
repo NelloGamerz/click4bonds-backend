@@ -44,6 +44,21 @@ document:
     # template's trailing space does not have to be reproduced here.
     gsec-sheet-name: ${DOCUMENT_TEMPLATE_GSEC_SHEET:gsec paper}
 
+  # How the document step reads its work off Kafka.
+  #
+  # Letters are no longer produced inside POST /api/deal-confirmations. The
+  # request publishes a request to a topic and ends; a listener renders the
+  # letter. The topic, the consumer group and the deserialiser are fixed in
+  # DealConfirmationDocumentKafkaConfig, and the broker comes from the shared
+  # spring.kafka settings — only the amount of parallelism is worth tuning.
+  kafka:
+    # Messages this listener renders at once. Defaults to one more than
+    # document.pdf.max-concurrent-conversions, so a render waiting on LibreOffice
+    # does not stop another message's upload progressing. Raising it does NOT
+    # raise the number of concurrent LibreOffice processes — that is capped by
+    # the converter's own semaphore.
+    consumer-concurrency: ${DOCUMENT_KAFKA_CONSUMER_CONCURRENCY:3}
+
   pdf:
     # false produces the spreadsheet only. A deliberate degraded mode for an
     # environment without LibreOffice, not a failure.

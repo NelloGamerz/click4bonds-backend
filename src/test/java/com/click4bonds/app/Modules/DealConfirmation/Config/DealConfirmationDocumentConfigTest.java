@@ -3,6 +3,8 @@ package com.click4bonds.app.Modules.DealConfirmation.Config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.util.concurrent.Executor;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -37,6 +39,12 @@ class DealConfirmationDocumentConfigTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(DealConfirmationDocumentConfig.class)
             .withBean(DocumentProperties.class)
+            /*
+             * The real pipeline runs its upload and its render on this pool. A
+             * direct executor keeps the test synchronous, so the beans are still
+             * exercised rather than the threading being mocked away.
+             */
+            .withBean("documentTaskExecutor", Executor.class, () -> Runnable::run)
             .withBean(XlsxTemplateWriter.class, () -> mock(XlsxTemplateWriter.class))
             .withBean(PdfConverter.class, () -> mock(PdfConverter.class))
             .withBean(DocumentStorage.class, () -> mock(DocumentStorage.class))
