@@ -2,18 +2,24 @@ package com.click4bonds.app.Modules.Bond.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.Function;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowEntry;
+import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CouponPayment;
 import com.click4bonds.app.Modules.Bond.Dto.PrincipalRepayment;
 import com.click4bonds.app.Modules.Bond.Dto.PurchaseConsideration;
+import com.click4bonds.app.Modules.Bond.Enums.BondCashFlowType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
 import lombok.extern.slf4j.Slf4j;
@@ -140,6 +146,74 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
             LocalDate calculationDate) {
 
         validateInput(bond, calculationDate);
+        validatePrice(bond);
+
+        BondSchedule schedule = buildSchedule(bond, calculationDate);
+
+        Map<LocalDate, BigDecimal> cashFlowsByDate = new TreeMap<>();
+
+        schedule.purchase().ifPresent(purchase ->
+                cashFlowsByDate.put(calculationDate, purchase.purchaseCashFlow()));
+
+        for (BondCashFlowEntry entry : schedule.entries()) {
+            cashFlowsByDate.merge(entry.date(), entry.amount(), BigDecimal::add);
+        }
+
+        return cashFlowsByDate.entrySet().stream()
+                .sorted(Comparator.comparing(Map.Entry::getKey))
+                .map(entry -> new XirrCalculator.CashFlow(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    @Override
+    public BondCashFlowResponse generateSchedule(
+            Bond bond,
+            LocalDate calculationDate) {
+
+        BondSchedule schedule = buildSchedule(bond, calculationDate);
+
+        List<BondCashFlowEntry> entries = new ArrayList<>();
+
+        /*
+         * The purchase leg leads the schedule: it is the one outflow, and it
+         * carries the earliest date. A coupon falling on the calculation date
+         * keeps its own row directly after it rather than being netted off.
+         */
+        schedule.purchase().ifPresent(purchase -> entries.add(
+                new BondCashFlowEntry(
+                        calculationDate,
+                        BondCashFlowType.PURCHASE,
+                        null,
+                        null,
+                        purchase.purchaseCashFlow(),
+                        null
+                )
+        ));
+
+        entries.addAll(schedule.entries());
+
+        // Stable sort, so the purchase row stays first on a shared date.
+        entries.sort(Comparator.comparing(BondCashFlowEntry::date));
+
+        return new BondCashFlowResponse(
+                bond.getIsin(),
+                bond.getName(),
+                calculationDate,
+                schedule.purchase()
+                        .map(PurchaseConsideration::purchaseConsideration)
+                        .orElse(null),
+                total(entries, BondCashFlowEntry::couponAmount),
+                total(entries, BondCashFlowEntry::principalAmount),
+                total(entries, BondCashFlowEntry::amount),
+                List.copyOf(entries)
+        );
+    }
+
+    /**
+     * Projects the coupons and principal repayments once, so the XIRR series and
+     * the published schedule can never disagree about what a bond pays.
+     */
+    private BondSchedule buildSchedule(Bond bond, LocalDate calculationDate) {
 
         List<LocalDate> couponDates = safeList(
                 couponDateGenerator.generate(bond, calculationDate)
@@ -160,17 +234,53 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
                 )
         );
 
-        /*
-         * The purchase leg needs the projected coupons, so it is built after
-         * them: only then is the first future coupon (and therefore the
-         * settlement convention) known.
-         */
-        BigDecimal accruedInterest = accruedInterestService.calculate(bond, calculationDate);
+        Optional<PurchaseConsideration> purchase = buildPurchaseConsideration(
+                bond,
+                calculationDate,
+                couponPayments
+        );
+
+        Map<LocalDate, CashFlowRow> rows = new TreeMap<>();
+
+        mergeCoupons(rows, bond, couponPayments, calculationDate);
+        mergePrincipalRepayments(rows, principalRepayments, calculationDate);
+
+        return new BondSchedule(
+                purchase,
+                rows.values().stream().map(CashFlowRow::toEntry).toList()
+        );
+    }
+
+    /**
+     * Builds the purchase leg.
+     *
+     * <p>
+     * It needs the projected coupons, so it is built after them: only then is
+     * the first future coupon (and therefore the settlement convention) known.
+     *
+     * <p>
+     * Empty when the bond has no usable price. The XIRR series requires a price,
+     * but a schedule of what the holder receives is still meaningful without
+     * one, so the leg is dropped rather than the request rejected.
+     */
+    private Optional<PurchaseConsideration> buildPurchaseConsideration(
+            Bond bond,
+            LocalDate calculationDate,
+            List<CouponPayment> couponPayments) {
+
+        if (!hasUsablePrice(bond)) {
+
+            log.debug(
+                    "No usable price for isin={} - purchase leg omitted from the schedule",
+                    bond.getIsin());
+
+            return Optional.empty();
+        }
 
         PurchaseConsideration purchase = purchaseConsiderationService.determine(
                 bond,
                 calculationDate,
-                accruedInterest,
+                accruedInterestService.calculate(bond, calculationDate),
                 couponPayments);
 
         log.debug(
@@ -184,25 +294,16 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
                 purchase.upcomingPaymentDate(),
                 purchase.upcomingRecordDate());
 
-        Map<LocalDate, BigDecimal> cashFlowsByDate = new TreeMap<>();
-        cashFlowsByDate.put(calculationDate, purchase.purchaseCashFlow());
-
-        mergePositiveCashFlows(cashFlowsByDate, bond, couponPayments, principalRepayments, calculationDate);
-
-        return cashFlowsByDate.entrySet().stream()
-                .sorted(Comparator.comparing(Map.Entry::getKey))
-                .map(entry -> new XirrCalculator.CashFlow(entry.getKey(), entry.getValue()))
-                .toList();
+        return Optional.of(purchase);
     }
 
-    private void mergePositiveCashFlows(
-            Map<LocalDate, BigDecimal> cashFlowsByDate,
+    private void mergeCoupons(
+            Map<LocalDate, CashFlowRow> rows,
             Bond bond,
             List<CouponPayment> couponPayments,
-            List<PrincipalRepayment> principalRepayments,
             LocalDate calculationDate) {
 
-        for (CouponPayment payment : safeList(couponPayments)) {
+        for (CouponPayment payment : couponPayments) {
             if (payment == null || payment.date() == null) {
                 continue;
             }
@@ -237,15 +338,39 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
              * The coupon stays on its payment date. A record date must never
              * become the date of a coupon cash flow.
              */
-            cashFlowsByDate.merge(paymentDate, payment.couponAmount(), BigDecimal::add);
+            row(rows, paymentDate).addCoupon(
+                    payment.couponAmount(),
+                    payment.outstandingPrincipalBeforePayment());
         }
+    }
 
-        for (PrincipalRepayment repayment : safeList(principalRepayments)) {
+    private void mergePrincipalRepayments(
+            Map<LocalDate, CashFlowRow> rows,
+            List<PrincipalRepayment> principalRepayments,
+            LocalDate calculationDate) {
+
+        for (PrincipalRepayment repayment : principalRepayments) {
             if (repayment == null || repayment.date() == null || !repayment.date().isAfter(calculationDate)) {
                 continue;
             }
-            cashFlowsByDate.merge(repayment.date(), repayment.principalAmount(), BigDecimal::add);
+            row(rows, repayment.date()).addPrincipal(
+                    repayment.principalAmount(),
+                    repayment.remainingPrincipal());
         }
+    }
+
+    private static CashFlowRow row(Map<LocalDate, CashFlowRow> rows, LocalDate date) {
+        return rows.computeIfAbsent(date, CashFlowRow::new);
+    }
+
+    private static BigDecimal total(
+            List<BondCashFlowEntry> entries,
+            Function<BondCashFlowEntry, BigDecimal> component) {
+
+        return entries.stream()
+                .map(component)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private static <T> List<T> safeList(List<T> values) {
@@ -259,11 +384,90 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
         if (calculationDate == null) {
             throw new IllegalArgumentException("Calculation date cannot be null");
         }
+    }
+
+    private void validatePrice(Bond bond) {
         if (bond.getPrice() == null) {
             throw new IllegalArgumentException("Bond price is required");
         }
         if (bond.getPrice().compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("Bond price must be positive");
         }
+    }
+
+    private static boolean hasUsablePrice(Bond bond) {
+        return bond.getPrice() != null
+                && bond.getPrice().compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    /**
+     * One date in the projection, accumulating its components before they are
+     * frozen into a {@link BondCashFlowEntry}.
+     */
+    private static final class CashFlowRow {
+
+        private final LocalDate date;
+        private BigDecimal coupon;
+        private BigDecimal principal;
+        private BigDecimal outstandingPrincipal;
+
+        private CashFlowRow(LocalDate date) {
+            this.date = date;
+        }
+
+        private void addCoupon(BigDecimal amount, BigDecimal outstandingBeforePayment) {
+            if (amount == null) {
+                return;
+            }
+            coupon = coupon == null ? amount : coupon.add(amount);
+            if (outstandingBeforePayment != null) {
+                outstandingPrincipal = outstandingBeforePayment;
+            }
+        }
+
+        private void addPrincipal(BigDecimal amount, BigDecimal remainingPrincipal) {
+            if (amount == null) {
+                return;
+            }
+            principal = principal == null ? amount : principal.add(amount);
+
+            /*
+             * Applied after the coupon, so a date carrying both reports the
+             * principal left once the repayment has gone through.
+             */
+            if (remainingPrincipal != null) {
+                outstandingPrincipal = remainingPrincipal;
+            }
+        }
+
+        private BondCashFlowEntry toEntry() {
+            BigDecimal amount = zeroWhenNull(coupon).add(zeroWhenNull(principal));
+
+            BondCashFlowType type;
+            if (coupon != null && principal != null) {
+                type = BondCashFlowType.COUPON_AND_PRINCIPAL;
+            } else if (coupon != null) {
+                type = BondCashFlowType.COUPON;
+            } else {
+                type = BondCashFlowType.PRINCIPAL;
+            }
+
+            return new BondCashFlowEntry(
+                    date,
+                    type,
+                    coupon,
+                    principal,
+                    amount,
+                    outstandingPrincipal);
+        }
+
+        private static BigDecimal zeroWhenNull(BigDecimal value) {
+            return value == null ? BigDecimal.ZERO : value;
+        }
+    }
+
+    private record BondSchedule(
+            Optional<PurchaseConsideration> purchase,
+            List<BondCashFlowEntry> entries) {
     }
 }

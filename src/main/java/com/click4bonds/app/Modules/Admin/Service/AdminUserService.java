@@ -7,7 +7,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserDetailsResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserSummaryResponse;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
@@ -18,7 +17,7 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
+import com.click4bonds.app.Modules.User.Service.UserService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class AdminUserService {
 
-        private final UserRepository userRepository;
+        private final UserService userService;
         private final ContactInquiryService contactInquiryService;
 
         @Transactional(readOnly = true)
@@ -36,68 +35,28 @@ public class AdminUserService {
                         String search,
                         Pageable pageable) {
 
-                Page<User> users;
-
-                if (search == null || search.isBlank()) {
-                        users = userRepository.findUsers(role, pageable);
-                } else {
-                        users = userRepository.searchUsers(
-                                        role,
-                                        search,
-                                        pageable);
-                }
-
-                return users.map(this::toUserSummaryResponse);
+                return userService.getUsers(role, search, pageable)
+                                .map(this::toUserSummaryResponse);
         }
 
         @Transactional(readOnly = true)
         public AdminUserDetailsResponse getUserDetails(UUID userId) {
 
-                User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "User not found"));
-
-                return toUserDetailsResponse(user);
+                return toUserDetailsResponse(userService.getUser(userId));
         }
 
         public User updateUserStatus(
                         UUID userId,
                         UserStatus status) {
 
-                User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "User not found"));
-
-                user.setStatus(status);
-
-                return userRepository.save(user);
+                return userService.updateStatus(userId, status);
         }
 
-        /**
-         * Changes a user's role.
-         *
-         * <p>The change is the whole operation. It used to also enqueue an
-         * outbox event so the role could be pushed to the external identity
-         * provider that held the authoritative copy; that provider is gone and
-         * this database is now the only place a role lives, so there is no
-         * second system to notify. Authorization reads the role from here — via
-         * the access token's {@code role} claim — so the change takes effect at
-         * the user's next token refresh.</p>
-         */
         public AdminUserDetailsResponse updateUserRole(
-                UUID userId,
-                UserRole role) {
+                        UUID userId,
+                        UserRole role) {
 
-                User user = userRepository.findById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "User not found"));
-
-                if (user.getRole() != role) {
-                        user.setRole(role);
-                        user = userRepository.save(user);
-                }
-
-                return toUserDetailsResponse(user);
+                return toUserDetailsResponse(userService.updateRole(userId, role));
         }
 
         @Transactional(readOnly = true)

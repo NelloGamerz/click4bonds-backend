@@ -26,7 +26,6 @@ import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Model.User;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -37,7 +36,6 @@ import lombok.RequiredArgsConstructor;
 public class BondService {
 
     private final BondRepository bondRepository;
-    private final UserRepository userRepository;
     private final UserService userService;
     private final AnalyticsService analyticsService;
 
@@ -80,9 +78,7 @@ public class BondService {
         // Find admin
         // -----------------------------------------------------
 
-        User admin = userRepository.findById(adminId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Admin not found"));
+        User admin = userService.getUser(adminId);
 
         // -----------------------------------------------------
         // Build Bond
