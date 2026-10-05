@@ -233,6 +233,29 @@ public class VerificationService {
     }
 
     /**
+     * Records that ownership of an account's email address has been proven, and
+     * moves onboarding on if that was the step it was waiting on.
+     *
+     * <p>The email counterpart of {@link #markPhoneVerified}: signing in by
+     * email redeems the same code, checked the same way, so the flag is brought
+     * in line rather than left claiming an unverified address. The address
+     * itself is not touched — signing in only ever looks an account up by an
+     * address it already owns.</p>
+     *
+     * <p>The caller is responsible for having verified the code already.</p>
+     *
+     * @param user account whose address was just proven
+     */
+    @Transactional
+    public void markEmailVerified(User user) {
+
+        userVerificationService.updateEmailStatus(user, VerificationStatus.VERIFIED);
+        advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PHONE_VERIFICATION);
+
+        log.info("Email verified for user {}", user.getId());
+    }
+
+    /**
      * Rejects an address the authenticated user may not verify.
      *
      * <p>An address already on the account has to match — there is no

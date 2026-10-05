@@ -67,6 +67,27 @@ public class UserService {
     }
 
     /**
+     * Resolves the account that signs in with an email address.
+     *
+     * <p>An address is put on an account only once its ownership has been
+     * proven, so finding one here means the account also has a verified email.
+     * A lookup that finds nothing is therefore an answer rather than something
+     * to repair, exactly as it is for a number.</p>
+     *
+     * <p>The address is expected in canonical form — the same shape the OTP
+     * module normalises submissions to — so the lookup and the stored value
+     * agree regardless of the case the caller typed.</p>
+     *
+     * @param email canonical email address
+     * @return the account that signs in with it
+     * @throws ResourceNotFoundException when no account does
+     */
+    public User getUserByEmail(String email) {
+
+        return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException(SIGNUP_REQUIRED));
+    }
+
+    /**
      * Persists a newly described account.
      *
      * <p>Used by sign-up, which is the only flow that collects a profile before

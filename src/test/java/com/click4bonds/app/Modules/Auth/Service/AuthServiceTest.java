@@ -61,6 +61,7 @@ class AuthServiceTest {
     private AuthProperties properties;
     private OtpProperties otpProperties;
     private AuthTestSupport.RecordingSmsService sms;
+    private AuthTestSupport.RecordingEmailService emails;
     private AuthTestSupport.FakeUserService users;
     private AuthTestSupport.FakeVerificationService verifications;
     private OtpService otpService;
@@ -77,6 +78,7 @@ class AuthServiceTest {
         otpProperties = otpProperties();
 
         sms = new AuthTestSupport.RecordingSmsService();
+        emails = new AuthTestSupport.RecordingEmailService();
         users = new AuthTestSupport.FakeUserService();
         verifications = new AuthTestSupport.FakeVerificationService();
 
@@ -92,11 +94,13 @@ class AuthServiceTest {
         auth = new AuthService(
                 otpService,
                 sms,
+                emails,
                 users,
                 verifications,
                 jwts,
                 sessions,
                 properties,
+                otpProperties,
                 redis,
                 mock(AnalyticsService.class));
     }
