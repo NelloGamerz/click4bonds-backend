@@ -13,11 +13,10 @@ import lombok.Data;
  * <pre>
  * document:
  *   enabled: true
- *   storage:
- *     directory: ./storage/deal-confirmations
  *   template:
  *     path: deal_confirmation/ATSPL Deal Format.xlsx
  *     sheet-name: "PSU Private Sale "
+ *     gsec-sheet-name: "gsec paper"
  *   pdf:
  *     enabled: true
  *     soffice-path: soffice
@@ -26,6 +25,10 @@ import lombok.Data;
  *   organisation:
  *     pan: AAHCA7743E
  * </pre>
+ *
+ * <p>The bucket documents are written to is not here: it is shared with anything
+ * else that keeps a file, and is configured under {@code storage.r2.*} — see
+ * {@link com.click4bonds.app.Modules.Storage.Config.StorageProperties}.</p>
  *
  * <p>Split into engine settings, document content policy, and legal-entity
  * identity. The first is the same in every environment; the second is per-market
@@ -52,8 +55,6 @@ public class DocumentProperties {
      */
     private boolean enabled = true;
 
-    private Storage storage = new Storage();
-
     private Template template = new Template();
 
     private Pdf pdf = new Pdf();
@@ -61,30 +62,6 @@ public class DocumentProperties {
     private Deal deal = new Deal();
 
     private Organisation organisation = new Organisation();
-
-    /** Where generated documents are kept. */
-    @Data
-    public static class Storage {
-
-        /**
-         * Root directory for every generated document. Relative paths resolve
-         * against the working directory.
-         *
-         * <p>On a container this must point at a mounted volume, or every
-         * document is lost on redeploy while the database still claims one
-         * exists.</p>
-         */
-        private String directory = "./storage/deal-confirmations";
-
-        /**
-         * Whether to keep the filled spreadsheet alongside the PDF.
-         *
-         * <p>Kept by default: the spreadsheet is what an operator needs to
-         * correct and reprint a letter, and it is the only record of exactly
-         * what was filled in.</p>
-         */
-        private boolean keepXlsx = true;
-    }
 
     /** The spreadsheet that is filled in. */
     @Data
@@ -105,6 +82,17 @@ public class DocumentProperties {
          * is why the default here carries none.
          */
         private String sheetName = "PSU Private Sale";
+
+        /**
+         * Sheet used for a Sovereign-rated (government) security, which charges
+         * TDS rather than stamp duty and so cannot be printed on the corporate
+         * layout.
+         *
+         * <p>Found the same way as {@link #sheetName}, with surrounding whitespace
+         * ignored, so the trailing space the templates carry does not have to be
+         * reproduced here.</p>
+         */
+        private String gsecSheetName = "gsec paper";
     }
 
     /** How the PDF is produced. */
@@ -161,15 +149,6 @@ public class DocumentProperties {
         private int valueDateOffsetDays = 0;
 
         /**
-         * Stamp duty printed on the letter.
-         *
-         * <p>Zero pending confirmation of the rule. The template carries a bare
-         * literal with no formula, so neither the rate nor its base can be
-         * derived from it.</p>
-         */
-        private java.math.BigDecimal stampDuty = java.math.BigDecimal.ZERO;
-
-        /**
          * Which side of the trade the letter describes.
          *
          * <p>The customer is buying from us, so it is our sale. A purchase-side
@@ -198,10 +177,53 @@ public class DocumentProperties {
 
         private String modeOfDelivery = "ICCL";
 
+        /**
+         * Mode of delivery on the G-Sec letter.
+         *
+         * <p>A government security settles in demat form, so a G-Sec letter that
+         * printed {@code ICCL} — the corporate letter's value — would name the
+         * wrong settlement route. It is a separate setting rather than a special
+         * case in code because it is the same kind of market convention as
+         * {@link #modeOfDelivery} and changes for the same reasons.</p>
+         */
+        private String gsecModeOfDelivery = "Demat";
+
         /** Left blank: no source for it, and a guess would be a wrong number. */
         private String accountNumber = "";
 
         /** Left blank: settlement numbers are issued per deal by the clearing house. */
         private String settlementNumber = "";
+
+        /*
+         * The three below exist only on the G-Sec letter, which asks for the
+         * bank-side particulars the corporate letter does not. They default to
+         * blank on purpose.
+         *
+         * The committed G-Sec sheet is *sample-filled* — it holds a branch
+         * address, a bank name and a bank IFSC that belong to whichever letter it
+         * was saved from, and the same two strings appear as "DP ID" and
+         * "CLIENT ID" in an older workbook. None of them is verifiable from this
+         * repository, so they are cleared rather than reprinted: writing the
+         * configured (blank) value clears the cell, which is why the G-Sec
+         * strategy puts them in the map even when empty. A blank on the letter is
+         * recoverable; a wrong bank account on a contract is not.
+         */
+
+        /** G-Sec letter only. Cleared until a real value is configured. */
+        private String branchLocation = "";
+
+        /** G-Sec letter only. Cleared until a real value is configured. */
+        private String bankName = "";
+
+        /**
+         * G-Sec letter only, and deliberately <em>not</em> {@link #ifscCode}.
+         *
+         * <p>{@code ifscCode} is {@code ICLL0000001} — the clearing
+         * corporation's, printed on the corporate letter beside "IFSC Code" in
+         * our own particulars block. The G-Sec sheet uses the same label for a
+         * bank IFSC, a different thing. Sharing one key between them would print
+         * the clearing corporation's code wherever a bank's belongs.</p>
+         */
+        private String bankIfsc = "";
     }
 }

@@ -17,7 +17,10 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
  * DealConfirmationSheetValuesFactory   (snapshot -> the letter's values)
  *        |
  *        v
- * DealConfirmationCellMap              (values -> cells of the template)
+ * DealConfirmationSheetStrategyFactory (rating -> which layout)
+ *        |
+ *        v
+ * DealConfirmationSheetStrategy        (values -> cells of that sheet)
  *        |
  *        v
  * XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
@@ -26,7 +29,10 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
  * PdfConverter                         (LibreOffice, headless)
  *        |
  *        v
- * DocumentStorage                      (keeps both artefacts)
+ * DocumentStorage                      (the deal-shaped view of the store)
+ *        |
+ *        v
+ * ObjectStore -> R2ObjectStore          (Cloudflare R2, S3 API)
  *        |
  *        v
  * download / email

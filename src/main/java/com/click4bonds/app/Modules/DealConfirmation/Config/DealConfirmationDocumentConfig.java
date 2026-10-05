@@ -1,13 +1,16 @@
 package com.click4bonds.app.Modules.DealConfirmation.Config;
 
+import java.util.concurrent.Executor;
+
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import com.click4bonds.app.Modules.DealConfirmation.Service.AtSplDealConfirmationDocumentService;
-import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationCellMap;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
@@ -51,16 +54,18 @@ public class DealConfirmationDocumentConfig {
             PdfConverter pdfConverter,
             DocumentStorage documentStorage,
             DealConfirmationSheetValuesFactory sheetValuesFactory,
-            DealConfirmationCellMap cellMap,
-            DocumentProperties documentProperties) {
+            DealConfirmationSheetStrategyFactory sheetStrategyFactory,
+            DocumentProperties documentProperties,
+            @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
 
         return new AtSplDealConfirmationDocumentService(
                 templateWriter,
                 pdfConverter,
                 documentStorage,
                 sheetValuesFactory,
-                cellMap,
-                documentProperties);
+                sheetStrategyFactory,
+                documentProperties,
+                documentTaskExecutor);
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,7 +34,7 @@ class DealConfirmationSheetValuesFactoryTest {
     private final DocumentProperties properties = new DocumentProperties();
 
     private final DealConfirmationSheetValuesFactory factory =
-            new DealConfirmationSheetValuesFactory(properties);
+            new DealConfirmationSheetValuesFactory(properties, new GsecAccrualCalculator());
 
     // =========================================================
     // MONEY
@@ -86,6 +87,54 @@ class DealConfirmationSheetValuesFactoryTest {
     }
 
     @Test
+    void chargesStampDutyAtTheRateOnTheConsiderationBeforeDuty() {
+
+        /*
+         * A crore-scale deal, so the duty is large enough to read. Principal
+         * 1,00,00,000 plus accrued 2,40,100 is 1,02,40,100; at 0.0001% that is
+         * 10.2401, rounded to the rupee.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(100_000L)
+                        .totalAmount(new BigDecimal("10000000.0000"))));
+
+        assertEquals(new BigDecimal("10.00"), values.stampDuty());
+        assertEquals(new BigDecimal("10240110.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsStampDutyAwayFromZeroAtHalfARupee() {
+
+        /*
+         * As ROUND(x, 0) does in the sheet: 25,00,000 at 0.0001% is 2.5, which
+         * rounds to 3 rather than truncating to 2. The half is the only place
+         * this rule and a truncating one disagree, so it is pinned.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(25_000L)
+                        .totalAmount(new BigDecimal("2500000.0000"))
+                        .accruedInterestPerHundredFace(BigDecimal.ZERO)));
+
+        assertEquals(new BigDecimal("3.00"), values.stampDuty());
+        assertEquals(new BigDecimal("2500003.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsAwayStampDutyBelowHalfARupee() {
+
+        /*
+         * A retail-sized deal pays nothing under this rule: 1,126.41 at 0.0001%
+         * is 0.0011, which the sheet's ROUND(...,0) takes to zero. The letter
+         * prints 0.00 rather than a fraction of a paisa it cannot show.
+         */
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(new BigDecimal("0.00"), values.stampDuty());
+    }
+
+    @Test
     void roundsMoneyToThePaisa() {
 
         /*
@@ -104,12 +153,130 @@ class DealConfirmationSheetValuesFactoryTest {
         assertEquals(new BigDecimal("303.02"), values.totalConsideration());
     }
 
+    // =========================================================
+    // THE G-SEC SHEET'S TDS
+    // =========================================================
+
     @Test
-    void chargesNoStampDutyUntilTheRuleIsConfirmed() {
+    void computesTheGsecAccruedDaysOnThatSheetsOwnCount() {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
 
-        assertEquals(new BigDecimal("0.00"), values.stampDuty());
+        /*
+         * NOT the corporate 64 days. The G-Sec sheet's rule is
+         * COUPDAYBS(valueDate, maturity, 2, 4) — semi-annual, European 30/360 —
+         * and the fixture's 25 Sep 2026 value date against a 23 Aug 2027 maturity
+         * gives 32: the previous coupon is 23 Aug 2026, and 30 + 2 days from there.
+         * See GsecAccrualCalculator for the count itself.
+         */
+        assertEquals(32L, values.gsecAccruedDays());
+
+        assertNotEquals(
+                values.accruedDays(), values.gsecAccruedDays(),
+                "the two sheets do not share a day count");
+    }
+
+    @Test
+    void computesTheGsecAccruedInterestFromQuantumCouponAndDays() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * quantum x coupon x days / 360, on the sheet's own convention:
+         * 1100.00 x 0.137 x 32 / 360 = 13.40. The corporate figure for the same
+         * deal is 26.41, from a different count — neither is a rounding of the
+         * other, which is why they travel separately.
+         */
+        assertEquals(new BigDecimal("13.40"), values.gsecAccruedInterest());
+
+        assertNotEquals(
+                values.accruedInterest(), values.gsecAccruedInterest(),
+                "the G-Sec interest is its own calculation, not the corporate one");
+    }
+
+    @Test
+    void deductsTdsFromTheGsecConsiderationForItsTotal() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * The G-Sec sheet runs the other way from the corporate one: TDS comes OFF
+         * rather than stamp duty going on. 10% of the 13.40 accrued interest is
+         * 1.34, so the consideration is 1100.00 + 13.40 = 1113.40 and the customer
+         * pays 1112.06.
+         */
+        assertEquals(new BigDecimal("1113.40"), values.gsecConsiderationAmount());
+        assertEquals(new BigDecimal("1.34"), values.gsecTds());
+        assertEquals(new BigDecimal("1112.06"), values.gsecTotalConsiderationAmount());
+    }
+
+    @Test
+    void chargesGsecTdsOnTheInterestRatherThanTheConsideration() {
+
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(100_000L)
+                        .totalAmount(new BigDecimal("10000000.0000"))));
+
+        /*
+         * A crore-scale deal, where the two candidate bases are far apart. On the
+         * G-Sec accrued interest the tax is 10% of it. The sheet's own cell computes
+         * 0.1% of the CONSIDERATION instead — a different base and a different rate.
+         *
+         * The agreed rule is 10% of the interest, so that is what the letter prints.
+         * The cell's label still reads "0.10%", which is a discrepancy recorded in
+         * DealConfirmationSheetValues and in the module docs: it is a finance
+         * question, and finance has to settle it before this letter goes to a
+         * customer.
+         */
+        BigDecimal accrued = values.gsecAccruedInterest();
+
+        assertEquals(
+                accrued.multiply(new BigDecimal("0.10")).setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTds(),
+                "TDS should be 10% of the G-Sec accrued interest");
+
+        assertEquals(
+                values.gsecConsiderationAmount()
+                        .subtract(values.gsecTds())
+                        .setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTotalConsiderationAmount());
+
+        /*
+         * And explicitly not the template's rule, so a future change to the
+         * sheet's formula cannot be mistaken for agreement.
+         */
+        assertNotEquals(
+                values.gsecConsiderationAmount()
+                        .multiply(new BigDecimal("0.001"))
+                        .setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTds(),
+                "TDS must not be 0.1% of the consideration, which is what the"
+                        + " template's own cell computes");
+    }
+
+    @Test
+    void leavesTheGsecFiguresNullWhenTheDealCannotSupportThem() {
+
+        /*
+         * A perpetual bond has no maturity, and a deal may have no coupon rate.
+         * Both are legitimate for the corporate letter, so the factory returns null
+         * rather than throwing and making an unrelated letter impossible.
+         * GsecSellSheetStrategy is where the absence becomes a refusal, because
+         * that is the only letter that needs these figures.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder.couponRate(null)));
+
+        assertNull(values.gsecAccruedInterest());
+        assertNull(values.gsecTds());
+        assertNull(values.gsecTotalConsiderationAmount());
+
+        /*
+         * The corporate letter is unaffected by the G-Sec figures being absent —
+         * it does not print them.
+         */
+        assertEquals(new BigDecimal("26.41"), values.accruedInterest());
     }
 
     // =========================================================
@@ -121,10 +288,10 @@ class DealConfirmationSheetValuesFactoryTest {
 
         /*
          * Bond.couponRate holds 13.70 meaning 13.70%, and the letter prints that
-         * number as it stands. Nothing is divided by 100 here: the template's
-         * coupon cell is formatted as a percentage of a fraction, and it is that
-         * cell's format the cell map overrides rather than this class that
-         * converts the value.
+         * number as it stands, under a format that adds the sign to it. Nothing
+         * is divided by 100 here: the template's coupon cell is formatted as a
+         * percentage of a fraction, and it is that cell's format the cell map
+         * overrides rather than this class that converts the value.
          */
         DealConfirmationSheetValues values = factory.build(snapshot());
 
@@ -295,6 +462,7 @@ class DealConfirmationSheetValuesFactoryTest {
                     "TEST BOND 2027",
                     "INE123A07012",
                     "SECURED",
+                    null,
                     couponRate,
                     LocalDate.of(2027, 8, 23),
                     "23rd Of Every Month",

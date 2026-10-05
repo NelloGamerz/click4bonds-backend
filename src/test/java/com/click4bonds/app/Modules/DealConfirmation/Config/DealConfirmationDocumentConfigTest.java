@@ -3,13 +3,18 @@ package com.click4bonds.app.Modules.DealConfirmation.Config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import java.util.concurrent.Executor;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import com.click4bonds.app.Modules.DealConfirmation.Service.AtSplDealConfirmationDocumentService;
-import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationCellMap;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
+import com.click4bonds.app.Modules.DealConfirmation.Service.GsecAccrualCalculator;
+import com.click4bonds.app.Modules.DealConfirmation.Service.GsecSellSheetStrategy;
+import com.click4bonds.app.Modules.DealConfirmation.Service.PsuPrivateSaleSheetStrategy;
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
@@ -34,13 +39,27 @@ class DealConfirmationDocumentConfigTest {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(DealConfirmationDocumentConfig.class)
             .withBean(DocumentProperties.class)
+            /*
+             * The real pipeline runs its upload and its render on this pool. A
+             * direct executor keeps the test synchronous, so the beans are still
+             * exercised rather than the threading being mocked away.
+             */
+            .withBean("documentTaskExecutor", Executor.class, () -> Runnable::run)
             .withBean(XlsxTemplateWriter.class, () -> mock(XlsxTemplateWriter.class))
             .withBean(PdfConverter.class, () -> mock(PdfConverter.class))
             .withBean(DocumentStorage.class, () -> mock(DocumentStorage.class))
             .withBean(DealConfirmationSheetValuesFactory.class,
-                    () -> new DealConfirmationSheetValuesFactory(new DocumentProperties()))
-            .withBean(DealConfirmationCellMap.class,
-                    () -> new DealConfirmationCellMap(new DocumentProperties()));
+                    () -> new DealConfirmationSheetValuesFactory(
+                            new DocumentProperties(),
+                            new GsecAccrualCalculator()))
+            .withBean(DealConfirmationSheetStrategyFactory.class, () -> {
+
+                DocumentProperties properties = new DocumentProperties();
+
+                return new DealConfirmationSheetStrategyFactory(
+                        new PsuPrivateSaleSheetStrategy(properties),
+                        new GsecSellSheetStrategy(properties));
+            });
 
     @Test
     void wiresTheRealImplementationByDefault() {

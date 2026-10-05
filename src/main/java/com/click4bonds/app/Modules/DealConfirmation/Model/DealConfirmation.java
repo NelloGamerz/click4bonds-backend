@@ -31,12 +31,19 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * A confirmed purchase of a number of bond lots.
+ * The deal information for a purchase of a number of bond lots.
  *
- * <p>Created directly once the requested quantity has been reserved from the
- * bond's inventory — there is no approval workflow. The reservation and this
- * row are written in one transaction, so a deal that exists always has its
- * units already deducted from {@link Bond#getRemainingQuantity()}.</p>
+ * <p>Created directly, with no approval workflow. This row records what was
+ * agreed — quantities, the price as it stood, the reference the customer
+ * quotes — and deliberately carries no claim on stock: it neither reserves,
+ * deducts nor releases inventory, and it is written without any reference to
+ * {@link Bond#getRemainingQuantity()}.</p>
+ *
+ * <p>Inventory belongs to the reservation and payment flow around this record:
+ * units are reserved before a draft deal exists and consumed once payment
+ * settles. A deal confirmation can therefore exist while the bond's remaining
+ * quantity is unchanged, and later revisions of the deal do not touch it
+ * either.</p>
  *
  * <p><strong>Why some fields are copied rather than only referenced.</strong>
  * This row is the buyer's confirmation document, so the values it is built from
@@ -107,9 +114,9 @@ public class DealConfirmation {
     /**
      * {@code quantityPerLot * numberOfLots}, computed by the server.
      *
-     * <p>Stored rather than derived on read because it is the quantity that was
-     * actually reserved from inventory, and it is what the confirmation document
-     * has to show years later.</p>
+     * <p>Stored rather than derived on read because it is the quantity this deal
+     * is for, and it is what the confirmation document has to show years later.
+     * It is the deal's own figure — it reflects no inventory movement.</p>
      */
     @Column(name = "total_quantity", nullable = false)
     private Long totalQuantity;
@@ -144,26 +151,39 @@ public class DealConfirmation {
     private String idempotencyKey;
 
     /**
-     * Location of the generated confirmation document, relative to the
-     * configured document storage root.
+     * Address of the generated confirmation document in the object store, of the
+     * form {@code https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/<dealReference>.pdf}.
      *
-     * <p>Deliberately relative rather than absolute: an absolute path would tie
-     * this row to one host's directory layout, so moving the storage root or
-     * mounting it elsewhere in the container would leave every historical row
-     * pointing at nothing. It is resolved against the storage root when read.</p>
+     * <p><strong>An address, not a key and not a presigned URL.</strong> It is
+     * readable and pasteable — an operator looking at a row can find the letter
+     * without knowing how the application is configured — and it carries no
+     * signature, so it never expires. Three alternatives were rejected: a bare
+     * key, because it means nothing without the store's configuration; a
+     * presigned URL, because it stops working; and a public custom-domain URL,
+     * because the bucket is private and every stored link would be dead.</p>
+     *
+     * <p><strong>It pins the endpoint that built it.</strong> That is the cost of
+     * the readability, and it is worth knowing before changing accounts: a row
+     * written against one endpoint names that endpoint for as long as it exists.
+     * {@code R2ObjectStore.keyFor} refuses to resolve an address whose host or
+     * bucket is not the configured one, so a move surfaces as a clear failure
+     * rather than as a read from the wrong bucket.</p>
+     *
+     * <p>Widened from 512 to 1024 characters when it became an address: it now
+     * carries an endpoint and a bucket as well as a key.</p>
      *
      * <p>NULL means no document has been produced for this deal yet — either
      * generation has not run, or it failed. The deal's {@link #status} is the
      * other half of that answer.</p>
      */
-    @Column(name = "document_path", length = 512)
-    private String documentPath;
+    @Column(name = "document_r2_path", length = 1024)
+    private String documentR2Path;
 
     /**
-     * When {@link #documentPath} was written.
+     * When {@link #documentR2Path} was written.
      *
      * <p>Kept because "which deals are stuck waiting for a document" is a
-     * question about age, and the path alone cannot answer it.</p>
+     * question about age, and the address alone cannot answer it.</p>
      */
     @Column(name = "document_generated_at")
     private Instant documentGeneratedAt;

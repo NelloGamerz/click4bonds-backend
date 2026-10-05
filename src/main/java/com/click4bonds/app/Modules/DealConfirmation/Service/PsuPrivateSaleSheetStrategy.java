@@ -11,7 +11,9 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Maps confirmation letter values onto cells of the {@code PSU Private Sale } sheet.
+ * Maps confirmation letter values onto cells of the {@code PSU Private Sale }
+ * sheet — the corporate bond letter, and the layout every deal gets unless the
+ * bond is a Sovereign.
  *
  * <p>The whole layout of the letter in one place, so a template revision is a
  * change to one table rather than a hunt through the codebase. Addresses are
@@ -26,17 +28,28 @@ import lombok.RequiredArgsConstructor;
  * prints "Your PAN", "DP ID", "CLIENT ID" and "Your Dp Name" with nothing after
  * them, because this application holds none of those values and inventing a
  * default would put a wrong identifier on a legal document.</p>
+ *
+ * <p>This class computes nothing. The arithmetic is
+ * {@link DealConfirmationSheetValuesFactory}'s and is shared with every other
+ * layout — see {@link DealConfirmationSheetStrategy}.</p>
  */
 @Component
 @RequiredArgsConstructor
-public class DealConfirmationCellMap {
+public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrategy {
 
     private final DocumentProperties documentProperties;
+
+    @Override
+    public String sheetName() {
+
+        return documentProperties.getTemplate().getSheetName();
+    }
 
     /**
      * @param values the letter's values
      * @return cell address to value, in sheet order
      */
+    @Override
     public Map<String, Object> toCells(DealConfirmationSheetValues values) {
 
         DocumentProperties.Organisation organisation =
@@ -104,9 +117,13 @@ public class DealConfirmationCellMap {
      * <p>Only the coupon needs one. Its cell is formatted {@code 0.00%}, which
      * prints our value correctly only if a fraction is written to it — but the
      * letter prints the rate exactly as {@code Bond} stores it, a percentage, so
-     * {@code 8.80} written under that format would read {@code 880.00%}. The
-     * format is replaced with a plain two-decimal number instead, and the cell
-     * prints {@code 8.80}.</p>
+     * {@code 8.80} written under that format would read {@code 880.00%}.</p>*
+     * <p>The replacement is {@code 0.00"%"}: two decimals followed by a percent
+     * sign, with the sign <em>quoted</em> so Excel prints it as a literal rather
+     * than as the fraction multiplier. The cell reads {@code 8.80%}, which is
+     * what the number means, and the value written stays the percentage
+     * {@code 8.80} rather than being divided by a hundred to suit the
+     * template.</p>
      *
      * <p>Kept here, beside the addresses, because it is a fact about the
      * template's layout rather than about any value.</p>
@@ -114,8 +131,9 @@ public class DealConfirmationCellMap {
      * @return cell address to Excel number format, for the addresses that need
      *         one
      */
+    @Override
     public Map<String, String> numberFormats() {
 
-        return Map.of("C22", "0.00");
+        return Map.of("C22", "0.00\"%\"");
     }
 }

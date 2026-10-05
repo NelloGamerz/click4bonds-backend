@@ -65,6 +65,23 @@ class XlsxTemplateWriterTest {
             "01st  Of Every Month"
     };
 
+    /**
+     * Sample values committed in the G-Sec sheet. The last four are entity
+     * constants rather than deal data, and are worse than the deal ones: a bank
+     * account and IFSC that cannot be verified from this repository, sitting in
+     * cells a fill is liable to skip because they look like our own details
+     * rather than a previous deal's.
+     */
+    private static final String[] GSEC_SAMPLE_DATA = {
+            "2026/S/OCT/01",
+            "IN0020240035",
+            "7.34% GOI 2064",
+            "North Ex Mall Sec-9 Rohini, Delhi-110085",
+            "HDFC Bank ltd",
+            "HDFC0001347",
+            "13472320000772"
+    };
+
     private final DocumentProperties properties = new DocumentProperties();
 
     private final XlsxTemplateWriter writer = new XlsxTemplateWriter(properties);
@@ -224,6 +241,172 @@ class XlsxTemplateWriterTest {
 
             assertEquals(SHEET, workbook.getSheetName(0));
             assertEquals(0, workbook.getActiveSheetIndex());
+        }
+    }
+
+    // =========================================================
+    // THE G-SEC SELL SHEET
+    // =========================================================
+
+    @Test
+    void fillsTheGsecSellSheetAndLeavesNeitherFormulaNorSampleData() throws Exception {
+
+        String gsecSheet = properties.getTemplate().getGsecSheetName();
+
+        byte[] filled = writer.fill(gsecSheet, gsecCells());
+
+        try (Workbook workbook = open(filled)) {
+
+            Sheet sheet = onlySheet(workbook);
+
+            assertEquals("DC-20260925-000001", text(sheet, "A5"));
+            assertEquals("INE123A07012", text(sheet, "C16"));
+            assertEquals("TEST GSEC 2064", text(sheet, "C18"));
+            assertEquals("Demat", text(sheet, "C13"));
+
+            /*
+             * The G-Sec sheet's money is shaped differently from the corporate
+             * one: there is no stamp-duty cell, the consideration is the sum
+             * before any charge, and the TDS comes OFF it.
+             */
+            assertEquals(1100.0, number(sheet, "C25"), 0.0001);
+            assertEquals(1100.0, number(sheet, "C26"), 0.0001);
+            assertEquals(35.66, number(sheet, "C27"), 0.0001);
+            assertEquals(1135.66, number(sheet, "C28"), 0.0001);
+            assertEquals(3.57, number(sheet, "C29"), 0.0001);
+            assertEquals(1132.09, number(sheet, "C30"), 0.0001);
+
+            /*
+             * The accrued days are the sheet's own count, written as a literal
+             * rather than left as the COUPDAYBS formula the template holds.
+             */
+            assertEquals(159.0, number(sheet, "C23"), 0.0001);
+
+            /*
+             * The coupon is written as a FRACTION and the cell's own 0.00% format
+             * is left alone — the opposite of the corporate sheet, which writes
+             * the percentage and replaces the format. 0.0734 under 0.00% prints
+             * "7.34%".
+             *
+             * The value assertion is the load-bearing one: XlsxTemplateWriter
+             * rounds every BigDecimal to two decimals, so had this been passed as
+             * a BigDecimal it would arrive as 0.07 and print "7.00%".
+             */
+            assertEquals(
+                    0.0734d, number(sheet, "C22"), 0.0000001,
+                    "the coupon must be written as a fraction, not a percentage");
+
+            assertEquals(
+                    "0.00%", format(sheet, "C22"),
+                    "the coupon cell's own fraction format must be left alone");
+
+            /*
+             * The G-Sec money, and specifically that TDS came OFF:
+             * 1100 x 0.0734 x 159 / 360 = 35.66, consideration 1135.66,
+             * TDS 3.57, total 1132.09 — less than the consideration.
+             */
+            assertEquals(35.66, number(sheet, "C27"), 0.0001);
+            assertEquals(3.57, number(sheet, "C29"), 0.0001);
+            assertTrue(
+                    number(sheet, "C30") < number(sheet, "C28"),
+                    "the G-Sec total must be LESS than the consideration — TDS is"
+                            + " deducted, where the corporate sheet adds stamp duty");
+
+            for (String address : new String[] { "C14", "C15", "C19", "C21" }) {
+
+                assertTrue(
+                        DateUtil.isCellDateFormatted(cell(sheet, address)),
+                        address + " should be date-formatted, or it prints as a serial number");
+            }
+        }
+    }
+
+    @Test
+    void leavesNoFormulaOnTheGsecSheetSoTheTemplatesOwnArithmeticCannotWin() throws Exception {
+
+        byte[] filled = writer.fill(
+                properties.getTemplate().getGsecSheetName(),
+                gsecCells());
+
+        try (Workbook workbook = open(filled)) {
+
+            Sheet sheet = onlySheet(workbook);
+
+            Map<String, String> remaining = new LinkedHashMap<>();
+
+            for (Row row : sheet) {
+
+                for (Cell cell : row) {
+
+                    if (cell.getCellType() == CellType.FORMULA) {
+
+                        remaining.put(
+                                cell.getAddress().formatAsString(),
+                                cell.getCellFormula());
+                    }
+                }
+            }
+
+            /*
+             * This sheet is formula-heavy: COUPDAYBS for the accrued days, and a
+             * formula for every money cell including the TDS. Any one of them left
+             * behind prints the template's own arithmetic instead of the
+             * platform's — which on this sheet also means a TDS rule (0.1% of the
+             * consideration) that is not the one this application charges.
+             */
+            assertTrue(
+                    remaining.isEmpty(),
+                    "The G-Sec template's own formulas survived the fill, so the"
+                            + " printed figures would not be the ones the platform"
+                            + " charged: " + remaining);
+        }
+    }
+
+    @Test
+    void leavesNoSampleDataOnTheGsecSheet() throws Exception {
+
+        byte[] filled = writer.fill(
+                properties.getTemplate().getGsecSheetName(),
+                gsecCells());
+
+        try (Workbook workbook = open(filled)) {
+
+            String everything = allText(onlySheet(workbook));
+
+            /*
+             * The sheet is sample-filled with a previous G-Sec deal and with a
+             * branch, bank and account number that this repository cannot verify —
+             * and the same two strings appear as "DP ID" and "CLIENT ID" in an
+             * older workbook. None of it may reach a customer.
+             */
+            for (String sample : GSEC_SAMPLE_DATA) {
+
+                assertFalse(
+                        everything.contains(sample),
+                        "Sample value \"" + sample + "\" from the template survived"
+                                + " the fill and would print on a customer's"
+                                + " confirmation letter");
+            }
+        }
+    }
+
+    @Test
+    void keepsOnlyTheGsecSheetWhenThatIsTheOneBeingFilled() throws Exception {
+
+        byte[] filled = writer.fill(
+                properties.getTemplate().getGsecSheetName(),
+                gsecCells());
+
+        try (Workbook workbook = open(filled)) {
+
+            assertEquals(
+                    1, workbook.getNumberOfSheets(),
+                    "Only the filled sheet should remain, or the PDF will contain"
+                            + " the other layouts too");
+
+            assertEquals(
+                    "gsec paper", workbook.getSheetName(0).trim(),
+                    "the G-Sec sheet should be the one that survives the fill");
         }
     }
 
@@ -429,6 +612,71 @@ class XlsxTemplateWriterTest {
         cells.put("D34", "ICCL Or RBI");
 
         cells.put("C39", "Counterparty Name- Test Customer");
+
+        return cells;
+    }
+
+    /**
+     * The G-Sec sheet's cells, mirroring {@code GsecSellSheetStrategy}. Kept as a
+     * literal rather than by calling the strategy: this test's job is to prove the
+     * layout clears the real workbook, and a map produced by the code under test
+     * could not do that. The addresses themselves are pinned in
+     * {@code GsecSellSheetStrategyTest}; a drift between the two fails here.
+     */
+    private Map<String, Object> gsecCells() {
+
+        Map<String, Object> cells = new LinkedHashMap<>();
+
+        cells.put("A4", LocalDate.of(2026, 9, 25));
+        cells.put("A5", "DC-20260925-000001");
+        cells.put("A7", "Counterparty Name- Test Customer");
+
+        cells.put("C12", "Our Sale");
+        cells.put("C13", "Demat");
+        cells.put("C14", LocalDate.of(2026, 9, 25));
+        cells.put("C15", LocalDate.of(2026, 9, 25));
+        cells.put("C16", "INE123A07012");
+        cells.put("C17", 100);
+        cells.put("C18", "TEST GSEC 2064");
+        cells.put("C19", LocalDate.of(2064, 4, 22));
+        cells.put("C20", "12/06-12/12");
+        cells.put("C21", LocalDate.of(2026, 4, 22));
+
+        /*
+         * The coupon as a FRACTION, which is what this sheet's own 0.00% format
+         * expects — unlike the corporate sheet, which writes the percentage and
+         * replaces the format. Written as a double because the writer rounds every
+         * BigDecimal to two decimals, which would make this 0.07 and print "7.00%".
+         */
+        cells.put("C22", 0.0734d);
+        cells.put("C23", 159);
+        cells.put("C24", 11);
+
+        /*
+         * The G-Sec money: 1100 x 0.0734 x 159 / 360, then TDS off the
+         * consideration rather than stamp duty on to it.
+         */
+        cells.put("C25", 1100);
+        cells.put("C26", 1100);
+        cells.put("C27", new BigDecimal("35.66"));
+        cells.put("C28", new BigDecimal("1135.66"));
+        cells.put("C29", new BigDecimal("3.57"));
+        cells.put("C30", new BigDecimal("1132.09"));
+
+        cells.put("C31", "All Time Securities pvt. Ltd.");
+        cells.put("B32", "AAHCA7743E");
+
+        /*
+         * Written as blanks on purpose — the configured values are empty, and
+         * writing them is what clears the template's samples. Removing these four
+         * lines is what leaves a stranger's bank account on the letter.
+         */
+        cells.put("B33", "");
+        cells.put("B34", "");
+        cells.put("B35", "");
+        cells.put("B36", "");
+
+        cells.put("C41", "Counterparty Name- Test Customer");
 
         return cells;
     }

@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,6 +27,13 @@ import lombok.extern.slf4j.Slf4j;
  * nothing and loads no entity — the document contract forbids touching the
  * database from the document step, and this is the narrow exception that makes
  * the outcome durable.</p>
+ *
+ * <p><strong>It records the document's address, not its key.</strong> The
+ * generator hands over the key, which is meaningful only alongside the store's
+ * configuration; what a deal row stores is the address — endpoint, bucket and key
+ * — so an operator reading the row can find the letter without being told how the
+ * application is configured. This is the only place the conversion happens on the
+ * way in; {@link DealConfirmationDocumentReader} converts back on the way out.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +41,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DealConfirmationDocumentRecorder {
 
     private final DealConfirmationRepository dealConfirmationRepository;
+    private final DocumentStorage documentStorage;
 
     /**
      * Marks a deal as having a document.
@@ -41,7 +50,7 @@ public class DealConfirmationDocumentRecorder {
      * recorded as documented without a file behind it.</p>
      *
      * @param dealId     the deal to update
-     * @param storageKey where the document was stored
+     * @param storageKey key the document was stored under
      */
     @Transactional
     public void record(UUID dealId, String storageKey) {
@@ -52,12 +61,19 @@ public class DealConfirmationDocumentRecorder {
             return;
         }
 
+        /*
+         * Resolved after the id check so that a missing id, which is a wiring
+         * mistake, does not also demand that storage be configured — and so a
+         * caller with no deal to update is not failed by a store it never needed.
+         */
+        String location = documentStorage.locationOf(storageKey);
+
         Instant recordedAt = Instant.now();
 
         int updated = dealConfirmationRepository.recordDocument(
                 dealId,
                 DealConfirmationStatus.CONFIRMATION_GENERATED,
-                storageKey,
+                location,
                 recordedAt);
 
         if (updated == 0) {
@@ -71,16 +87,16 @@ public class DealConfirmationDocumentRecorder {
              */
             log.warn(
                     "Document {} was stored but no deal with id {} was found to record it against",
-                    storageKey,
+                    location,
                     dealId);
 
             return;
         }
 
         log.info(
-                "Deal {} recorded as documented: key={} status={}",
+                "Deal {} recorded as documented: location={} status={}",
                 dealId,
-                storageKey,
+                location,
                 DealConfirmationStatus.CONFIRMATION_GENERATED);
     }
 }

@@ -14,6 +14,8 @@ import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
+import com.click4bonds.app.Modules.Email.Service.EmailService;
+import com.click4bonds.app.Modules.OTP.Config.OtpProperties;
 import com.click4bonds.app.Modules.OTP.Exception.OtpException;
 import com.click4bonds.app.Modules.OTP.Model.OtpType;
 import com.click4bonds.app.Modules.OTP.Service.IdentifierNormalizer;
@@ -35,11 +37,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Signing up and signing in with a phone number.
+ * Signing up and signing in by proving ownership of an address.
  *
- * <p>Ownership of the number is the whole of the identity proof: a code is
- * delivered to it by SMS, and redeeming that code is what opens a session.
- * Nothing else — no password, no external identity provider — is consulted.</p>
+ * <p>Ownership of the number the account signed up with, or of the email
+ * address it has since verified, is the whole of the identity proof: a code is
+ * delivered to it — by SMS or by email — and redeeming that code is what opens
+ * a session. Nothing else — no password, no external identity provider — is
+ * consulted. Both channels work the same way and differ only in where the code
+ * is delivered; a channel that has no account behind it is refused.</p>
  *
  * <p>An account is created by {@link #signup}, and only there. Redeeming a code
  * cannot conjure one: a number with no account behind it is refused and told to
@@ -65,11 +70,13 @@ public class AuthService {
 
     private final OtpService otpService;
     private final SmsService smsService;
+    private final EmailService emailService;
     private final UserService userService;
     private final VerificationService verificationService;
     private final AuthJwtService authJwtService;
     private final AuthSessionService authSessionService;
     private final AuthProperties authProperties;
+    private final OtpProperties otpProperties;
     private final RedisService redisService;
     private final AnalyticsService analyticsService;
 
@@ -232,7 +239,100 @@ public class AuthService {
         // than left claiming an unverified phone.
         verificationService.markPhoneVerified(user);
 
-        return startSession(user, userAgent);
+        return startSession(user, userAgent, "PHONE_OTP");
+    }
+
+    /**
+     * Sends a sign-in code to an email address.
+     *
+     * <p>The email counterpart of {@link #sendPhoneOtp}, and it behaves the same
+     * way: only an address that already has an account is sent to. An address
+     * reaches an account only by being verified, so this is the set of accounts
+     * that signed in by phone and have since verified an address, plus any
+     * account that was given one. One that is not on any account is refused and
+     * told to sign up, because a code would prove ownership of an address that
+     * leads nowhere.</p>
+     *
+     * <p>The same enumeration caveat and the same answer to it apply: the rate
+     * limit is spent before the lookup, so sweeping addresses is throttled long
+     * before it is worth doing.</p>
+     *
+     * @param email         address to send to, in any accepted spelling
+     * @param clientAddress address the request came from, for rate limiting
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException
+     *                                    when no account signs in with this address
+     * @throws OtpRateLimitedException    when this address has asked too often
+     * @throws com.click4bonds.app.Modules.OTP.Exception.OtpResendCooldownException
+     *                                    when this address was asked for too recently
+     */
+    public void sendEmailOtp(String email, String clientAddress) {
+
+        // Normalise before consuming any rate-limit allowance: malformed input
+        // costs nothing to reject and must not spend the caller's budget.
+        String normalized = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
+
+        // Also before the lookup below, so a sweep across addresses spends the
+        // allowance rather than reading the answer out of it.
+        enforceOtpRateLimit(clientAddress);
+
+        userService.getUserByEmail(normalized);
+
+        String otp = otpService.generateOtp(OtpType.EMAIL, normalized);
+
+        // The code is handed the validity the OTP module actually gave it, so
+        // the mail cannot promise a window the code does not have. It is never
+        // logged and never returned in a response.
+        emailService.sendOtp(normalized, otp, otpProperties.getExpiryMinutes());
+    }
+
+    /**
+     * Redeems a code sent by email and opens a session.
+     *
+     * <p>The email counterpart of {@link #verifyPhoneOtp}. The code is verified
+     * first, so nothing downstream runs on an unproven address; only then is the
+     * account looked up, checked, and given a session.</p>
+     *
+     * <p>Looked up, not created: an address is attached to an account by the
+     * verification endpoint, and one that no account holds is refused here with
+     * the same answer {@link #sendEmailOtp} gives.</p>
+     *
+     * @param email     address the code was sent to
+     * @param otp       submitted code
+     * @param userAgent client description, recorded against the session
+     * @return the new session and the access token issued for it
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException
+     *         when no account signs in with this address
+     */
+    @Transactional
+    public IssuedSession verifyEmailOtp(String email, String otp, String userAgent) {
+
+        String normalized = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
+
+        // Consumes the code: a success here cannot be replayed.
+        try {
+            otpService.verifyOtp(OtpType.EMAIL, normalized, otp);
+        } catch (OtpException ex) {
+            analyticsService.track(
+                    AnalyticsEventType.LOGIN_FAILED,
+                    null,
+                    null,
+                    null,
+                    "WEB",
+                    "AUTHENTICATION",
+                    java.util.Map.of("method", "EMAIL_OTP"));
+            throw ex;
+        }
+
+        User user = userService.getUserByEmail(normalized);
+
+        assertCanSignIn(user);
+
+        // Signing in proves the address exactly as the verification endpoint
+        // does, so the account's verification state is brought in line rather
+        // than left claiming an unverified email.
+        verificationService.markEmailVerified(user);
+
+        return startSession(user, userAgent, "EMAIL_OTP");
     }
 
     /**
@@ -337,8 +437,11 @@ public class AuthService {
 
     /**
      * Opens a session and issues the access token that goes with it.
+     *
+     * @param method the channel that was proven, recorded so a sign-in can be
+     *               attributed to the code that produced it
      */
-    private IssuedSession startSession(User user, String userAgent) {
+    private IssuedSession startSession(User user, String userAgent, String method) {
 
         String sessionId = authSessionService.create(user.getId(), userAgent);
         String accessToken = authJwtService.createAccessToken(user);
@@ -351,7 +454,7 @@ public class AuthService {
                 null,
                 "WEB",
                 "AUTHENTICATION",
-                java.util.Map.of("method", "PHONE_OTP"));
+                java.util.Map.of("method", method));
         analyticsService.track(
                 AnalyticsEventType.SESSION_START,
                 user.getId(),

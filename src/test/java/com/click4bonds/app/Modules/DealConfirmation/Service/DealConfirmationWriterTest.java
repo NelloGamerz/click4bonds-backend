@@ -217,113 +217,6 @@ class DealConfirmationWriterTest {
     }
 
     // ============================================================
-    // LOT SIZE
-    // ============================================================
-
-    @Test
-    void takesTheLotSizeFromTheBondRatherThanTheRequest() {
-
-        /*
-         * The caller sends lots only. A client that believed a lot was 10 units
-         * must not be able to reserve 50 when the bond trades in lots of 100 —
-         * the bond is the only authority on its own lot size.
-         */
-        Bond bond = bond(BondStatus.ACTIVE, 1000L);
-
-        givenActiveCustomer();
-        givenBond(bond);
-        givenReservationSucceeds(bond, 500L);
-        givenReference("DC-20260922-000008");
-        givenSaveReturnsItsArgument();
-
-        DealConfirmationWriter.CreatedDeal created =
-                writer.create(USER_ID, request(5L), null);
-
-        assertEquals(100L, created.response().getQuantityPerLot());
-        assertEquals(5L, created.response().getNumberOfLots());
-        assertEquals(500L, created.response().getTotalQuantity());
-
-        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 500L);
-    }
-
-    @Test
-    void roundsAFractionalLotSizeUpFromAHalfUnit() {
-
-        Bond bond = bond(BondStatus.ACTIVE, 1000L);
-        bond.setLotSize(new BigDecimal("100.5"));
-
-        givenActiveCustomer();
-        givenBond(bond);
-        givenReservationSucceeds(bond, 505L);
-        givenReference("DC-20260922-000009");
-        givenSaveReturnsItsArgument();
-
-        DealConfirmationWriter.CreatedDeal created =
-                writer.create(USER_ID, request(5L), null);
-
-        // 100.5 rounds half-up to 101 units, so five lots are 505.
-        assertEquals(101L, created.response().getQuantityPerLot());
-        assertEquals(505L, created.response().getTotalQuantity());
-
-        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 505L);
-    }
-
-    @Test
-    void roundsAFractionalLotSizeDownBelowAHalfUnit() {
-
-        Bond bond = bond(BondStatus.ACTIVE, 1000L);
-        bond.setLotSize(new BigDecimal("100.4"));
-
-        givenActiveCustomer();
-        givenBond(bond);
-        givenReservationSucceeds(bond, 500L);
-        givenReference("DC-20260922-000010");
-        givenSaveReturnsItsArgument();
-
-        DealConfirmationWriter.CreatedDeal created =
-                writer.create(USER_ID, request(5L), null);
-
-        assertEquals(100L, created.response().getQuantityPerLot());
-        assertEquals(500L, created.response().getTotalQuantity());
-    }
-
-    @Test
-    void rejectsBondWithoutALotSize() {
-
-        Bond bond = bond(BondStatus.ACTIVE, 1000L);
-        bond.setLotSize(null);
-
-        givenActiveCustomer();
-        givenBond(bond);
-
-        assertThrows(
-                BadRequestException.class,
-                () -> writer.create(USER_ID, request(5L), null));
-
-        Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
-        Mockito.verify(dealConfirmationRepository, Mockito.never())
-                .save(any());
-    }
-
-    @Test
-    void rejectsBondWithANonPositiveLotSize() {
-
-        Bond bond = bond(BondStatus.ACTIVE, 1000L);
-        bond.setLotSize(BigDecimal.ZERO);
-
-        givenActiveCustomer();
-        givenBond(bond);
-
-        assertThrows(
-                BadRequestException.class,
-                () -> writer.create(USER_ID, request(5L), null));
-
-        Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
-    }
-
-    // ============================================================
     // INVALID REQUEST
     // ============================================================
 
@@ -346,9 +239,8 @@ class DealConfirmationWriterTest {
                 BadRequestException.class,
                 () -> writer.create(USER_ID, request(2L), null));
 
-        // The guard fires before any inventory moves or any row is written.
-        Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+        // Nothing was read, reserved or written.
+        Mockito.verifyNoInteractions(bondRepository);
         Mockito.verifyNoInteractions(dealConfirmationRepository);
     }
 
@@ -595,13 +487,7 @@ class DealConfirmationWriterTest {
      */
     private Bond givenReservationSucceeds(Bond bond, long remainingAfter) {
 
-        /*
-         * Matches any quantity on purpose: the tests that care which quantity was
-         * reserved assert it with an explicit verify after the call. Stubbing a
-         * fixed 500L here would silently return 0 — and so a ConflictException —
-         * for the cases that reserve something else.
-         */
-        Mockito.when(bondRepository.reserveQuantity(bond.getId(), anyLong()))
+        Mockito.when(bondRepository.reserveQuantity(bond.getId(), 500L))
                 .thenReturn(1);
 
         Bond afterReservation = bond(bond.getStatus(), remainingAfter);

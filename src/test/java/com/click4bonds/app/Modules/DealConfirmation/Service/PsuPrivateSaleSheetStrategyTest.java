@@ -2,7 +2,6 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -14,7 +13,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetVal
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
 /**
- * Pins the letter's layout.
+ * Pins the corporate letter's layout.
  *
  * <p>The addresses are the whole point of this class, so they are asserted one
  * by one. Without this, a template revision or a careless refactor could move a
@@ -25,16 +24,28 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
  * against the real workbook, in {@code XlsxTemplateWriterTest}. Between them, a
  * mismatch cannot survive.</p>
  */
-class DealConfirmationCellMapTest {
+class PsuPrivateSaleSheetStrategyTest {
 
     private final DocumentProperties properties = new DocumentProperties();
 
-    private final DealConfirmationCellMap cellMap = new DealConfirmationCellMap(properties);
+    private final PsuPrivateSaleSheetStrategy strategy =
+            new PsuPrivateSaleSheetStrategy(properties);
+
+    @Test
+    void fillsTheSheetTheConfigurationNames() {
+
+        /*
+         * The sheet is configurable because the workbook holds several layouts.
+         * Naming it here rather than hardcoding keeps a config change from
+         * silently filling a different letter.
+         */
+        assertEquals(properties.getTemplate().getSheetName(), strategy.sheetName());
+    }
 
     @Test
     void writesTheDealTermsIntoTheLabelValueRows() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * Rows 12 to 29 put the label in column A and the value in column C, so
@@ -58,7 +69,7 @@ class DealConfirmationCellMapTest {
     @Test
     void writesTheMoneyIntoSeparateCellsRatherThanOneTotal() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * Each of these cells holds a formula in the template, using day-count
@@ -75,7 +86,7 @@ class DealConfirmationCellMapTest {
     @Test
     void putsOurParticularsInTheFourCellBlock() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * Rows 30 to 34 hold two label/value pairs: A/B on the left, C/D on the
@@ -94,7 +105,7 @@ class DealConfirmationCellMapTest {
     @Test
     void writesNothingOverALabelCell() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * Column A and the right-hand label column C are the letter's fixed
@@ -116,7 +127,7 @@ class DealConfirmationCellMapTest {
     @Test
     void leavesTheIdentifiersThisApplicationDoesNotHold() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * "Your PAN" is a customer-side identifier and this application has no
@@ -142,7 +153,7 @@ class DealConfirmationCellMapTest {
     @Test
     void overwritesTheTemplatesStaleEchoOfTheCounterpartyLine() {
 
-        Map<String, Object> cells = cellMap.toCells(values());
+        Map<String, Object> cells = strategy.toCells(values());
 
         /*
          * C39 holds a live formula echoing A7. Left alone it would reproduce
@@ -161,8 +172,11 @@ class DealConfirmationCellMapTest {
          * value correctly only if a fraction is written to it. We print the rate
          * as Bond stores it, a percentage, so the format has to be replaced —
          * without this, 8.80 prints as 880.00%.
+         *
+         * The percent sign is quoted, so the cell shows it without treating the
+         * value as a fraction: 8.80 prints as 8.80%, not 0.09%.
          */
-        assertEquals("0.00", cellMap.numberFormats().get("C22"));
+        assertEquals("0.00\"%\"", strategy.numberFormats().get("C22"));
 
         /*
          * Nothing else is overridden: every other cell's value matches the format
@@ -170,7 +184,7 @@ class DealConfirmationCellMapTest {
          */
         assertEquals(
                 java.util.Set.of("C22"),
-                cellMap.numberFormats().keySet(),
+                strategy.numberFormats().keySet(),
                 "only the coupon cell should need a format override");
     }
 
@@ -201,6 +215,11 @@ class DealConfirmationCellMapTest {
                 new BigDecimal("1100.00"),
                 new BigDecimal("26.41"),
                 new BigDecimal("0.00"),
-                new BigDecimal("1126.41"));
+                new BigDecimal("1126.41"),
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }

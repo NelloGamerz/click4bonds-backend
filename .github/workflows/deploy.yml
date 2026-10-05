@@ -97,7 +97,7 @@ jobs:
             # Configuration
             # ==========================================
 
-            APP_DIR="$HOME/click4bond"
+            APP_DIR="/opt/click4bond"
             IMAGE="click4bond/click4bond:${{ env.IMAGE_VERSION }}"
 
             echo "======================================"

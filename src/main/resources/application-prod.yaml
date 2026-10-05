@@ -24,6 +24,12 @@ spring:
 
       leak-detection-threshold: 60000
 
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 4
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -163,3 +169,93 @@ sms:
       ukey: ${SMS_GATEWAY_UKEY}
       sender-id: CLKBND
       otp-message: Dear customer your click4bond login OTP is <arg1>. Please enter it to login. Valid for 10 mins. Do not share this code. Thanks - CLICK4BOND
+
+document:
+  enabled: ${DOCUMENT_ENABLED}
+
+  template:
+    # Read as a classpath stream, never a file: the template is packaged inside
+    # the jar. The name contains a space, which a plain YAML scalar allows.
+    path: ${DOCUMENT_TEMPLATE_PATH:deal_confirmation/ATSPL Deal Format.xlsx}
+    # The sheet in the template is actually named "PSU Private Sale " with a
+    # trailing space, which YAML would strip from this value — the lookup trims
+    # both sides before comparing, so the spelling here does not have to match
+    # that quirk. Do not wrap this in quotes: they would become part of the name.
+    sheet-name: ${DOCUMENT_TEMPLATE_SHEET:PSU Private Sale}
+    # The layout a Sovereign-rated (government) security is confirmed on. That
+    # sheet charges TDS rather than stamp duty, so it cannot be the corporate one.
+    gsec-sheet-name: ${DOCUMENT_TEMPLATE_GSEC_SHEET:gsec paper}
+
+  pdf:
+    # false produces the spreadsheet only. A deliberate degraded mode for an
+    # environment without LibreOffice, not a failure.
+    enabled: ${DOCUMENT_PDF_ENABLED:true}
+    # Absolute path, or a bare name resolved from PATH.
+    #    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
+    soffice-path: ${DOCUMENT_SOFFICE_PATH:C:/Program Files/LibreOffice/program/soffice.exe}
+    # A hung engine must not hold an HTTP request open indefinitely.
+    timeout: ${DOCUMENT_SOFFICE_TIMEOUT:30s}
+    # Each conversion is a separate process taking a few hundred megabytes, and
+    # there is no queue behind this. Requests over the limit wait.
+    max-concurrent-conversions: ${DOCUMENT_MAX_CONCURRENT_CONVERSIONS:2}
+
+  deal:
+    # Bond has no face-value field; 100 is the market convention and the only
+    # value consistent with the persisted total_amount (price x quantity).
+    face-value: ${DOCUMENT_FACE_VALUE:100}
+    # Deal date to value (settlement) date. T+0 today.
+    value-date-offset-days: ${DOCUMENT_VALUE_DATE_OFFSET_DAYS:0}
+    # The customer is buying from us, so the letter is our sale. A purchase-side
+    # letter is a different document with a different sheet.
+    transaction-type: ${DOCUMENT_TRANSACTION_TYPE:Our Sale}
+
+  # Printed in the "Our ..." cells of the letter. These identify an organisation;
+  # they are not credentials, which is why they carry real defaults rather than
+  # being required — a blank PAN on a confirmation letter is worse than a
+  # visibly wrong one.
+  organisation:
+    beneficiary-name: ${DOCUMENT_ORG_BENEFICIARY:All Time Securities pvt. Ltd.}
+    pan: ${DOCUMENT_ORG_PAN:AAHCA7743E}
+    cm-bp-id: ${DOCUMENT_ORG_CM_BP_ID:IN619994}
+    cm-name: ${DOCUMENT_ORG_CM_NAME:Indian Clearing Corporation Ltd}
+    ifsc-code: ${DOCUMENT_ORG_IFSC:ICLL0000001}
+    market-type: ${DOCUMENT_ORG_MARKET_TYPE:ICDM(T+0)}
+    banker: ${DOCUMENT_ORG_BANKER:ICCL Or RBI}
+    mode-of-delivery: ${DOCUMENT_ORG_DELIVERY:ICCL}
+    # A government security settles in demat form. The G-Sec letter prints this
+    # instead of mode-of-delivery above, which would name the wrong route.
+    gsec-mode-of-delivery: ${DOCUMENT_ORG_GSEC_DELIVERY:Demat}
+    # Left blank: this application holds neither value, and a guessed identifier
+    # on a legal document is worse than an empty cell.
+    account-number: ${DOCUMENT_ORG_ACCOUNT:}
+    settlement-number: ${DOCUMENT_ORG_SETTLEMENT:}
+    # G-Sec letter only. The committed template carries sample values in these
+    # cells from whichever letter it was saved from, and the same two strings
+    # appear as "DP ID" and "CLIENT ID" in an older workbook — so none of them is
+    # trusted. Blank defaults clear those cells rather than reprinting them.
+    # bank-ifsc is deliberately NOT ifsc-code above: that one is the clearing
+    # corporation's, and this sheet's label asks for the bank's.
+    branch-location: ${DOCUMENT_ORG_BRANCH:}
+    bank-name: ${DOCUMENT_ORG_BANK_NAME:}
+    bank-ifsc: ${DOCUMENT_ORG_BANK_IFSC:}
+
+# The object store every generated file is written to.
+#
+# Every value is required here, with no default, for the same reason DOCUMENT_ENABLED
+# and AUTH_JWT_SECRET are: a deployment that cannot store a letter should refuse to
+# start rather than accept purchases whose documents fail silently after the deal is
+# committed. The application's own checks report a missing value by name, but only
+# when something is first written — which in production is after a customer has paid.
+#
+# These are credentials: supply them from the environment, never in this file.
+storage:
+  r2:
+    # Account-scoped S3 endpoint: https://<account-id>.r2.cloudflarestorage.com
+    endpoint: ${R2_ENDPOINT}
+    # An R2 API token scoped to the bucket below. Leave blank only to fall back to
+    # the SDK's own credential chain, in which case type an empty value rather than
+    # deleting the key.
+    access-key-id: ${R2_ACCESS_KEY_ID}
+    secret-access-key: ${R2_SECRET_ACCESS_KEY}
+    bucket: ${R2_BUCKET}
+    region: ${R2_REGION:auto}
