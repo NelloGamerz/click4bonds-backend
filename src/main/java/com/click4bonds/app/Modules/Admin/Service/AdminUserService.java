@@ -26,109 +26,111 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class AdminUserService {
 
-        private final UserService userService;
-        private final ContactInquiryService contactInquiryService;
+    private final UserService userService;
+    private final ContactInquiryService contactInquiryService;
 
-        @Transactional(readOnly = true)
-        public Page<AdminUserSummaryResponse> getUsers(
-                        UserRole role,
-                        String search,
-                        Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<AdminUserSummaryResponse> getUsers(
+            UserRole role,
+            String search,
+            Pageable pageable) {
 
-                return userService.getUsers(role, search, pageable)
-                                .map(this::toUserSummaryResponse);
+        return userService.getUsers(role, search, pageable)
+                .map(this::toUserSummaryResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public AdminUserDetailsResponse getUserDetails(UUID userId) {
+
+        return toUserDetailsResponse(userService.getUser(userId));
+    }
+
+    public AdminUserDetailsResponse updateUserStatus(
+            UUID userId,
+            UserStatus status) {
+
+        return toUserDetailsResponse(userService.updateStatus(userId, status));
+    }
+
+    public AdminUserDetailsResponse updateUserRole(
+            UUID userId,
+            UserRole role) {
+
+        return toUserDetailsResponse(userService.updateRole(userId, role));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ContactInquiryAdminResponse> getContactInquiries(
+            ContactInquiryStatus status,
+            Pageable pageable) {
+
+        if (status == null) {
+            return contactInquiryService.getAllInquiries(pageable);
         }
 
-        @Transactional(readOnly = true)
-        public AdminUserDetailsResponse getUserDetails(UUID userId) {
+        return contactInquiryService.getInquiriesByStatus(
+                status,
+                pageable);
+    }
 
-                return toUserDetailsResponse(userService.getUser(userId));
-        }
+    public ContactInquiryAdminResponse updateContactInquiryStatus(
+            UUID inquiryId,
+            ContactInquiryStatus status) {
 
-        public AdminUserDetailsResponse updateUserStatus(
-                        UUID userId,
-                        UserStatus status) {
+        return contactInquiryService.updateStatus(
+                inquiryId,
+                status);
+    }
 
-                return toUserDetailsResponse(userService.updateStatus(userId, status));
-        }
+    private AdminUserSummaryResponse toUserSummaryResponse(User user) {
 
-        public AdminUserDetailsResponse updateUserRole(
-                        UUID userId,
-                        UserRole role) {
+        return AdminUserSummaryResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phoneNumber(user.getMobileNumber())
+                .isKycCompleted(user.getIsKycCompleted())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
 
-                return toUserDetailsResponse(userService.updateRole(userId, role));
-        }
+    private AdminUserDetailsResponse toUserDetailsResponse(User user) {
 
-        @Transactional(readOnly = true)
-        public Page<ContactInquiryAdminResponse> getContactInquiries(
-                        ContactInquiryStatus status,
-                        Pageable pageable) {
+        UserVerification verification = user.getVerification();
 
-                if (status == null) {
-                        return contactInquiryService.getAllInquiries(pageable);
-                }
-
-                return contactInquiryService.getInquiriesByStatus(
-                                status,
-                                pageable);
-        }
-
-        public ContactInquiryAdminResponse updateContactInquiryStatus(
-                        UUID inquiryId,
-                        ContactInquiryStatus status) {
-
-                return contactInquiryService.updateStatus(
-                                inquiryId,
-                                status);
-        }
-
-        private AdminUserSummaryResponse toUserSummaryResponse(User user) {
-
-                return AdminUserSummaryResponse.builder()
-                                .id(user.getId())
-                                .firstName(user.getFirstName())
-                                .lastName(user.getLastName())
-                                .email(user.getEmail())
-                                .role(user.getRole())
-                                .status(user.getStatus())
-                                .updatedAt(user.getUpdatedAt())
-                                .build();
-        }
-
-        private AdminUserDetailsResponse toUserDetailsResponse(User user) {
-
-                UserVerification verification = user.getVerification();
-
-                return AdminUserDetailsResponse.builder()
-                                .id(user.getId())
-                                .email(user.getEmail())
-                                .mobileNumber(user.getMobileNumber())
-                                .firstName(user.getFirstName())
-                                .lastName(user.getLastName())
-                                .profileImage(user.getProfileImage())
-                                .onboardingStep(user.getOnboardingStep())
-                                .role(user.getRole())
-                                .status(user.getStatus())
-                                .createdAt(user.getCreatedAt())
-                                .updatedAt(user.getUpdatedAt())
-                                .verification(
-                                                verification == null
-                                                                ? null
-                                                                : UserVerificationResponse.builder()
-                                                                                .id(verification.getId())
-                                                                                .emailStatus(verification
-                                                                                                .getEmailStatus())
-                                                                                .phoneStatus(verification
-                                                                                                .getPhoneStatus())
-                                                                                .panStatus(verification.getPanStatus())
-                                                                                .bankAccountStatus(verification
-                                                                                                .getBankAccountStatus())
-                                                                                .dematStatus(verification
-                                                                                                .getDematStatus())
-                                                                                .createdAt(verification.getCreatedAt())
-                                                                                .updatedAt(verification.getUpdatedAt())
-                                                                                .build())
-                                .build();
-        }
+        return AdminUserDetailsResponse.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .mobileNumber(user.getMobileNumber())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .profileImage(user.getProfileImage())
+                .onboardingStep(user.getOnboardingStep())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .verification(
+                        verification == null
+                                ? null
+                                : UserVerificationResponse.builder()
+                                .id(verification.getId())
+                                .emailStatus(verification
+                                        .getEmailStatus())
+                                .phoneStatus(verification
+                                        .getPhoneStatus())
+                                .panStatus(verification.getPanStatus())
+                                .bankAccountStatus(verification
+                                        .getBankAccountStatus())
+                                .dematStatus(verification
+                                        .getDematStatus())
+                                .createdAt(verification.getCreatedAt())
+                                .updatedAt(verification.getUpdatedAt())
+                                .build())
+                .build();
+    }
 
 }
