@@ -36,7 +36,7 @@ import tools.jackson.databind.ObjectMapper;
  * both directions. Writes are called from the Kafka consumer thread via
  * {@code AnalyticsBatchService}; reads are called from
  * {@link AdminAnalyticsQueryService}, which serves the admin reporting
- * endpoint.</p>
+ * endpoints — one user's history, and a search across every user.</p>
  *
  * <p>The datasource is the analytics module's own and is reached through an
  * explicit qualifier — resolving {@code DataSource} by type here would risk
@@ -51,6 +51,13 @@ import tools.jackson.databind.ObjectMapper;
  * history, and it is the reason the read side pages by key rather than by
  * offset — see {@link AnalyticsCursor}. Adding {@code user_id} to the sorting
  * key is the change that would make these queries cheap.</p>
+ *
+ * <p>Narrowing by {@code event_type} is the exception: it is the leading column
+ * of the sorting key, so a search that names one reads a contiguous range
+ * rather than the whole partition. That is the cross-user search in
+ * {@link #findAllEvents} when it is given an event name, and the reason that
+ * endpoint is worth having even though it reads other people's rows — the
+ * filter is what keeps it from being a full scan.</p>
  */
 @Service
 @Slf4j
@@ -231,6 +238,78 @@ public class ClickHouseService {
     }
 
     /**
+     * Reads one page of events across every user, newest first.
+     *
+     * <p>The counterpart to {@link #findUserEvents} without the user filter. It
+     * is the only read in this class that can return rows belonging to more than
+     * one person, which is exactly what an administrator searching by event
+     * name is asking for — and why the caller has to be role-gated.</p>
+     *
+     * <p>Paging is keyset, for the reasons given on {@link #findUserEvents}: the
+     * table is written to continuously, so an offset would drift under a caller
+     * walking through pages. The ordering is the same
+     * {@code (event_time DESC, event_id DESC)} and has to stay in step with the
+     * cursor comparison in {@link #whereClause}.</p>
+     *
+     * @param eventType optional event name to narrow to, {@code null} for all;
+     *                  naming one lets ClickHouse read a range of the sorting
+     *                  key instead of the whole partition
+     * @param from      optional inclusive lower bound on {@code event_time}
+     * @param to        optional inclusive upper bound on {@code event_time}
+     * @param cursor    where the previous page stopped, {@code null} for the
+     *                  first page
+     * @param limit     maximum rows to return; the caller asks for one more than
+     *                  it intends to show, to learn whether another page exists
+     * @return the rows, newest first, at most {@code limit} of them
+     * @throws AnalyticsQueryException if ClickHouse cannot be reached or the
+     *                                 query fails
+     */
+    public List<AnalyticsEventRow> findAllEvents(
+            AnalyticsEventType eventType,
+            Instant from,
+            Instant to,
+            AnalyticsCursor cursor,
+            int limit) {
+
+        List<Object> parameters = new ArrayList<>();
+
+        String sql = "SELECT "
+                + COLUMNS
+                + " FROM "
+                + TABLE
+                + whereClause(null, eventType, from, to, cursor, parameters)
+                + " ORDER BY event_time DESC, event_id DESC"
+                + " LIMIT ?";
+
+        parameters.add(limit);
+
+        try (
+                Connection connection = clickHouseDataSource.getConnection();
+
+                PreparedStatement statement = connection.prepareStatement(sql)) {
+
+            bindAll(statement, parameters);
+
+            try (ResultSet rows = statement.executeQuery()) {
+
+                List<AnalyticsEventRow> events = new ArrayList<>();
+
+                while (rows.next()) {
+                    events.add(toRow(rows));
+                }
+
+                return events;
+            }
+
+        } catch (Exception e) {
+
+            throw new AnalyticsQueryException(
+                    "Failed to search analytics events (eventType=" + eventType + ")",
+                    e);
+        }
+    }
+
+    /**
      * Counts a user's events grouped by event name, most frequent first.
      *
      * <p>Deliberately independent of the page cursor: the summary describes the
@@ -299,14 +378,28 @@ public class ClickHouseService {
      * for must not narrow the result, and nothing a caller sends may reach the
      * query as text.</p>
      *
+     * <p>{@code userId} is the one filter that may be absent for a reason other
+     * than "the caller did not narrow": a {@code null} here means "every user",
+     * which is what {@link #findAllEvents} asks for and what a search by event
+     * name is. Every other parameter is a narrowing, so {@code null} there means
+     * the clause is left out.</p>
+     *
+     * <p>The conditions are collected and joined rather than concatenated onto a
+     * fixed leading clause, because there is no longer a filter that is always
+     * present — a search with no filters at all must produce no {@code WHERE},
+     * not a malformed one.</p>
+     *
      * <p>The cursor comparison is written as
      * {@code event_time < ? OR (event_time = ? AND event_id < ?)} rather than as
      * a row-value comparison. The two are equivalent, and both let ClickHouse
      * use the sorting key for the range, but the expanded form does not depend
-     * on how the driver renders a tuple parameter.</p>
+     * on how the driver renders a tuple parameter. It is parenthesised because
+     * it is joined with {@code AND} against the other conditions.</p>
      *
-     * @param params receives the bind values, in placeholder order
-     * @return the {@code WHERE} clause, beginning with {@code " WHERE "}
+     * @param userId  the user to restrict to, or {@code null} for all users
+     * @param params  receives the bind values, in placeholder order
+     * @return the {@code WHERE} clause beginning with {@code " WHERE "}, or an
+     *         empty string when nothing narrows the query
      */
     private static String whereClause(
             UUID userId,
@@ -316,28 +409,31 @@ public class ClickHouseService {
             AnalyticsCursor cursor,
             List<Object> params) {
 
-        StringBuilder where = new StringBuilder(" WHERE user_id = ?");
+        List<String> conditions = new ArrayList<>();
 
-        params.add(userId);
+        if (userId != null) {
+            conditions.add("user_id = ?");
+            params.add(userId);
+        }
 
         if (eventType != null) {
-            where.append(" AND event_type = ?");
+            conditions.add("event_type = ?");
             params.add(eventType.name());
         }
 
         if (from != null) {
-            where.append(" AND event_time >= ?");
+            conditions.add("event_time >= ?");
             params.add(Timestamp.from(from));
         }
 
         if (to != null) {
-            where.append(" AND event_time <= ?");
+            conditions.add("event_time <= ?");
             params.add(Timestamp.from(to));
         }
 
         if (cursor != null) {
 
-            where.append(" AND (event_time < ? OR (event_time = ? AND event_id < ?))");
+            conditions.add("(event_time < ? OR (event_time = ? AND event_id < ?))");
 
             // The same instant is bound twice: the query is keyed on event_time
             // first, and only rows sharing that exact instant fall through to
@@ -349,7 +445,11 @@ public class ClickHouseService {
             params.add(cursor.eventId());
         }
 
-        return where.toString();
+        if (conditions.isEmpty()) {
+            return "";
+        }
+
+        return " WHERE " + String.join(" AND ", conditions);
     }
 
     /**
