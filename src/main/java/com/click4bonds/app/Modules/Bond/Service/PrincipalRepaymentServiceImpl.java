@@ -494,6 +494,31 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
 
                     date = next;
                 }
+
+                /*
+                 * --------------------------------------------------------
+                 * DATED AMORTIZATION
+                 * --------------------------------------------------------
+                 *
+                 * The sheet states each repayment date outright:
+                 *
+                 * 27/09/2027(30%)
+                 * 27/10/2027(30%)
+                 * 27/11/2027(40%)
+                 *
+                 * The rule lands on that date and nowhere else; there is
+                 * no frequency to walk.
+                 */
+            } else if (rule instanceof DatedAmortizationRule datedRule) {
+
+                if (!datedRule.repaymentDate().isAfter(maturityDate)) {
+
+                    rulesByDate
+                            .computeIfAbsent(
+                                    datedRule.repaymentDate(),
+                                    ignored -> new ArrayList<>())
+                            .add(datedRule);
+                }
             }
         }
 

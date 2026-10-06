@@ -3,7 +3,6 @@ package com.click4bonds.app.Modules.Bond.Controller;
 import java.util.List;
 import java.util.UUID;
 
-import org.apache.coyote.BadRequestException;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -59,7 +58,7 @@ public class AdminBondController {
         @PostMapping("/bonds")
         public ResponseEntity<BondResponse> createBond(
                         @Valid @RequestBody CreateBondRequest request,
-                        @AuthenticationPrincipal Jwt jwt) throws BadRequestException {
+                        @AuthenticationPrincipal Jwt jwt) {
 
                 // The filter has already rejected any token whose subject is not
                 // a user identifier, so this cannot fail on an authenticated
@@ -76,7 +75,7 @@ public class AdminBondController {
 
         @PatchMapping("/bonds/prices")
         public ResponseEntity<List<BondResponse>> updatePrices(
-                        @Valid @RequestBody @NotEmpty List<@Valid BondPriceUpdateRequest> requests) throws BadRequestException {
+                        @Valid @RequestBody @NotEmpty List<@Valid BondPriceUpdateRequest> requests) {
 
                 return ResponseEntity.ok(
                                 bondService.updatePrices(requests));
@@ -108,7 +107,7 @@ public class AdminBondController {
         @PatchMapping("/bonds/{isin}")
         public ResponseEntity<BondResponse> updateBond(
                         @PathVariable String isin,
-                        @Valid @RequestBody UpdateBondRequest request) throws BadRequestException {
+                        @Valid @RequestBody UpdateBondRequest request) {
 
                 return ResponseEntity.ok(
                                 bondService.updateBond(isin, request));
@@ -116,7 +115,7 @@ public class AdminBondController {
 
         @PatchMapping("/bonds/{isin}/activate")
         public ResponseEntity<BondResponse> activateBond(
-                        @PathVariable String isin) throws BadRequestException {
+                        @PathVariable String isin) {
 
                 return ResponseEntity.ok(
                                 bondService.activateBond(isin));
@@ -124,7 +123,7 @@ public class AdminBondController {
 
         @PatchMapping("/bonds/{isin}/suspend")
         public ResponseEntity<BondResponse> suspendBond(
-                        @PathVariable String isin) throws BadRequestException {
+                        @PathVariable String isin) {
 
                 return ResponseEntity.ok(
                                 bondService.suspendBond(isin));
@@ -132,7 +131,7 @@ public class AdminBondController {
 
         @DeleteMapping("/bonds/{isin}")
         public ResponseEntity<Void> cancelBond(
-                        @PathVariable String isin) throws BadRequestException {
+                        @PathVariable String isin) {
 
                 bondService.cancelBond(isin);
 
