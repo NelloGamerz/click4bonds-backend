@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
 @Service
@@ -23,11 +24,13 @@ public class CouponDateGenerator {
      */
 
     /**
-     * Matches:
+     * Matches a pair of day/month anniversaries. The sheet joins them with a
+     * hyphen, en dash, em dash or ampersand:
      *
      * 09/02-09/08
      * 04/04-04/10
      * 26/03-26/09
+     * 09/02 & 09/08
      *
      * Groups:
      *
@@ -38,7 +41,7 @@ public class CouponDateGenerator {
      */
     private static final Pattern MONTH_DAY_RANGE_PATTERN =
             Pattern.compile(
-                    "^\\s*(\\d{1,2})/(\\d{1,2})\\s*-\\s*(\\d{1,2})/(\\d{1,2})\\s*$"
+                    "^\\s*(\\d{1,2})/(\\d{1,2})\\s*[-\\u2013\\u2014&]\\s*(\\d{1,2})/(\\d{1,2})\\s*$"
             );
 
     /**
@@ -78,6 +81,46 @@ public class CouponDateGenerator {
                     "^\\s*(\\d{1,2})(?:st|nd|rd|th)?\\s+of\\s+every\\s+month\\s*$",
                     Pattern.CASE_INSENSITIVE
             );
+
+    /*
+     * ============================================================
+     * FREQUENCY
+     * ============================================================
+     */
+
+    /**
+     * The coupon frequency implied by an IP-date description, or {@code null}
+     * when the description matches none of the supported grammars.
+     *
+     * <p>
+     * The three grammars and their frequencies are fixed by
+     * {@link #generateScheduledDates}: a day/month pair is semi-annual, a
+     * day/month carrying {@code Ann} is annual, and "Nth of every month" is
+     * monthly. Exposed so the bond create/update path can normalize the column
+     * against the same regexes instead of keeping a second copy of them.
+     */
+    public CouponFrequency frequencyOf(String ipDateDescription) {
+
+        if (ipDateDescription == null || ipDateDescription.isBlank()) {
+            return null;
+        }
+
+        String description = normalizeDescription(ipDateDescription);
+
+        if (MONTH_DAY_RANGE_PATTERN.matcher(description).matches()) {
+            return CouponFrequency.HALF_YEARLY;
+        }
+
+        if (ANNUAL_PATTERN.matcher(description).matches()) {
+            return CouponFrequency.YEARLY;
+        }
+
+        if (MONTHLY_PATTERN.matcher(description).matches()) {
+            return CouponFrequency.MONTHLY;
+        }
+
+        return null;
+    }
 
     /*
      * ============================================================

@@ -871,33 +871,49 @@ public class MaturityDescriptionParserImpl
          */
 
         private static final Pattern PERPETUAL = Pattern.compile(
-                        "^\\s*perp(?:etual)?\\s*$",
+                        "^\\s*perp(?:etual)?\\.?\\s*$",
                         Pattern.CASE_INSENSITIVE);
+
+        /*
+         * ============================================================
+         * REPAYMENT FREQUENCY WORD
+         *
+         * The wording a description may use for how often the face value
+         * is repaid. Shared by the two fixed-frequency forms so the two
+         * grammars cannot drift.
+         * ============================================================
+         */
+
+        private static final String FREQUENCY_WORD =
+                        "(each\\s+year|yearly|annual|"
+                                        + "quarterly|quartely|"
+                                        + "half[- ]?yearly|semi[- ]?annual|"
+                                        + "every\\s+month|monthly)";
 
         /*
          * ============================================================
          * FIXED FREQUENCY AMORTIZATION
          *
-         * Explicit range:
+         * Explicit range. The two dates may be joined by "to" or by a
+         * hyphen:
          *
          * 01/10/2026 to 01/10/2027 (20% Quarterly)
          *
          * 9/11/2024 to 9/11/2033 (10% each year)
+         *
+         * 22/04/2029-27/08/2029 (20% every month)
          * ============================================================
          */
 
         private static final Pattern FIXED_FREQUENCY = Pattern.compile(
                         "^\\s*"
                                         + "(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})"
-                                        + "\\s+to\\s+"
+                                        + "\\s*(?:to|[-\\u2013\\u2014])\\s*"
                                         + "(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})"
                                         + "\\s*\\("
                                         + "\\s*(\\d+(?:\\.\\d+)?)%"
                                         + "\\s*"
-                                        + "(each\\s+year|yearly|annual|"
-                                        + "quarterly|quartely|"
-                                        + "half[- ]?yearly|semi[- ]?annual|"
-                                        + "monthly)"
+                                        + FREQUENCY_WORD
                                         + "\\s*\\)"
                                         + "\\s*$",
                         Pattern.CASE_INSENSITIVE);
@@ -919,13 +935,30 @@ public class MaturityDescriptionParserImpl
                                         + "\\s*\\("
                                         + "\\s*(\\d+(?:\\.\\d+)?)%"
                                         + "\\s*"
-                                        + "(each\\s+year|yearly|annual|"
-                                        + "quarterly|quartely|"
-                                        + "half[- ]?yearly|semi[- ]?annual|"
-                                        + "monthly)"
+                                        + FREQUENCY_WORD
                                         + "\\s*\\)"
                                         + "\\s*$",
                         Pattern.CASE_INSENSITIVE);
+
+        /*
+         * ============================================================
+         * DATED AMORTIZATION SCHEDULE
+         *
+         * 27/09/2027(30%), 27/10/2027(30%), 27/11/2027(40%)
+         *
+         * One entry per repayment date.
+         *
+         * Groups:
+         * 1 = day
+         * 2 = month
+         * 3 = year
+         * 4 = percentage of face value repaid
+         * ============================================================
+         */
+
+        private static final Pattern DATED_ENTRY = Pattern.compile(
+                        "(\\d{1,2})[-/](\\d{1,2})[-/](\\d{4})"
+                                        + "\\s*\\(\\s*(\\d+(?:\\.\\d+)?)%\\s*\\)");
 
         /*
          * ============================================================
@@ -1140,6 +1173,25 @@ public class MaturityDescriptionParserImpl
 
                 /*
                  * --------------------------------------------------------
+                 * DATED AMORTIZATION SCHEDULE
+                 *
+                 * The sheet lists every repayment date outright, each with
+                 * the share of face value it repays:
+                 *
+                 * 27/09/2027(30%), 27/10/2027(30%), 27/11/2027(40%)
+                 *
+                 * One rule per entry; the last date is the maturity date.
+                 * --------------------------------------------------------
+                 */
+
+                MaturitySchedule datedSchedule = parseDatedSchedule(description);
+
+                if (datedSchedule != null) {
+                        return datedSchedule;
+                }
+
+                /*
+                 * --------------------------------------------------------
                  * IP / STAGED AMORTIZATION
                  * --------------------------------------------------------
                  */
@@ -1170,6 +1222,112 @@ public class MaturityDescriptionParserImpl
                 throw new IllegalArgumentException(
                                 "Unsupported maturity description: "
                                                 + maturityDescription);
+        }
+
+        /*
+         * ============================================================
+         * DATED AMORTIZATION SCHEDULE PARSING
+         * ============================================================
+         *
+         * Returns null when the description is not purely a list of dated
+         * repayments, so the caller can fall through to the other grammars.
+         * That is what keeps prose such as "2.5% on Each IP till 2027" from
+         * being read as a dated schedule.
+         */
+
+        private MaturitySchedule parseDatedSchedule(
+                        String description) {
+
+                Matcher entryMatcher = DATED_ENTRY.matcher(description);
+
+                List<AmortizationRule> rules = new ArrayList<>();
+
+                int cursor = 0;
+
+                boolean matched = false;
+
+                while (entryMatcher.find()) {
+
+                        /*
+                         * Everything between two entries must be nothing but
+                         * separators.
+                         */
+                        if (!isSeparatorOnly(
+                                        description.substring(
+                                                        cursor,
+                                                        entryMatcher.start()))) {
+
+                                return null;
+                        }
+
+                        cursor = entryMatcher.end();
+
+                        matched = true;
+
+                        rules.add(
+                                        new DatedAmortizationRule(
+                                                        parsePercentage(
+                                                                        entryMatcher.group(4)),
+                                                        parseDate(
+                                                                        entryMatcher.group(1),
+                                                                        entryMatcher.group(2),
+                                                                        entryMatcher.group(3))));
+                }
+
+                if (!matched
+                                || !isSeparatorOnly(description.substring(cursor))) {
+
+                        return null;
+                }
+
+                rules.sort(
+                                Comparator.comparing(
+                                                AmortizationRule::startDate));
+
+                validateDatedSchedule(rules);
+
+                /*
+                 * The last repayment date is the bond's maturity date.
+                 */
+                LocalDate maturityDate = rules
+                                .get(rules.size() - 1)
+                                .startDate();
+
+                return new MaturitySchedule(
+                                maturityDate,
+                                rules,
+                                false);
+        }
+
+        private boolean isSeparatorOnly(
+                        String text) {
+
+                return text.isBlank()
+                                || text.matches("[\\s,;/]+");
+        }
+
+        /**
+         * Each entry's percentage is validated by
+         * {@link DatedAmortizationRule}; what is left is to check that the
+         * entries together do not repay more than the whole face value.
+         */
+        private void validateDatedSchedule(
+                        List<AmortizationRule> rules) {
+
+                BigDecimal total = BigDecimal.ZERO;
+
+                for (AmortizationRule rule : rules) {
+                        total = total.add(rule.percentage());
+                }
+
+                if (total.compareTo(BigDecimal.valueOf(100)) > 0) {
+
+                        throw new IllegalArgumentException(
+                                        "Dated amortization repays more than 100% of "
+                                                        + "face value: "
+                                                        + total
+                                                        + "%");
+                }
         }
 
         /*
@@ -1748,7 +1906,14 @@ public class MaturityDescriptionParserImpl
                                         "semi-annual" ->
                                 CouponFrequency.HALF_YEARLY;
 
-                        case "monthly" ->
+                        /*
+                         * Both wordings are intentionally supported:
+                         *
+                         * monthly
+                         * every month
+                         */
+                        case "monthly",
+                                        "every month" ->
                                 CouponFrequency.MONTHLY;
 
                         default ->

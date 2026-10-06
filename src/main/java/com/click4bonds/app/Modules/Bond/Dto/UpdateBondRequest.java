@@ -1,18 +1,24 @@
 package com.click4bonds.app.Modules.Bond.Dto;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-
-import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
-import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
-import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
-import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
-
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+/**
+ * Admin partial-update request.
+ *
+ * <p>
+ * A null field means "leave untouched". Every non-null value is accepted in the
+ * raw form the source sheet holds it and normalized by
+ * {@code BondRequestMapper}; an unparseable value fails the request with
+ * {@code 400} naming the field.
+ *
+ * <p>
+ * The normalized companions ({@code quantumInLacs}, {@code lotSize},
+ * {@code lotSizeType}, {@code maturityDate}, {@code maturityType},
+ * {@code couponFrequency}) may also be sent explicitly, and then they win over
+ * what the raw text would have produced.
+ */
 @Data
 public class UpdateBondRequest {
 
@@ -32,7 +38,10 @@ public class UpdateBondRequest {
     @Size(max = 255)
     private String category;
 
-    private SecurityType securityType;
+    /**
+     * Raw text, e.g. {@code Secured}.
+     */
+    private String securityType;
 
     @Size(max = 100)
     private String rating;
@@ -45,22 +54,21 @@ public class UpdateBondRequest {
     // =========================
 
     /**
-     * Percentage value.
-     *
-     * Example:
-     * 7.20 = 7.20%
+     * Raw percentage, e.g. {@code 8.45%}.
      */
-    @DecimalMin("0")
-    private BigDecimal couponRate;
+    private String couponRate;
 
-    private CouponFrequency couponFrequency;
+    /**
+     * Raw frequency, e.g. {@code Ann} or {@code Quarterly}.
+     */
+    private String couponFrequency;
 
     /**
      * Examples:
      *
-     * 09/02-09/08
+     * 07/03-07/09
      * 15/10 Ann
-     * 31st of every month
+     * 1st of Every Month
      */
     @Size(max = 255)
     private String ipDateDescription;
@@ -85,12 +93,12 @@ public class UpdateBondRequest {
     // MATURITY
     // =========================
 
-    private MaturityType maturityType;
+    private String maturityType;
 
-    private LocalDate maturityDate;
+    private String maturityDate;
 
     /**
-     * Original maturity value from Excel.
+     * Raw maturity text.
      *
      * Examples:
      *
@@ -121,17 +129,34 @@ public class UpdateBondRequest {
     // =========================
 
     /**
-     * Can be null because Excel price can be blank.
+     * Raw price, e.g. {@code 102.08}. Blank in the sheet means null here.
      */
-    @DecimalMin("0.01")
-    private BigDecimal price;
+    private String price;
+
+    // =========================
+    // YIELD
+    // =========================
+
+    /**
+     * Yield supplied by the source sheet. When sent, it is stored and the
+     * previously calculated yield is not left behind.
+     *
+     * Examples:
+     * 6.88%
+     * 7.00%
+     */
+    private String semiYtm;
+
+    private String annualYtm;
+
+    private String ytc;
 
     // =========================
     // QUANTUM
     // =========================
 
     /**
-     * Original Excel value.
+     * Original sheet value.
      *
      * Examples:
      * 3 Lakh
@@ -143,37 +168,36 @@ public class UpdateBondRequest {
     private String quantumDescription;
 
     /**
-     * Normalized quantum in lakhs.
+     * Optional explicit normalized value in lakhs.
      */
-    @DecimalMin("0")
-    private BigDecimal quantumInLacs;
+    private String quantumInLacs;
 
     // =========================
     // LOT SIZE
     // =========================
 
     /**
-     * Original Excel value.
+     * Original sheet value.
      *
      * Examples:
      * Demat
      * SGL
      * 1000 Lot
-     * 10 Lakh Lot
+     * 10 Lacs Lot
      * 1 Crore Lot
      */
     @Size(max = 100)
     private String lotSizeDescription;
 
     /**
-     * Normalized numeric lot size.
-     *
-     * NULL for DEMAT / SGL.
+     * Optional explicit normalized lot size.
      */
-    @DecimalMin("0")
-    private BigDecimal lotSize;
+    private String lotSize;
 
-    private LotSizeType lotSizeType;
+    /**
+     * Optional explicit lot type.
+     */
+    private String lotSizeType;
 
     // =========================
     // INVENTORY

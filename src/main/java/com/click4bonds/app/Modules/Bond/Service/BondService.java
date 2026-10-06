@@ -10,7 +10,6 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.coyote.BadRequestException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -23,6 +22,7 @@ import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Model.User;
@@ -38,6 +38,7 @@ public class BondService {
     private final BondRepository bondRepository;
     private final UserService userService;
     private final AnalyticsService analyticsService;
+    private final BondRequestMapper bondRequestMapper;
 
     // =========================================================
     // CREATE
@@ -45,33 +46,17 @@ public class BondService {
 
     public BondResponse createBond(
             CreateBondRequest request,
-            UUID adminId) throws BadRequestException {
+            UUID adminId) {
 
         // -----------------------------------------------------
         // Duplicate ISIN
         // -----------------------------------------------------
 
-        String isin = request.getIsin().trim().toUpperCase();
+        String isin = normalizeIsin(request.getIsin());
 
         if (bondRepository.existsByIsin(isin)) {
             throw new ConflictException(
                     "Bond with ISIN already exists: " + isin);
-        }
-
-        // -----------------------------------------------------
-        // Validate maturity
-        // -----------------------------------------------------
-
-        if (request.getMaturityType() == null) {
-            throw new BadRequestException(
-                    "Maturity type is required");
-        }
-
-        if (request.getMaturityType().name().equals("FIXED")
-                && request.getMaturityDate() == null) {
-
-            throw new BadRequestException(
-                    "Maturity date is required for fixed maturity bonds");
         }
 
         // -----------------------------------------------------
@@ -81,69 +66,14 @@ public class BondService {
         User admin = userService.getUser(adminId);
 
         // -----------------------------------------------------
-        // Build Bond
+        // Parse the raw request into a Bond
         // -----------------------------------------------------
+        //
+        // Every loosely-typed value ("8.45%", "Secured", "7/Mar/28",
+        // "1.50 Lakh") is normalized here. A value that cannot be parsed
+        // rejects the whole request before anything is written.
 
-        Bond bond = Bond.builder()
-
-                .serialNumber(request.getSerialNumber())
-
-                .name(request.getName().trim())
-
-                .isin(isin)
-
-                // Classification
-                .category(request.getCategory())
-                .securityType(request.getSecurityType())
-                .rating(request.getRating())
-                .ratingAgency(request.getRatingAgency())
-
-                // Coupon
-                .couponRate(request.getCouponRate())
-                .couponFrequency(request.getCouponFrequency())
-                .ipDateDescription(request.getIpDateDescription())
-
-                // Record date rule (source of truth for coupon entitlement)
-                .recordDateDescription(request.getRecordDateDescription())
-
-                // Maturity
-                .maturityType(request.getMaturityType())
-                .maturityDate(request.getMaturityDate())
-                .maturityDescription(request.getMaturityDescription())
-
-                // Put / Call
-                .putCallDescription(request.getPutCallDescription())
-
-                // Market
-                .price(request.getPrice())
-
-                // IMPORTANT:
-                // YTM values are NOT accepted from CreateBondRequest.
-                // They will be calculated internally.
-                .semiYtm(null)
-                .annualYtm(null)
-                .ytc(null)
-                .ytmCalculatedAt(null)
-
-                // Quantum
-                .quantumDescription(request.getQuantumDescription())
-                .quantumInLacs(request.getQuantumInLacs())
-
-                // Lot
-                .lotSizeDescription(request.getLotSizeDescription())
-                .lotSize(request.getLotSize())
-                .lotSizeType(request.getLotSizeType())
-
-                // Inventory
-                .remainingQuantity(request.getRemainingQuantity())
-
-                // Status
-                .status(BondStatus.DRAFT)
-
-                // Audit
-                .createdBy(admin)
-
-                .build();
+        Bond bond = bondRequestMapper.toEntity(request, admin);
 
         Bond savedBond = bondRepository.save(bond);
 
@@ -151,8 +81,7 @@ public class BondService {
     }
 
     public List<BondResponse> updatePrices(
-            List<BondPriceUpdateRequest> requests)
-            throws BadRequestException {
+            List<BondPriceUpdateRequest> requests) {
 
         List<Bond> bonds = new java.util.ArrayList<>();
 
@@ -382,8 +311,7 @@ public class BondService {
 
     public BondResponse updateBond(
             String isin,
-            UpdateBondRequest request)
-            throws BadRequestException {
+            UpdateBondRequest request) {
 
         Bond bond = getbondByIs(isin);
 
@@ -398,169 +326,13 @@ public class BondService {
         }
 
         // -----------------------------------------------------
-        // Basic information
+        // Parse and apply the raw request
         // -----------------------------------------------------
+        //
+        // Null fields are left untouched; non-null fields are parsed the same
+        // way as on create, so an update can carry raw sheet values too.
 
-        if (request.getSerialNumber() != null) {
-            bond.setSerialNumber(
-                    request.getSerialNumber());
-        }
-
-        if (request.getName() != null) {
-            bond.setName(
-                    request.getName().trim());
-        }
-
-        // -----------------------------------------------------
-        // Classification
-        // -----------------------------------------------------
-
-        if (request.getCategory() != null) {
-            bond.setCategory(
-                    request.getCategory());
-        }
-
-        if (request.getSecurityType() != null) {
-            bond.setSecurityType(
-                    request.getSecurityType());
-        }
-
-        if (request.getRating() != null) {
-            bond.setRating(
-                    request.getRating());
-        }
-
-        if (request.getRatingAgency() != null) {
-            bond.setRatingAgency(
-                    request.getRatingAgency());
-        }
-
-        // -----------------------------------------------------
-        // Coupon
-        // -----------------------------------------------------
-
-        if (request.getCouponRate() != null) {
-            bond.setCouponRate(
-                    request.getCouponRate());
-        }
-
-        if (request.getCouponFrequency() != null) {
-            bond.setCouponFrequency(
-                    request.getCouponFrequency());
-        }
-
-        if (request.getIpDateDescription() != null) {
-            bond.setIpDateDescription(
-                    request.getIpDateDescription());
-        }
-
-        // -----------------------------------------------------
-        // Record date rule (source of truth for entitlement)
-        // -----------------------------------------------------
-
-        if (request.getRecordDateDescription() != null) {
-            bond.setRecordDateDescription(
-                    request.getRecordDateDescription());
-        }
-
-        // -----------------------------------------------------
-        // Maturity
-        // -----------------------------------------------------
-
-        if (request.getMaturityType() != null) {
-            bond.setMaturityType(
-                    request.getMaturityType());
-        }
-
-        if (request.getMaturityDate() != null) {
-            bond.setMaturityDate(
-                    request.getMaturityDate());
-        }
-
-        if (request.getMaturityDescription() != null) {
-            bond.setMaturityDescription(
-                    request.getMaturityDescription());
-        }
-
-        // -----------------------------------------------------
-        // Put / Call
-        // -----------------------------------------------------
-
-        if (request.getPutCallDescription() != null) {
-            bond.setPutCallDescription(
-                    request.getPutCallDescription());
-        }
-
-        // -----------------------------------------------------
-        // Price
-        // -----------------------------------------------------
-
-        if (request.getPrice() != null) {
-            bond.setPrice(
-                    request.getPrice());
-
-            /*
-             * Price changed.
-             *
-             * Previously calculated YTM is now potentially stale.
-             *
-             * Do not leave old confidential YTM values in the DB.
-             */
-            invalidateYieldCalculation(bond);
-        }
-
-        // -----------------------------------------------------
-        // Quantum
-        // -----------------------------------------------------
-
-        if (request.getQuantumDescription() != null) {
-            bond.setQuantumDescription(
-                    request.getQuantumDescription());
-        }
-
-        if (request.getQuantumInLacs() != null) {
-            bond.setQuantumInLacs(
-                    request.getQuantumInLacs());
-        }
-
-        // -----------------------------------------------------
-        // Lot Size
-        // -----------------------------------------------------
-
-        if (request.getLotSizeDescription() != null) {
-            bond.setLotSizeDescription(
-                    request.getLotSizeDescription());
-        }
-
-        if (request.getLotSize() != null) {
-            bond.setLotSize(
-                    request.getLotSize());
-        }
-
-        if (request.getLotSizeType() != null) {
-            bond.setLotSizeType(
-                    request.getLotSizeType());
-        }
-
-        // -----------------------------------------------------
-        // Inventory
-        // -----------------------------------------------------
-
-        /*
-         * Absolute value, not a delta: an admin restocking a bond sends the new
-         * total. Status is deliberately left alone — a restocked SOLD_OUT bond
-         * has to be activated through the existing activate endpoint, so the
-         * inventory and the status never disagree silently.
-         */
-        if (request.getRemainingQuantity() != null) {
-            bond.setRemainingQuantity(
-                    request.getRemainingQuantity());
-        }
-
-        if (request.getIsFlashNews() != null) {
-            bond.setIsFlashNews(
-                    request.getIsFlashNews());
-        }
+        bondRequestMapper.applyUpdate(bond, request);
 
         // -----------------------------------------------------
         // Save
@@ -575,8 +347,7 @@ public class BondService {
     // ACTIVATE
     // =========================================================
 
-    public BondResponse activateBond(String isin)
-            throws BadRequestException {
+    public BondResponse activateBond(String isin) {
 
         Bond bond = getbondByIs(isin);
 
@@ -619,8 +390,7 @@ public class BondService {
     // SUSPEND
     // =========================================================
 
-    public BondResponse suspendBond(String isin)
-            throws BadRequestException {
+    public BondResponse suspendBond(String isin) {
 
         Bond bond = getbondByIs(isin);
 
@@ -644,8 +414,7 @@ public class BondService {
     // CANCEL
     // =========================================================
 
-    public void cancelBond(String isin)
-            throws BadRequestException {
+    public void cancelBond(String isin) {
 
         Bond bond = getbondByIs(isin);
 
@@ -781,6 +550,19 @@ public class BondService {
                 // Market
                 .price(
                         bond.getPrice())
+
+                // Yield
+                .semiYtm(
+                        bond.getSemiYtm())
+
+                .annualYtm(
+                        bond.getAnnualYtm())
+
+                .ytc(
+                        bond.getYtc())
+
+                .ytmCalculatedAt(
+                        bond.getYtmCalculatedAt())
 
                 // Quantum
                 .quantumDescription(

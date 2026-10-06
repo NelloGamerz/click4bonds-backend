@@ -1,140 +1,27 @@
-// package com.click4bonds.app.Modules.Bond.Dto;
-
-// import java.math.BigDecimal;
-// import java.time.LocalDate;
-
-// import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
-
-// import jakarta.validation.constraints.*;
-// import lombok.Data;
-
-// @Data
-// public class CreateBondRequest {
-
-//     @NotBlank
-//     private String isin;
-
-//     @NotBlank
-//     private String name;
-
-//     private String issuer;
-
-//     private String description;
-
-//     @NotNull
-//     @DecimalMin("0.01")
-//     private BigDecimal faceValue;
-
-//     @NotNull
-//     @DecimalMin("0")
-//     private BigDecimal couponRate;
-
-//     @NotNull
-//     private CouponFrequency couponFrequency;
-
-//     @NotNull
-//     private LocalDate issueDate;
-
-//     @NotNull
-//     private LocalDate maturityDate;
-
-//     @NotNull
-//     @DecimalMin("0.01")
-//     private BigDecimal sellingPrice;
-
-//     @NotNull
-//     @DecimalMin("0.01")
-//     private BigDecimal minimumInvestment;
-
-//     @NotNull
-//     @Min(1)
-//     private Long totalUnits;
-// }
-
-// package com.click4bonds.app.Modules.Bond.Dto;
-
-// import java.math.BigDecimal;
-// import java.time.LocalDate;
-
-// import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
-
-// import jakarta.validation.constraints.DecimalMin;
-// import jakarta.validation.constraints.Min;
-// import jakarta.validation.constraints.NotBlank;
-// import jakarta.validation.constraints.NotNull;
-// import lombok.Data;
-
-// @Data
-// public class CreateBondRequest {
-
-//     @NotNull
-//     private Integer serialNumber;
-
-//     @NotBlank
-//     private String name;
-
-//     @NotNull
-//     @DecimalMin("0")
-//     private BigDecimal couponRate;
-
-//     @NotNull
-//     private SecurityType securityType;
-
-//     @NotBlank
-//     private String isin;
-
-//     private String rating;
-
-//     private String ratingAgency;
-
-//     @NotNull
-//     private LocalDate maturityDate;
-
-//     private LocalDate putDate;
-
-//     private LocalDate callDate;
-
-//     @NotNull
-//     @DecimalMin("0.01")
-//     private BigDecimal price;
-
-//     @DecimalMin("0")
-//     private BigDecimal semiYtm;
-
-//     @DecimalMin("0")
-//     private BigDecimal annualYtm;
-
-//     @DecimalMin("0")
-//     private BigDecimal ytc;
-
-//     private LocalDate ipDate;
-
-//     @NotNull
-//     @DecimalMin("0")
-//     private BigDecimal quantumInLacs;
-
-//     @NotNull
-//     // @Min(1)
-//     private String lotSize;
-// }
-
 package com.click4bonds.app.Modules.Bond.Dto;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-
-import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
-import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
-import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
-import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
-
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+/**
+ * Admin create-bond request.
+ *
+ * <p>
+ * Every value is accepted in the form the source sheet holds it — {@code "8.45%"},
+ * {@code "Secured"}, {@code "7/Mar/28"}, {@code "1.50 Lakh"}, {@code "10 Lacs
+ * Lot"} — and normalized before it reaches the entity by
+ * {@code BondRequestMapper} and {@code BondFieldParser}. A value that cannot be
+ * parsed fails the whole request with {@code 400}, naming the field; nothing
+ * half-parsed is written.
+ *
+ * <p>
+ * The normalized companions ({@code quantumInLacs}, {@code lotSize},
+ * {@code lotSizeType}, {@code maturityDate}, {@code maturityType},
+ * {@code couponFrequency}) may still be sent explicitly, and then they win over
+ * what the raw text would have produced.
+ */
 @Data
 public class CreateBondRequest {
 
@@ -168,12 +55,30 @@ public class CreateBondRequest {
     @Size(max = 255)
     private String category;
 
-    @NotNull
-    private SecurityType securityType;
+    /**
+     * Raw text.
+     *
+     * Examples:
+     * Secured
+     * Unsecured
+     */
+    @NotBlank
+    private String securityType;
 
+    /**
+     * Examples:
+     * Sovereign
+     * BBB- (CE)
+     * AA+
+     */
     @Size(max = 100)
     private String rating;
 
+    /**
+     * Examples:
+     * ICRA & CARE
+     * CRISIL & ICRA
+     */
     @Size(max = 200)
     private String ratingAgency;
 
@@ -182,23 +87,32 @@ public class CreateBondRequest {
     // =========================
 
     /**
-     * Percentage value.
+     * Raw percentage.
      *
-     * Example:
-     * 7.20 = 7.20%
+     * Examples:
+     * 8.45%
+     * 0.40%
      */
-    @NotNull
-    @DecimalMin("0")
-    private BigDecimal couponRate;
+    @NotBlank
+    private String couponRate;
 
-    private CouponFrequency couponFrequency;
+    /**
+     * Raw frequency. Optional — inferred from {@link #ipDateDescription} when
+     * absent.
+     *
+     * Examples:
+     * Ann
+     * Quarterly
+     * 1st of Every Month
+     */
+    private String couponFrequency;
 
     /**
      * Examples:
      *
-     * 09/02-09/08
+     * 07/03-07/09
      * 15/10 Ann
-     * 31st of every month
+     * 1st of Every Month
      */
     @Size(max = 255)
     private String ipDateDescription;
@@ -227,16 +141,24 @@ public class CreateBondRequest {
     // MATURITY
     // =========================
 
-    @NotNull
-    private MaturityType maturityType;
-
     /**
-     * Required for FIXED maturity bonds.
+     * Raw maturity type. Optional — derived from {@link #maturityDescription}
+     * when absent.
      */
-    private LocalDate maturityDate;
+    private String maturityType;
 
     /**
-     * Original maturity text.
+     * Raw maturity date. Optional — derived from
+     * {@link #maturityDescription} when absent.
+     *
+     * Examples:
+     * 7/Mar/28
+     * 15/Oct/33
+     */
+    private String maturityDate;
+
+    /**
+     * Raw maturity text. Carries amortization/redemption detail.
      *
      * Examples:
      *
@@ -269,17 +191,37 @@ public class CreateBondRequest {
 
     /**
      * Price can be blank in Excel,
-     * therefore this should NOT be @NotNull.
+     * therefore this is optional.
+     *
+     * Examples:
+     * 102.08
      */
-    @DecimalMin("0.01")
-    private BigDecimal price;
+    private String price;
+
+    // =========================
+    // YIELD
+    // =========================
+
+    /**
+     * Yield supplied by the source sheet. Stored as-is; the calculation engine
+     * overwrites it the next time a yield is derived from the price.
+     *
+     * Examples:
+     * 6.88%
+     * 7.00%
+     */
+    private String semiYtm;
+
+    private String annualYtm;
+
+    private String ytc;
 
     // =========================
     // QUANTUM
     // =========================
 
     /**
-     * Original value from Excel.
+     * Original value from the sheet.
      *
      * Examples:
      * 3 Lakh
@@ -291,49 +233,45 @@ public class CreateBondRequest {
     private String quantumDescription;
 
     /**
-     * Normalized value in lakhs.
+     * Optional explicit normalized value in lakhs. When absent it is derived
+     * from {@link #quantumDescription}.
      *
      * Example:
      * 3 Lakh -> 3.00
-     * 1.50 Lakh -> 1.50
-     *
-     * Can be null for:
-     * Any
-     * 1 Bonds
      */
-    @DecimalMin("0")
-    private BigDecimal quantumInLacs;
+    private String quantumInLacs;
 
     // =========================
     // LOT SIZE
     // =========================
 
     /**
-     * Original Excel value.
+     * Original sheet value.
      *
      * Examples:
      * Demat
      * SGL
      * 1000 Lot
-     * 10 Lakh Lot
+     * 10 Lacs Lot
      * 1 Crore Lot
      */
     @Size(max = 100)
     private String lotSizeDescription;
 
     /**
-     * Normalized numeric lot size.
+     * Optional explicit normalized lot size. When absent it is derived from
+     * {@link #lotSizeDescription}.
      *
-     * Examples:
-     * 1000 Lot -> 1000
-     * 10 Lakh Lot -> 1000000
-     *
-     * NULL for DEMAT / SGL.
+     * Example:
+     * 10 Lacs Lot -> 1000000
      */
-    @DecimalMin("0")
-    private BigDecimal lotSize;
+    private String lotSize;
 
-    private LotSizeType lotSizeType;
+    /**
+     * Optional explicit lot type. When absent it is derived from
+     * {@link #lotSizeDescription}.
+     */
+    private String lotSizeType;
 
     // =========================
     // INVENTORY
@@ -348,4 +286,15 @@ public class CreateBondRequest {
      */
     @Min(0)
     private Long remainingQuantity;
+
+    // =========================
+    // FLAGS
+    // =========================
+
+    /**
+     * Whether the bond is shown as flash news.
+     *
+     * <p>Optional; omitting it stores {@code false}.</p>
+     */
+    private Boolean isFlashNews;
 }

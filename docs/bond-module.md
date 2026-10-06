@@ -88,7 +88,7 @@ Fields are grouped by intent in the source. The load-bearing ones:
 | `maturityDescription` | `maturity_description` | 1500 chars. The original text, which carries amortization detail. |
 | `maturityType` | `maturity_type` | Enum. **Stored but never read by the calculation engine** — see [§9](#9-what-is-not-wired-up). |
 | `price` | `price` | Nullable: Excel price can be blank. Clean price per 100 face. |
-| `semiYtm` / `annualYtm` / `ytc` / `ytmCalculatedAt` | | Internally calculated, never imported. Deliberately **not** in `BondResponse`. |
+| `semiYtm` / `annualYtm` / `ytc` / `ytmCalculatedAt` | | Supplied by an admin on create/update, otherwise calculated internally. Exposed on `BondResponse`. |
 | `quantumDescription` / `quantumInLacs` | | Original text and the normalized lakh value. |
 | `lotSizeDescription` / `lotSize` / `lotSizeType` | | Original text, numeric value, and its kind. |
 | `remainingQuantity` | `remaining_quantity` | Inventory. Nullable — `NULL` means "not configured". |
@@ -159,13 +159,46 @@ admin JWT. Only `createBond` reads the principal (`jwt.getSubject()`).
 | POST | `/api/admin/bonds/issuers/bulk` | `List<BondIssuerBulkItem>` (`@NotEmpty`) | 200 |
 
 Note the admin list endpoint calls `getBonds(search, null, pageable)` — it can
-never filter by `isFlashNews`, only search by name.
+never filter by `isFlashNews`. `search` matches a case-insensitive substring of
+the bond's **name or ISIN**, so an admin can paste an ISIN straight into the
+list search.
+
+#### Raw values on create/update
+
+`CreateBondRequest` and `UpdateBondRequest` carry the source sheet's values
+verbatim — `couponRate: "8.45%"`, `securityType: "Secured"`,
+`maturityDescription: "7/Mar/28"`, `quantumDescription: "1.50 Lakh"`,
+`lotSizeDescription: "10 Lacs Lot"` — in `String` fields.
+`BondRequestMapper` normalizes each one through `BondFieldParser` before it
+reaches the entity, and derives the companions:
+`maturityDate`/`maturityType` from `maturityDescription`, `couponFrequency` from
+`ipDateDescription`, `quantumInLacs` from `quantumDescription`, and
+`lotSize`/`lotSizeType` from `lotSizeDescription`.
+
+**The description is the source of truth.** When a description field is present
+and carries meaning, its derived value is stored even if the client also sent
+the normalized companion — so `lotSizeDescription: "10000 Lot"` yields
+`FIXED_LOT`, not whatever `lotSizeType` said, and a range
+`maturityDescription` yields `RANGE`, not `FIXED`. The companion is read only to
+fill a gap: when the description is absent, blank, or says nothing (`NA`,
+`N/A`, `-`). A description that itself means "no value" — `quantumDescription:
+"Any"` or `"1 Bonds"` — yields null rather than falling back to the companion.
+
+A value that cannot be parsed rejects the whole request with
+`400 BAD_REQUEST` and a message naming the field — nothing half-parsed is
+written. On update, a null field means "leave untouched".
+
+Maturity text is interpreted by the same `MaturityDescriptionParser` the
+cash-flow engine uses, so both agree on what a description means, and coupon
+frequency comes from `CouponDateGenerator.frequencyOf`, the same grammar that
+generates the coupon dates.
 
 ### 3.3 Error responses
 
 `GlobalExceptionHandler` maps `ResourceNotFoundException` → 404,
 `ConflictException` → 409, and validation failures → 400 with a
-`field: message` list.
+`field: message` list. Parse failures arrive as `BadRequestException` (via
+`BondFieldParseException`) → 400, so they are no longer reported as 500.
 
 ---
 
