@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -48,6 +49,9 @@ class AnalyticsEventConsumerTest {
     @Mock
     private AnalyticsBatchService analyticsBatchService;
 
+    @Mock
+    private Acknowledgment acknowledgment;
+
     private AnalyticsEventConsumer consumer;
 
     @BeforeEach
@@ -56,34 +60,40 @@ class AnalyticsEventConsumerTest {
     }
 
     @Test
-    void shouldHandTheConsumedEventToTheBatchService() {
+    void shouldHandTheConsumedEventAndItsAcknowledgmentToTheBatchService() {
 
         AnalyticsEvent event = event();
 
-        consumer.onAnalyticsEvent(event);
+        consumer.onAnalyticsEvent(event, acknowledgment);
 
-        verify(analyticsBatchService).add(event);
+        verify(analyticsBatchService).add(event, acknowledgment);
     }
 
     @Test
     void shouldPassEachConsumedEventOn() {
 
+        Acknowledgment secondAcknowledgment = org.mockito.Mockito.mock(Acknowledgment.class);
+
         AnalyticsEvent first = event();
         AnalyticsEvent second = event();
 
-        consumer.onAnalyticsEvent(first);
-        consumer.onAnalyticsEvent(second);
+        consumer.onAnalyticsEvent(first, acknowledgment);
+        consumer.onAnalyticsEvent(second, secondAcknowledgment);
 
-        verify(analyticsBatchService).add(first);
-        verify(analyticsBatchService).add(second);
+        verify(analyticsBatchService).add(first, acknowledgment);
+        verify(analyticsBatchService).add(second, secondAcknowledgment);
     }
 
     @Test
-    void shouldIgnoreANullPayload() {
+    void shouldAcknowledgeANullPayloadRatherThanLeaveItUncommitted() {
 
-        consumer.onAnalyticsEvent(null);
+        // A record that reaches the listener without a payload would otherwise
+        // never be acknowledged, so its offset would never advance and the
+        // partition would stall behind it.
+        consumer.onAnalyticsEvent(null, acknowledgment);
 
         verifyNoInteractions(analyticsBatchService);
+        verify(acknowledgment).acknowledge();
     }
 
     @Test
@@ -135,20 +145,23 @@ class AnalyticsEventConsumerTest {
     }
 
     @Test
-    void shouldLetTheContainerManageOffsets() throws NoSuchMethodException {
+    void shouldTakeTheAcknowledgmentSoTheOffsetWaitsForTheWrite() throws NoSuchMethodException {
 
-        // No Acknowledgment parameter, and the container's ack mode is left at
-        // its default, so the offset is committed once this method returns.
+        // The listener buffers and returns. Without the Acknowledgment it has no
+        // way to hold the offset back until the batch reaches ClickHouse, and
+        // the container would commit on return -- the loss this guards against.
         List<? extends Class<?>> parameters = Arrays.stream(listenerMethod().getParameters())
                 .map(Parameter::getType)
                 .toList();
 
-        assertFalse(parameters.contains(Acknowledgment.class),
-                "Manual acknowledgement would need an explicit ack-mode setting");
+        assertTrue(parameters.contains(Acknowledgment.class),
+                "The listener must accept an Acknowledgment so the batch service can commit it "
+                        + "after a successful insert");
     }
 
     private static Method listenerMethod() throws NoSuchMethodException {
-        return AnalyticsEventConsumer.class.getMethod(LISTENER_METHOD, AnalyticsEvent.class);
+        return AnalyticsEventConsumer.class.getMethod(
+                LISTENER_METHOD, AnalyticsEvent.class, Acknowledgment.class);
     }
 
     private static AnalyticsEvent event() {

@@ -24,6 +24,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 
@@ -181,6 +182,34 @@ public class AuthJwtService {
         } catch (IllegalArgumentException ex) {
             throw new JwtException("Token subject is not a user identifier");
         }
+    }
+
+    /**
+     * Reports whether a verified token carries the given role.
+     *
+     * <p>The role claim is written from {@code UserRole.name()} at issuance, so
+     * comparing against the enum's name is exact — no case folding, which would
+     * let a token claiming {@code customer} pass a check meant for
+     * {@code CUSTOMER}. A token with no role claim, or one the enum does not
+     * define, has no role and matches nothing.</p>
+     *
+     * <p>This reads the role the token was minted with, so it is not a database
+     * lookup: a role changed after issuance takes effect at the next refresh
+     * rather than immediately. That is the same window the authorization layer
+     * already works within.</p>
+     *
+     * @param token verified token
+     * @param role  role to test for
+     * @return {@code true} when the token's role claim names that role
+     */
+    public boolean hasRole(Jwt token, UserRole role) {
+
+        if (token == null || role == null) {
+            return false;
+        }
+
+        return role.name().equals(
+                token.getClaimAsString(ROLE_CLAIM));
     }
 
     /**

@@ -209,7 +209,10 @@ public class BondService {
 //        return mapToResponse(bond);
 //    }
 
-        public BondResponse getBond(String isin, UUID userId) {
+        public BondResponse getBond(
+                String isin,
+                UUID userId,
+                boolean isCustomer) {
 
             log.info("Fetching bond: isin={}, userId={}", isin, userId);
 
@@ -222,8 +225,6 @@ public class BondService {
             );
 
             if (userId != null) {
-
-                boolean isCustomer = userService.hasRole(userId, UserRole.CUSTOMER);
 
                 log.info(
                         "Analytics role check: userId={}, role={}, isCustomer={}",
@@ -302,14 +303,15 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             Pageable pageable) {
-        return getBonds(search, isFlashNews, pageable, null);
+        return getBonds(search, isFlashNews, pageable, null, false);
     }
 
     public Page<BondResponse> getBonds(
             String search,
             Boolean isFlashNews,
             Pageable pageable,
-            UUID userId) {
+            UUID userId,
+            boolean isCustomer) {
         if ((search == null || search.isBlank()) && isFlashNews == null) {
             return getBonds(pageable);
         }
@@ -318,7 +320,7 @@ public class BondService {
                 .searchBonds(search, isFlashNews, pageable)
                 .map(this::mapToResponse);
 
-        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+        if (userId != null && isCustomer) {
             if (search != null && !search.isBlank()) {
                 analyticsService.track(
                         AnalyticsEventType.BOND_SEARCH,

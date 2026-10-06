@@ -15,12 +15,14 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
 import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Service.BondCashFlowService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.IssuerService;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,6 +38,7 @@ public class BondController {
     private final BondService bondService;
     private final IssuerService issuerService;
     private final BondCashFlowService bondCashFlowService;
+    private final AuthJwtService authJwtService;
 
     @GetMapping
     public ResponseEntity<Page<BondResponse>> getBonds(
@@ -47,7 +50,12 @@ public class BondController {
         UUID userId = jwt == null ? null : UUID.fromString(jwt.getSubject());
 
         return ResponseEntity.ok(
-                bondService.getBonds(search, isFlashNews, pageable, userId));
+                bondService.getBonds(
+                        search,
+                        isFlashNews,
+                        pageable,
+                        userId,
+                        authJwtService.hasRole(jwt, UserRole.CUSTOMER)));
     }
 
 //    @GetMapping("/{isin}")
@@ -112,14 +120,20 @@ public class BondController {
             }
         }
 
+        // The role travels in the token, so the customer check needs no
+        // database round trip. A token with no role claim — or one this
+        // application does not define — is not a customer.
+        boolean isCustomer = authJwtService.hasRole(jwt, UserRole.CUSTOMER);
+
         log.info(
-                "Calling BondService.getBond: isin={}, userId={}",
+                "Calling BondService.getBond: isin={}, userId={}, isCustomer={}",
                 isin,
-                userId
+                userId,
+                isCustomer
         );
 
         return ResponseEntity.ok(
-                bondService.getBond(isin, userId)
+                bondService.getBond(isin, userId, isCustomer)
         );
     }
 
@@ -136,7 +150,10 @@ public class BondController {
             @AuthenticationPrincipal Jwt jwt) {
         UUID userId = jwt != null ? UUID.fromString(jwt.getSubject()) : null;
         return ResponseEntity.ok(
-                issuerService.getIssuerByIsin(isin, userId));
+                issuerService.getIssuerByIsin(
+                        isin,
+                        userId,
+                        authJwtService.hasRole(jwt, UserRole.CUSTOMER)));
     }
 
     /**

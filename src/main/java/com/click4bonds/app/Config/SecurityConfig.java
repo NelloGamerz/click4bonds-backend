@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -56,11 +57,34 @@ import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
  *
  * <h2>Method security</h2>
  *
- * <p>{@code @PreAuthorize} is not enabled here, so the annotations on the
- * controllers currently have no effect beyond documentation.</p>
+ * <p>{@code @EnableMethodSecurity} is switched on, so the
+ * {@code @PreAuthorize} annotations on the controllers are enforced rather
+ * than merely documented. Each controller that declares one states the role it
+ * requires — {@code ROLE_ADMIN} for the admin endpoints, {@code ROLE_CUSTOMER}
+ * for the customer ones — and a caller whose token carries a different role is
+ * rejected with {@code 403}.</p>
+ *
+ * <p>Authorities come from the token's role claim, mapped by
+ * {@link #jwtAuthenticationConverter()}. A token with no role claim yields no
+ * authorities and therefore fails every {@code hasRole} check; it is still
+ * <em>authenticated</em>, so the filter chain lets it through and method
+ * security is what stops it.</p>
+ *
+ * <p>Note that the filter chain below only separates anonymous from
+ * authenticated traffic — it has no {@code /api/admin/**} rule of its own. The
+ * role checks live entirely on the controllers, which is why turning method
+ * security off would silently expose every admin endpoint to any signed-in
+ * user.</p>
+ *
+ * <p>Because {@code AuthorizationDeniedException} is thrown from inside the
+ * handler, it travels back through Spring MVC before it reaches Spring
+ * Security's filter. {@code GlobalExceptionHandler} therefore has to declare an
+ * explicit handler for it, or the catch-all there would turn every rejection
+ * into a {@code 500}.</p>
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 public class SecurityConfig {
 
         @Bean

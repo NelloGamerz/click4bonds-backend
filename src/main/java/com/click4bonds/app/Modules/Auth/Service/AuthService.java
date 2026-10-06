@@ -425,14 +425,14 @@ public class AuthService {
                 "WEB",
                 "AUTHENTICATION",
                 java.util.Map.of());
-        analyticsService.track(
-                AnalyticsEventType.SESSION_END,
-                userId,
-                null,
-                null,
-                "WEB",
-                "AUTHENTICATION",
-                java.util.Map.of());
+//        analyticsService.track(
+//                AnalyticsEventType.SESSION_END,
+//                userId,
+//                null,
+//                null,
+//                "WEB",
+//                "AUTHENTICATION",
+//                java.util.Map.of());
     }
 
     /**

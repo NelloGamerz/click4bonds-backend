@@ -5,8 +5,6 @@ import java.util.*;
 
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
-import com.click4bonds.app.Modules.User.Enums.UserRole;
-import com.click4bonds.app.Modules.User.Service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -45,7 +43,6 @@ public class IssuerService {
     private final BondRepository bondRepository;
     private final IssuerMapper issuerMapper;
     private final IssuerBulkWriter issuerBulkWriter;
-    private final UserService userService;
     private final AnalyticsService analyticsService;
 
     private static final int DEFAULT_PAGE_SIZE = 20;
@@ -134,7 +131,10 @@ public class IssuerService {
 //        return issuerMapper.toResponse(issuer);
 //    }
     @Transactional(readOnly = true)
-    public IssuerResponse getIssuerByIsin(String isin, UUID userId) {
+    public IssuerResponse getIssuerByIsin(
+            String isin,
+            UUID userId,
+            boolean isCustomer) {
 
         log.debug(
                 "Fetching issuer for bond with ISIN: {}",
@@ -155,7 +155,7 @@ public class IssuerService {
                     "Issuer not found for bond with ISIN: " + bond.getIsin());
         }
 
-        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+        if (userId != null && isCustomer) {
 
             log.debug(
                     "Tracking issuer view analytics for userId: {} and bondId: {}",

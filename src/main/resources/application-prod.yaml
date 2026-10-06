@@ -51,15 +51,25 @@ spring:
       properties:
         spring.json.add.type.headers: false
 
+    listener:
+      # The listener acknowledges a record only once the batch containing it has
+      # been inserted into ClickHouse. Under the default BATCH mode the container
+      # commits the offset as soon as onAnalyticsEvent returns, while the event is
+      # still only in AnalyticsBatchService's in-memory buffer.
+      ack-mode: MANUAL_IMMEDIATE
+
     consumer:
       group-id: ${KAFKA_ANALYTICS_GROUP_ID:click4bonds-analytics}
       auto-offset-reset: earliest
       enable-auto-commit: false
 
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      # Wraps the JSON deserializer so an unparseable payload yields a null
+      # listener argument instead of an exception that stalls the partition.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
 
       properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
         spring.json.trusted.packages: "com.click4bonds.app.Modules.Analytics.Model"
         spring.json.value.default.type: "com.click4bonds.app.Modules.Analytics.Model.AnalyticsEvent"
         spring.json.use.type.headers: false
