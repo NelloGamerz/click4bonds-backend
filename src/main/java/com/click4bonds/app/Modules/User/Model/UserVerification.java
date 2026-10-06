@@ -62,6 +62,17 @@ public class UserVerification {
     @Builder.Default
     private VerificationStatus bankAccountStatus = VerificationStatus.NOT_STARTED;
 
+    /**
+     * Whether the account's demat account has been verified.
+     *
+     * <p>The last channel: bonds settle into a demat account, so an account
+     * that cannot show one cannot hold what it buys.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private VerificationStatus dematStatus = VerificationStatus.NOT_STARTED;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

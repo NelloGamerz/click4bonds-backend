@@ -7,7 +7,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserDetailsResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminUserSummaryResponse;
 import com.click4bonds.app.Modules.ContactUS.Dto.ContactInquiryAdminResponse;
@@ -18,7 +17,7 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
+import com.click4bonds.app.Modules.User.Service.UserService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -27,147 +26,111 @@ import lombok.RequiredArgsConstructor;
 @Transactional
 public class AdminUserService {
 
-        private final UserRepository userRepository;
-        private final ContactInquiryService contactInquiryService;
+    private final UserService userService;
+    private final ContactInquiryService contactInquiryService;
 
-        @Transactional(readOnly = true)
-        public Page<AdminUserSummaryResponse> getUsers(
-                        UserRole role,
-                        String search,
-                        Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<AdminUserSummaryResponse> getUsers(
+            UserRole role,
+            String search,
+            Pageable pageable) {
 
-                Page<User> users;
+        return userService.getUsers(role, search, pageable)
+                .map(this::toUserSummaryResponse);
+    }
 
-                if (search == null || search.isBlank()) {
-                        users = userRepository.findUsers(role, pageable);
-                } else {
-                        users = userRepository.searchUsers(
-                                        role,
-                                        search,
-                                        pageable);
-                }
+    @Transactional(readOnly = true)
+    public AdminUserDetailsResponse getUserDetails(UUID userId) {
 
-                return users.map(this::toUserSummaryResponse);
+        return toUserDetailsResponse(userService.getUser(userId));
+    }
+
+    public AdminUserDetailsResponse updateUserStatus(
+            UUID userId,
+            UserStatus status) {
+
+        return toUserDetailsResponse(userService.updateStatus(userId, status));
+    }
+
+    public AdminUserDetailsResponse updateUserRole(
+            UUID userId,
+            UserRole role) {
+
+        return toUserDetailsResponse(userService.updateRole(userId, role));
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ContactInquiryAdminResponse> getContactInquiries(
+            ContactInquiryStatus status,
+            Pageable pageable) {
+
+        if (status == null) {
+            return contactInquiryService.getAllInquiries(pageable);
         }
 
-        @Transactional(readOnly = true)
-        public AdminUserDetailsResponse getUserDetails(UUID userId) {
+        return contactInquiryService.getInquiriesByStatus(
+                status,
+                pageable);
+    }
 
-                User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "User not found"));
+    public ContactInquiryAdminResponse updateContactInquiryStatus(
+            UUID inquiryId,
+            ContactInquiryStatus status) {
 
-                return toUserDetailsResponse(user);
-        }
+        return contactInquiryService.updateStatus(
+                inquiryId,
+                status);
+    }
 
-        public User updateUserStatus(
-                        UUID userId,
-                        UserStatus status) {
+    private AdminUserSummaryResponse toUserSummaryResponse(User user) {
 
-                User user = userRepository.findById(userId)
-                                .orElseThrow(() -> new ResourceNotFoundException(
-                                                "User not found"));
+        return AdminUserSummaryResponse.builder()
+                .id(user.getId())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .email(user.getEmail())
+                .phoneNumber(user.getMobileNumber())
+                .isKycCompleted(user.getIsKycCompleted())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
 
-                user.setStatus(status);
+    private AdminUserDetailsResponse toUserDetailsResponse(User user) {
 
-                return userRepository.save(user);
-        }
+        UserVerification verification = user.getVerification();
 
-        /**
-         * Changes a user's role.
-         *
-         * <p>The change is the whole operation. It used to also enqueue an
-         * outbox event so the role could be pushed to the external identity
-         * provider that held the authoritative copy; that provider is gone and
-         * this database is now the only place a role lives, so there is no
-         * second system to notify. Authorization reads the role from here — via
-         * the access token's {@code role} claim — so the change takes effect at
-         * the user's next token refresh.</p>
-         */
-        public AdminUserDetailsResponse updateUserRole(
-                UUID userId,
-                UserRole role) {
-
-                User user = userRepository.findById(userId)
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "User not found"));
-
-                if (user.getRole() != role) {
-                        user.setRole(role);
-                        user = userRepository.save(user);
-                }
-
-                return toUserDetailsResponse(user);
-        }
-
-        @Transactional(readOnly = true)
-        public Page<ContactInquiryAdminResponse> getContactInquiries(
-                        ContactInquiryStatus status,
-                        Pageable pageable) {
-
-                if (status == null) {
-                        return contactInquiryService.getAllInquiries(pageable);
-                }
-
-                return contactInquiryService.getInquiriesByStatus(
-                                status,
-                                pageable);
-        }
-
-        public ContactInquiryAdminResponse updateContactInquiryStatus(
-                        UUID inquiryId,
-                        ContactInquiryStatus status) {
-
-                return contactInquiryService.updateStatus(
-                                inquiryId,
-                                status);
-        }
-
-        private AdminUserSummaryResponse toUserSummaryResponse(User user) {
-
-                return AdminUserSummaryResponse.builder()
-                                .id(user.getId())
-                                .firstName(user.getFirstName())
-                                .lastName(user.getLastName())
-                                .email(user.getEmail())
-                                .role(user.getRole())
-                                .status(user.getStatus())
-                                .updatedAt(user.getUpdatedAt())
-                                .build();
-        }
-
-        private AdminUserDetailsResponse toUserDetailsResponse(User user) {
-
-                UserVerification verification = user.getVerification();
-
-                return AdminUserDetailsResponse.builder()
-                                .id(user.getId())
-                                .email(user.getEmail())
-                                .mobileNumber(user.getMobileNumber())
-                                .firstName(user.getFirstName())
-                                .lastName(user.getLastName())
-                                .profileImage(user.getProfileImage())
-                                .onboardingStep(user.getOnboardingStep())
-                                .role(user.getRole())
-                                .status(user.getStatus())
-                                .createdAt(user.getCreatedAt())
-                                .updatedAt(user.getUpdatedAt())
-                                .verification(
-                                                verification == null
-                                                                ? null
-                                                                : UserVerificationResponse.builder()
-                                                                                .id(verification.getId())
-                                                                                .emailStatus(verification
-                                                                                                .getEmailStatus())
-                                                                                .phoneStatus(verification
-                                                                                                .getPhoneStatus())
-                                                                                .panStatus(verification.getPanStatus())
-                                                                                .bankAccountStatus(verification
-                                                                                                .getBankAccountStatus())
-                                                                                .createdAt(verification.getCreatedAt())
-                                                                                .updatedAt(verification.getUpdatedAt())
-                                                                                .build())
-                                .build();
-        }
+        return AdminUserDetailsResponse.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .mobileNumber(user.getMobileNumber())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .profileImage(user.getProfileImage())
+                .onboardingStep(user.getOnboardingStep())
+                .role(user.getRole())
+                .status(user.getStatus())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .verification(
+                        verification == null
+                                ? null
+                                : UserVerificationResponse.builder()
+                                .id(verification.getId())
+                                .emailStatus(verification
+                                        .getEmailStatus())
+                                .phoneStatus(verification
+                                        .getPhoneStatus())
+                                .panStatus(verification.getPanStatus())
+                                .bankAccountStatus(verification
+                                        .getBankAccountStatus())
+                                .dematStatus(verification
+                                        .getDematStatus())
+                                .createdAt(verification.getCreatedAt())
+                                .updatedAt(verification.getUpdatedAt())
+                                .build())
+                .build();
+    }
 
 }

@@ -129,6 +129,7 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -201,6 +202,26 @@ public class CreateBondRequest {
      */
     @Size(max = 255)
     private String ipDateDescription;
+
+    // =========================
+    // RECORD DATE
+    // =========================
+
+    /**
+     * The record-date rule as supplied by the source.
+     *
+     * <p>
+     * This is the source of truth for entitlement. Record dates themselves are
+     * derived per coupon payment date and are never supplied by a client.
+     *
+     * Examples:
+     *
+     * 15 days prior to interest payment date
+     * 2 days before coupon
+     * NA
+     */
+    @Size(max = 255)
+    private String recordDateDescription;
 
     // =========================
     // MATURITY
@@ -313,4 +334,18 @@ public class CreateBondRequest {
     private BigDecimal lotSize;
 
     private LotSizeType lotSizeType;
+
+    // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units available for purchase.
+     *
+     * <p>Optional: omitting it leaves the bond's inventory unconfigured, which
+     * makes the bond unbuyable until an admin sets a value. Use {@code 0} to
+     * create an already sold-out bond.</p>
+     */
+    @Min(0)
+    private Long remainingQuantity;
 }

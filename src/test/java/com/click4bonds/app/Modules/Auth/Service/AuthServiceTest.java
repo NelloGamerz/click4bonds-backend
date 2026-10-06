@@ -61,6 +61,7 @@ class AuthServiceTest {
     private AuthProperties properties;
     private OtpProperties otpProperties;
     private AuthTestSupport.RecordingSmsService sms;
+    private AuthTestSupport.RecordingEmailService emails;
     private AuthTestSupport.FakeUserService users;
     private AuthTestSupport.FakeVerificationService verifications;
     private OtpService otpService;
@@ -77,6 +78,7 @@ class AuthServiceTest {
         otpProperties = otpProperties();
 
         sms = new AuthTestSupport.RecordingSmsService();
+        emails = new AuthTestSupport.RecordingEmailService();
         users = new AuthTestSupport.FakeUserService();
         verifications = new AuthTestSupport.FakeVerificationService();
 
@@ -92,11 +94,13 @@ class AuthServiceTest {
         auth = new AuthService(
                 otpService,
                 sms,
+                emails,
                 users,
                 verifications,
                 jwts,
                 sessions,
                 properties,
+                otpProperties,
                 redis,
                 mock(AnalyticsService.class));
     }
@@ -216,7 +220,7 @@ class AuthServiceTest {
 
         // Onboarding began at the phone step, so proving the number moves the
         // account on rather than leaving it where it was.
-        assertEquals(OnboardingStep.PAN_VERIFICATION, created.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, created.getOnboardingStep());
     }
 
     // ------------------------------------------------------------------
@@ -625,6 +629,7 @@ class AuthServiceTest {
                 .phoneStatus(VerificationStatus.VERIFIED)
                 .panStatus(VerificationStatus.NOT_STARTED)
                 .bankAccountStatus(VerificationStatus.NOT_STARTED)
+                .dematStatus(VerificationStatus.NOT_STARTED)
                 .build());
 
         users.register(user);

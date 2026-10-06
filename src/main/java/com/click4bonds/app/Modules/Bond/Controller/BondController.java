@@ -16,14 +16,17 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
+import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
+import com.click4bonds.app.Modules.Bond.Service.BondCashFlowService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.IssuerService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -34,6 +37,7 @@ public class BondController {
 
     private final BondService bondService;
     private final IssuerService issuerService;
+    private final BondCashFlowService bondCashFlowService;
     private final AuthJwtService authJwtService;
 
     @GetMapping
@@ -150,5 +154,42 @@ public class BondController {
                         isin,
                         userId,
                         authJwtService.hasRole(jwt, UserRole.CUSTOMER)));
+    }
+
+    /**
+     * Projects the bond's cash flow from {@code calculationDate} to maturity.
+     *
+     * <p>
+     * The schedule lists the dated coupon and principal movements, plus the
+     * purchase leg when the bond has a usable price. It is the same series the
+     * published YTM is discounted from, so the two always reconcile.
+     *
+     * @param isin            the bond's ISIN, case-insensitive.
+     * @param calculationDate ISO date the projection starts from; defaults to
+     *                        today. An amortizing bond bought later therefore
+     *                        reports fewer remaining cash flows.
+     * @return 404 when no bond carries that ISIN.
+     */
+    @GetMapping("/{isin}/cashflow")
+    public ResponseEntity<BondCashFlowResponse> getBondCashFlow(
+            @PathVariable String isin,
+            @RequestParam(required = false) LocalDate calculationDate) {
+
+        LocalDate asOf = calculationDate != null
+                ? calculationDate
+                : LocalDate.now();
+
+        log.info(
+                "GET /bonds/{}/cashflow - calculationDate={}",
+                isin,
+                asOf
+        );
+
+        return ResponseEntity.ok(
+                bondCashFlowService.generateSchedule(
+                        bondService.findBond(isin),
+                        asOf
+                )
+        );
     }
 }

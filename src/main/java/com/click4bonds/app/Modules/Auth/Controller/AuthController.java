@@ -14,9 +14,11 @@ import com.click4bonds.app.Modules.Auth.Dto.AuthResponse;
 import com.click4bonds.app.Modules.Auth.Dto.SignupRequest;
 import com.click4bonds.app.Modules.Auth.Service.AuthCookieService;
 import com.click4bonds.app.Modules.Auth.Service.AuthService;
+import com.click4bonds.app.Modules.User.Dto.SendEmailOtpRequest;
 import com.click4bonds.app.Modules.User.Dto.SendPhoneOtpRequest;
 import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Dto.VerificationResponse;
+import com.click4bonds.app.Modules.User.Dto.VerifyEmailOtpRequest;
 import com.click4bonds.app.Modules.User.Dto.VerifyPhoneOtpRequest;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,19 +31,23 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Signing up and signing in with a phone number.
+ * Signing up and signing in with a phone number or an email address.
  *
  * <p>An account is opened by {@code POST /auth/signup}, which takes the
- * sign-up form and sends the first code. Sign-in after that is two calls: one
- * to have a code sent to a number, one to redeem it. The second call is what
- * creates the session, and it returns both an access token and a cookie — the
- * token for the {@code Authorization} header, the cookie for the refresh and
- * logout endpoints.</p>
+ * sign-up form and sends the first code by SMS. Sign-in after that is two
+ * calls, in the same shape on either channel: one to have a code sent to a
+ * number or an address, one to redeem it. The second call is what creates the
+ * session, and it returns both an access token and a cookie — the token for
+ * the {@code Authorization} header, the cookie for the refresh and logout
+ * endpoints.</p>
  *
- * <p>Only sign-up creates accounts. Both {@code send-otp} and {@code verify-otp}
- * refuse a number that has none and tell the caller to sign up, so a caller
- * cannot reach sign-in without having been through sign-up — and cannot use
- * either endpoint to open an account with a profile it never supplied.</p>
+ * <p>Only sign-up creates accounts. All four {@code send-otp} and
+ * {@code verify-otp} endpoints refuse an identifier that has none and tell the
+ * caller to sign up, so a caller cannot reach sign-in without having been
+ * through sign-up — and cannot use any of them to open an account with a
+ * profile it never supplied. Email sign-in therefore works for accounts that
+ * have an address on them, which is what verifying one at
+ * {@code /api/users/verification/email} leaves behind.</p>
  *
  * <p>The session identifier appears only in that cookie. It is never in a
  * response body, which is the point of the cookie being {@code HttpOnly}:
@@ -57,12 +63,16 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
-@Tag(name = "Authentication", description = "Sign-up and phone number OTP sign-in")
+@Tag(name = "Authentication", description = "Sign-up and phone or email OTP sign-in")
 public class AuthController {
 
     /** Reported for every send request that reaches the provider. */
     public static final String OTP_SENT =
             "A verification code has been sent to your phone.";
+
+    /** Reported when the code goes out by email instead. */
+    public static final String EMAIL_OTP_SENT =
+            "A verification code has been sent to your email.";
 
     private final AuthService authService;
     private final AuthCookieService authCookieService;
@@ -120,7 +130,7 @@ public class AuthController {
     }
 
     @Operation(
-            summary = "Verify a code and sign in",
+            summary = "Verify an SMS code and sign in",
             description = """
                     Redeems the code and returns an access token for the account the number
                     belongs to. It does not create an account: a number that was never signed up
@@ -142,6 +152,64 @@ public class AuthController {
 
         AuthService.IssuedSession issued = authService.verifyPhoneOtp(
                 request.phone(),
+                request.otp(),
+                httpRequest.getHeader(HttpHeaders.USER_AGENT));
+
+        setSessionCookie(httpResponse, issued.sessionId());
+
+        return ResponseEntity.ok(issued.response());
+    }
+
+    @Operation(
+            summary = "Send a sign-in code by email",
+            description = """
+                    Issues a code for the given address and delivers it by email. The address
+                    must already be verified on an account, which is what putting it there
+                    requires; one that no account holds is answered with a message telling the
+                    caller to sign up.
+                    """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Code issued"),
+            @ApiResponse(responseCode = "400", description = "Malformed email address"),
+            @ApiResponse(responseCode = "404", description = "No account signs in with this address"),
+            @ApiResponse(responseCode = "429", description = "Too many requests from this client, or a code was requested too recently")
+    })
+    @PostMapping("/email/send-otp")
+    public ResponseEntity<VerificationResponse> sendEmailOtp(
+            @Valid @RequestBody SendEmailOtpRequest request,
+            HttpServletRequest httpRequest) {
+
+        authService.sendEmailOtp(
+                request.email(),
+                clientAddress(httpRequest));
+
+        return ResponseEntity.ok(new VerificationResponse(EMAIL_OTP_SENT));
+    }
+
+    @Operation(
+            summary = "Verify an email code and sign in",
+            description = """
+                    Redeems the code and returns an access token for the account the address
+                    belongs to. It does not create an account and does not attach the address to
+                    one: an address that was never verified is answered with a message telling
+                    the caller to sign up. The session is set as an HttpOnly cookie and is not
+                    included in the response body.
+                    """)
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Signed in"),
+            @ApiResponse(responseCode = "400", description = "Malformed address or code, or the code is wrong or expired"),
+            @ApiResponse(responseCode = "403", description = "The account may not sign in"),
+            @ApiResponse(responseCode = "404", description = "No account signs in with this address"),
+            @ApiResponse(responseCode = "429", description = "Too many failed attempts; request a new code")
+    })
+    @PostMapping("/email/verify-otp")
+    public ResponseEntity<AuthResponse> verifyEmailOtp(
+            @Valid @RequestBody VerifyEmailOtpRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse httpResponse) {
+
+        AuthService.IssuedSession issued = authService.verifyEmailOtp(
+                request.email(),
                 request.otp(),
                 httpRequest.getHeader(HttpHeaders.USER_AGENT));
 

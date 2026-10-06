@@ -41,7 +41,14 @@ public class CorsConfig {
                                 "Accept",
                                 "Origin",
                                 "X-Requested-With",
-                                "X-Device-Id"));
+                                "X-Device-Id",
+                                /*
+                                 * Let a browser client send the deal-confirmation
+                                 * idempotency key. Without it here the preflight
+                                 * for POST /api/deal-confirmations would be
+                                 * rejected and the header stripped in effect.
+                                 */
+                                "Idempotency-Key"));
 
                 configuration.setAllowCredentials(true);
 

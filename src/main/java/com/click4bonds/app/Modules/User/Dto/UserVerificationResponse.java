@@ -24,6 +24,7 @@ public class UserVerificationResponse {
     private VerificationStatus phoneStatus;
     private VerificationStatus panStatus;
     private VerificationStatus bankAccountStatus;
+    private VerificationStatus dematStatus;
 
     private Instant createdAt;
     private Instant updatedAt;

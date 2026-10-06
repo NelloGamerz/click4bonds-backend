@@ -239,6 +239,7 @@ final class VerificationTestSupport {
                     .phoneStatus(VerificationStatus.NOT_STARTED)
                     .panStatus(VerificationStatus.NOT_STARTED)
                     .bankAccountStatus(VerificationStatus.NOT_STARTED)
+                    .dematStatus(VerificationStatus.NOT_STARTED)
                     .build();
 
             byUserId.put(user.getId(), verification);

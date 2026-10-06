@@ -87,6 +87,16 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-aop</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <!--
             Must be the Boot starter, not bare org.springframework.kafka:spring-kafka.
             Boot 4 ships Kafka auto-configuration in its own module, so without the
@@ -113,6 +123,44 @@
             <groupId>com.resend</groupId>
             <artifactId>resend-java</artifactId>
             <version>4.11.0</version>
+        </dependency>
+        <!--
+            Fills the deal confirmation spreadsheet template.
+
+            The version is explicit because Spring Boot's dependency management
+            does not cover POI — the parent POM declares no poi.version property,
+            so omitting this would leave the version unresolved.
+
+            poi-ooxml is the XLSX half (it pulls poi, xmlbeans and commons-compress
+            transitively); plain poi only handles the legacy .xls format, which
+            this project's templates are not.
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.5.1</version>
+        </dependency>
+        <!--
+            Uploads generated documents to Cloudflare R2.
+
+            R2 exposes an S3-compatible API, and this is the client its own
+            documentation points at; there is no R2-specific SDK for Java.
+
+            The version is explicit for the same reason POI's is: Spring Boot's
+            dependency management does not cover the AWS SDK, so omitting it
+            leaves the version unresolved. It is also load-bearing rather than
+            arbitrary — from 2.30.0 the SDK adds a CRC32 checksum to uploads by
+            default, which R2 rejects, so moving across that boundary is what
+            makes the two checksum settings in R2ObjectStore necessary. Upgrading
+            is safe; downgrading past 2.30.0 makes those settings no-ops.
+
+            Only the S3 client is pulled in, not the whole SDK: it drags in the
+            core HTTP stack and the presigner used for signed URLs.
+        -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>2.46.7</version>
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

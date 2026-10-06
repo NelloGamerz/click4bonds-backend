@@ -175,6 +175,20 @@ public class BondResponse {
     private String ipDateDescription;
 
     // =========================
+    // RECORD DATE
+    // =========================
+
+    /**
+     * The record-date rule as supplied by the source.
+     *
+     * <p>
+     * Record dates are derived from this text per coupon payment date and are
+     * not returned as a single value, because a bond with recurring coupons has
+     * a different record date for every payment.
+     */
+    private String recordDateDescription;
+
+    // =========================
     // MATURITY
     // =========================
 
@@ -268,6 +282,18 @@ public class BondResponse {
 
     private LotSizeType lotSizeType;
     private Boolean isFlashNews;
+
+    // =========================
+    // INVENTORY
+    // =========================
+
+    /**
+     * Units still available for purchase.
+     *
+     * <p>NULL means inventory has not been configured for this bond, so it
+     * cannot be purchased yet.</p>
+     */
+    private Long remainingQuantity;
 
     // =========================
     // STATUS

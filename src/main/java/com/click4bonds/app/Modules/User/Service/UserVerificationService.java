@@ -32,6 +32,7 @@ public class UserVerificationService {
                 .phoneStatus(VerificationStatus.NOT_STARTED)
                 .panStatus(VerificationStatus.NOT_STARTED)
                 .bankAccountStatus(VerificationStatus.NOT_STARTED)
+                .dematStatus(VerificationStatus.NOT_STARTED)
                 .build();
 
         UserVerification saved = userVerificationRepository.save(verification);
@@ -118,6 +119,22 @@ public class UserVerificationService {
 
         log.info(
                 "Updated bank account verification status for user {} to {}",
+                user.getId(),
+                status
+        );
+    }
+
+    public void updateDematStatus(
+            User user,
+            VerificationStatus status
+    ) {
+
+        UserVerification verification = getVerification(user);
+
+        verification.setDematStatus(status);
+
+        log.info(
+                "Updated demat verification status for user {} to {}",
                 user.getId(),
                 status
         );

@@ -1,0 +1,480 @@
+package com.click4bonds.app.Modules.DealConfirmation.Service;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+
+import org.junit.jupiter.api.Test;
+
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
+import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
+
+/**
+ * The arithmetic behind the letter.
+ *
+ * <p>These are the numbers a customer reads on a confirmation of what they
+ * bought, so the unit conversions get pinned individually: a coupon stored as a
+ * percentage printed as a percentage, or accrued interest multiplied by a
+ * quantity it was never per-unit of, are both wrong by a factor the eye does not
+ * catch on a page.</p>
+ */
+class DealConfirmationSheetValuesFactoryTest {
+
+    private static final LocalDate DEAL_DATE = LocalDate.of(2026, 9, 25);
+    private static final LocalDate VALUE_DATE = LocalDate.of(2026, 9, 25);
+
+    private final DocumentProperties properties = new DocumentProperties();
+
+    private final DealConfirmationSheetValuesFactory factory =
+            new DealConfirmationSheetValuesFactory(properties, new GsecAccrualCalculator());
+
+    // =========================================================
+    // MONEY
+    // =========================================================
+
+    @Test
+    void multipliesTheQuantityByTheFaceValueToGetTheQuantum() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * Bond has no face-value field, so the config supplies the convention
+         * (100). Quantum is the face value of the position, which is what the
+         * letter shows beside "Principal Amount".
+         */
+        assertEquals(new BigDecimal("1100.00"), values.quantum());
+    }
+
+    @Test
+    void takesThePrincipalFromWhatTheDealActuallyCharged() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * Not recomputed from quantum x price. The persisted total is what the
+         * platform charged; recomputing it here would let the letter and the
+         * ledger disagree.
+         */
+        assertEquals(new BigDecimal("1100.00"), values.principalAmount());
+    }
+
+    @Test
+    void scalesAccruedInterestFromOneBondToTheWholePosition() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * AccruedInterestService returns interest for a single bond of face
+         * value 100. Eleven of them accrue eleven times as much.
+         */
+        assertEquals(new BigDecimal("26.41"), values.accruedInterest());
+    }
+
+    @Test
+    void addsPrincipalAccruedInterestAndStampDutyForTheTotal() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(new BigDecimal("1126.41"), values.totalConsideration());
+    }
+
+    @Test
+    void chargesStampDutyAtTheRateOnTheConsiderationBeforeDuty() {
+
+        /*
+         * A crore-scale deal, so the duty is large enough to read. Principal
+         * 1,00,00,000 plus accrued 2,40,100 is 1,02,40,100; at 0.0001% that is
+         * 10.2401, rounded to the rupee.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(100_000L)
+                        .totalAmount(new BigDecimal("10000000.0000"))));
+
+        assertEquals(new BigDecimal("10.00"), values.stampDuty());
+        assertEquals(new BigDecimal("10240110.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsStampDutyAwayFromZeroAtHalfARupee() {
+
+        /*
+         * As ROUND(x, 0) does in the sheet: 25,00,000 at 0.0001% is 2.5, which
+         * rounds to 3 rather than truncating to 2. The half is the only place
+         * this rule and a truncating one disagree, so it is pinned.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(25_000L)
+                        .totalAmount(new BigDecimal("2500000.0000"))
+                        .accruedInterestPerHundredFace(BigDecimal.ZERO)));
+
+        assertEquals(new BigDecimal("3.00"), values.stampDuty());
+        assertEquals(new BigDecimal("2500003.00"), values.totalConsideration());
+    }
+
+    @Test
+    void roundsAwayStampDutyBelowHalfARupee() {
+
+        /*
+         * A retail-sized deal pays nothing under this rule: 1,126.41 at 0.0001%
+         * is 0.0011, which the sheet's ROUND(...,0) takes to zero. The letter
+         * prints 0.00 rather than a fraction of a paisa it cannot show.
+         */
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(new BigDecimal("0.00"), values.stampDuty());
+    }
+
+    @Test
+    void roundsMoneyToThePaisa() {
+
+        /*
+         * Accrued interest out of the service is high precision. XLSX stores
+         * numbers as doubles and the letter is a money document, so it is
+         * reduced once, here, rather than left to whatever renders it.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(3L)
+                        .pricePerUnit(new BigDecimal("100.0000"))
+                        .totalAmount(new BigDecimal("300.0000"))
+                        .accruedInterestPerHundredFace(new BigDecimal("1.005"))));
+
+        assertEquals(new BigDecimal("3.02"), values.accruedInterest());
+        assertEquals(new BigDecimal("303.02"), values.totalConsideration());
+    }
+
+    // =========================================================
+    // THE G-SEC SHEET'S TDS
+    // =========================================================
+
+    @Test
+    void computesTheGsecAccruedDaysOnThatSheetsOwnCount() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * NOT the corporate 64 days. The G-Sec sheet's rule is
+         * COUPDAYBS(valueDate, maturity, 2, 4) — semi-annual, European 30/360 —
+         * and the fixture's 25 Sep 2026 value date against a 23 Aug 2027 maturity
+         * gives 32: the previous coupon is 23 Aug 2026, and 30 + 2 days from there.
+         * See GsecAccrualCalculator for the count itself.
+         */
+        assertEquals(32L, values.gsecAccruedDays());
+
+        assertNotEquals(
+                values.accruedDays(), values.gsecAccruedDays(),
+                "the two sheets do not share a day count");
+    }
+
+    @Test
+    void computesTheGsecAccruedInterestFromQuantumCouponAndDays() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * quantum x coupon x days / 360, on the sheet's own convention:
+         * 1100.00 x 0.137 x 32 / 360 = 13.40. The corporate figure for the same
+         * deal is 26.41, from a different count — neither is a rounding of the
+         * other, which is why they travel separately.
+         */
+        assertEquals(new BigDecimal("13.40"), values.gsecAccruedInterest());
+
+        assertNotEquals(
+                values.accruedInterest(), values.gsecAccruedInterest(),
+                "the G-Sec interest is its own calculation, not the corporate one");
+    }
+
+    @Test
+    void deductsTdsFromTheGsecConsiderationForItsTotal() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        /*
+         * The G-Sec sheet runs the other way from the corporate one: TDS comes OFF
+         * rather than stamp duty going on. 10% of the 13.40 accrued interest is
+         * 1.34, so the consideration is 1100.00 + 13.40 = 1113.40 and the customer
+         * pays 1112.06.
+         */
+        assertEquals(new BigDecimal("1113.40"), values.gsecConsiderationAmount());
+        assertEquals(new BigDecimal("1.34"), values.gsecTds());
+        assertEquals(new BigDecimal("1112.06"), values.gsecTotalConsiderationAmount());
+    }
+
+    @Test
+    void chargesGsecTdsOnTheInterestRatherThanTheConsideration() {
+
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .totalQuantity(100_000L)
+                        .totalAmount(new BigDecimal("10000000.0000"))));
+
+        /*
+         * A crore-scale deal, where the two candidate bases are far apart. On the
+         * G-Sec accrued interest the tax is 10% of it. The sheet's own cell computes
+         * 0.1% of the CONSIDERATION instead — a different base and a different rate.
+         *
+         * The agreed rule is 10% of the interest, so that is what the letter prints.
+         * The cell's label still reads "0.10%", which is a discrepancy recorded in
+         * DealConfirmationSheetValues and in the module docs: it is a finance
+         * question, and finance has to settle it before this letter goes to a
+         * customer.
+         */
+        BigDecimal accrued = values.gsecAccruedInterest();
+
+        assertEquals(
+                accrued.multiply(new BigDecimal("0.10")).setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTds(),
+                "TDS should be 10% of the G-Sec accrued interest");
+
+        assertEquals(
+                values.gsecConsiderationAmount()
+                        .subtract(values.gsecTds())
+                        .setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTotalConsiderationAmount());
+
+        /*
+         * And explicitly not the template's rule, so a future change to the
+         * sheet's formula cannot be mistaken for agreement.
+         */
+        assertNotEquals(
+                values.gsecConsiderationAmount()
+                        .multiply(new BigDecimal("0.001"))
+                        .setScale(2, java.math.RoundingMode.HALF_UP),
+                values.gsecTds(),
+                "TDS must not be 0.1% of the consideration, which is what the"
+                        + " template's own cell computes");
+    }
+
+    @Test
+    void leavesTheGsecFiguresNullWhenTheDealCannotSupportThem() {
+
+        /*
+         * A perpetual bond has no maturity, and a deal may have no coupon rate.
+         * Both are legitimate for the corporate letter, so the factory returns null
+         * rather than throwing and making an unrelated letter impossible.
+         * GsecSellSheetStrategy is where the absence becomes a refusal, because
+         * that is the only letter that needs these figures.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder.couponRate(null)));
+
+        assertNull(values.gsecAccruedInterest());
+        assertNull(values.gsecTds());
+        assertNull(values.gsecTotalConsiderationAmount());
+
+        /*
+         * The corporate letter is unaffected by the G-Sec figures being absent —
+         * it does not print them.
+         */
+        assertEquals(new BigDecimal("26.41"), values.accruedInterest());
+    }
+
+    // =========================================================
+    // THE COUPON UNIT
+    // =========================================================
+
+    @Test
+    void printsTheCouponExactlyAsTheBondStoresIt() {
+
+        /*
+         * Bond.couponRate holds 13.70 meaning 13.70%, and the letter prints that
+         * number as it stands, under a format that adds the sign to it. Nothing
+         * is divided by 100 here: the template's coupon cell is formatted as a
+         * percentage of a fraction, and it is that cell's format the cell map
+         * overrides rather than this class that converts the value.
+         */
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(new BigDecimal("13.70"), values.couponRate());
+    }
+
+    @Test
+    void leavesTheCouponBlankRatherThanZeroWhenTheBondHasNone() {
+
+        /*
+         * A null rate prints as an empty cell. Zero would read as a zero-coupon
+         * bond, which is a different instrument.
+         */
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder.couponRate(null)));
+
+        assertNull(values.couponRate());
+    }
+
+    // =========================================================
+    // WHAT THE LETTER SAYS
+    // =========================================================
+
+    @Test
+    void prefixesTheCounterpartyLineWithTheTemplatesOwnWording() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals("Counterparty Name- Test Customer", values.counterpartyLine());
+    }
+
+    @Test
+    void treatsTheCustomerAsBuyingFromUs() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals("Our Sale", values.transactionType());
+    }
+
+    @Test
+    void datesTheLetterTheSameDayAsTheDeal() {
+
+        DealConfirmationSheetValues values = factory.build(snapshot());
+
+        assertEquals(DEAL_DATE, values.letterDate());
+        assertEquals(VALUE_DATE, values.valueDate());
+    }
+
+    // =========================================================
+    // REFUSING TO PRINT A LETTER WITH A HOLE IN IT
+    // =========================================================
+
+    @Test
+    void refusesADealWithNoPrice() {
+
+        /*
+         * A letter showing no consideration is worse than no letter: the deal
+         * stays unlettered and retryable, and the failure is logged.
+         */
+        DocumentGenerationException failure = assertThrows(
+                DocumentGenerationException.class,
+                () -> factory.build(snapshotWith(builder -> builder
+                        .pricePerUnit(null)
+                        .totalAmount(null))));
+
+        assertTrue(failure.getMessage().contains("no price"));
+    }
+
+    @Test
+    void refusesADealWithNoAccruedInterest() {
+
+        /*
+         * The accrual is absent when the bond's coupon schedule could not be
+         * resolved, which the calculator reports as empty rather than throwing.
+         * Printing the consideration without its interest component would
+         * understate what the customer paid.
+         */
+        DocumentGenerationException failure = assertThrows(
+                DocumentGenerationException.class,
+                () -> factory.build(snapshotWith(builder ->
+                        builder.accruedInterestPerHundredFace(null))));
+
+        assertTrue(failure.getMessage().contains("accrued interest"));
+    }
+
+    @Test
+    void refusesADealWithNoQuantity() {
+
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> factory.build(snapshotWith(builder -> builder.totalQuantity(null))));
+    }
+
+    @Test
+    void refusesAnEmptySnapshot() {
+
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> factory.build(null));
+    }
+
+    // =========================================================
+    // FIXTURES
+    // =========================================================
+
+    /**
+     * Eleven bonds at 100, accruing 2.401 per bond — chosen so the rounding is
+     * visible in the totals rather than hidden by round numbers.
+     */
+    private DealConfirmationDocumentData snapshot() {
+
+        return snapshotWith(builder -> builder);
+    }
+
+    private DealConfirmationDocumentData snapshotWith(
+            java.util.function.UnaryOperator<SnapshotBuilder> customise) {
+
+        return customise.apply(new SnapshotBuilder()).build();
+    }
+
+    /** A mutable stand-in so each test changes only the field it is about. */
+    private static final class SnapshotBuilder {
+
+        private String dealReference = "DC-20260925-000001";
+        private LocalDate dealDate = DEAL_DATE;
+        private LocalDate valueDate = VALUE_DATE;
+        private String customerName = "Test Customer";
+        private BigDecimal couponRate = new BigDecimal("13.70");
+        private Long totalQuantity = 11L;
+        private BigDecimal pricePerUnit = new BigDecimal("100.0000");
+        private BigDecimal totalAmount = new BigDecimal("1100.0000");
+        private BigDecimal accruedInterestPerHundredFace = new BigDecimal("2.401");
+
+        SnapshotBuilder totalQuantity(Long value) {
+            this.totalQuantity = value;
+            return this;
+        }
+
+        SnapshotBuilder pricePerUnit(BigDecimal value) {
+            this.pricePerUnit = value;
+            return this;
+        }
+
+        SnapshotBuilder totalAmount(BigDecimal value) {
+            this.totalAmount = value;
+            return this;
+        }
+
+        SnapshotBuilder accruedInterestPerHundredFace(BigDecimal value) {
+            this.accruedInterestPerHundredFace = value;
+            return this;
+        }
+
+        SnapshotBuilder couponRate(BigDecimal value) {
+            this.couponRate = value;
+            return this;
+        }
+
+        DealConfirmationDocumentData build() {
+
+            return new DealConfirmationDocumentData(
+                    dealReference,
+                    dealDate,
+                    dealDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+                    valueDate,
+                    customerName,
+                    "customer@example.com",
+                    "TEST BOND 2027",
+                    "INE123A07012",
+                    "SECURED",
+                    null,
+                    couponRate,
+                    LocalDate.of(2027, 8, 23),
+                    "23rd Of Every Month",
+                    LocalDate.of(2026, 7, 23),
+                    64L,
+                    accruedInterestPerHundredFace,
+                    100L,
+                    5L,
+                    totalQuantity,
+                    pricePerUnit,
+                    totalAmount,
+                    DealConfirmationStatus.CREATED);
+        }
+    }
+}

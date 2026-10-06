@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.click4bonds.app.Config.SecurityConfig;
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.Email.Service.EmailService;
 import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
@@ -37,6 +38,8 @@ public final class AuthTestSupport {
     public static final String JWT_SECRET = "test-only-jwt-signing-secret-that-is-long-enough";
 
     public static final String PHONE = "+919876543210";
+
+    public static final String EMAIL = "user@example.com";
 
     public static final String USER_ID = "11111111-1111-1111-1111-111111111111";
 
@@ -160,18 +163,51 @@ public final class AuthTestSupport {
         }
     }
 
+    /** Records OTP messages instead of sending them. */
+    public static final class RecordingEmailService extends EmailService {
+
+        private final Map<String, String> sent = new HashMap<>();
+        private final Map<String, Integer> expiryMinutes = new HashMap<>();
+
+        public RecordingEmailService() {
+            super(null, "http://localhost/never-called");
+        }
+
+        @Override
+        public void sendOtp(String to, String otp, int expiry) {
+
+            sent.put(to, otp);
+            expiryMinutes.put(to, expiry);
+        }
+
+        /** @return the code last sent to {@code to}, or null */
+        public String lastOtpFor(String to) {
+            return sent.get(to);
+        }
+
+        /** @return the validity the last mail promised, or null */
+        public Integer lastExpiryMinutesFor(String to) {
+            return expiryMinutes.get(to);
+        }
+
+        public int sentCount() {
+            return sent.size();
+        }
+    }
+
     /**
      * In-memory stand-in for {@link UserService}.
      *
-     * <p>Implements the rule the real one does — a number resolves to the
-     * account that was signed up for it, and to nothing else — so a test can
-     * assert on identity across two sign-ins and on the refusal of a number
-     * that was never signed up.</p>
+     * <p>Implements the rule the real one does — a number or an address resolves
+     * to the account that holds it, and to nothing else — so a test can assert
+     * on identity across two sign-ins and on the refusal of an identifier that
+     * was never registered.</p>
      */
     public static final class FakeUserService extends UserService {
 
         private final Map<UUID, User> byId = new HashMap<>();
         private final Map<String, User> byMobileNumber = new HashMap<>();
+        private final Map<String, User> byEmail = new HashMap<>();
 
         public FakeUserService() {
             super(null, null, null);
@@ -183,6 +219,10 @@ public final class AuthTestSupport {
 
             if (user.getMobileNumber() != null) {
                 byMobileNumber.put(user.getMobileNumber(), user);
+            }
+
+            if (user.getEmail() != null) {
+                byEmail.put(user.getEmail(), user);
             }
 
             return this;
@@ -206,6 +246,18 @@ public final class AuthTestSupport {
         public User getUserByMobileNumber(String mobileNumber) {
 
             User user = byMobileNumber.get(mobileNumber);
+
+            if (user == null) {
+                throw new ResourceNotFoundException(SIGNUP_REQUIRED);
+            }
+
+            return user;
+        }
+
+        @Override
+        public User getUserByEmail(String email) {
+
+            User user = byEmail.get(email);
 
             if (user == null) {
                 throw new ResourceNotFoundException(SIGNUP_REQUIRED);
@@ -246,6 +298,11 @@ public final class AuthTestSupport {
         }
 
         @Override
+        public boolean isEmailClaimed(String email) {
+            return byEmail.containsKey(email);
+        }
+
+        @Override
         public void updateMobileNumber(User user, String mobileNumber) {
 
             user.setMobileNumber(mobileNumber);
@@ -265,6 +322,7 @@ public final class AuthTestSupport {
     public static final class FakeVerificationService extends VerificationService {
 
         private final Set<UUID> phoneVerified = new HashSet<>();
+        private final Set<UUID> emailVerified = new HashSet<>();
 
         public FakeVerificationService() {
             super(null, null, null, null, null, null);
@@ -275,15 +333,31 @@ public final class AuthTestSupport {
 
             phoneVerified.add(user.getId());
 
-            // Mirrors the real rule: a phone-first account starts at the email
-            // step, so there is nothing to advance past here.
+            // Mirrors the real rule: proving the number moves an account that
+            // was waiting on it to the next step, which is the email step.
             if (user.getOnboardingStep() == OnboardingStep.PHONE_VERIFICATION) {
-                user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
+                user.setOnboardingStep(OnboardingStep.EMAIL_VERIFICATION);
+            }
+        }
+
+        @Override
+        public void markEmailVerified(User user) {
+
+            emailVerified.add(user.getId());
+
+            // Mirrors the real rule: only the email step advances, and only to
+            // the next step the account has not already satisfied.
+            if (user.getOnboardingStep() == OnboardingStep.EMAIL_VERIFICATION) {
+                user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
             }
         }
 
         public boolean wasPhoneMarkedVerified(User user) {
             return phoneVerified.contains(user.getId());
+        }
+
+        public boolean wasEmailMarkedVerified(User user) {
+            return emailVerified.contains(user.getId());
         }
     }
 }

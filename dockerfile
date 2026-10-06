@@ -11,11 +11,28 @@ COPY src ./src
 RUN mvn clean package -Pprod -DskipTests
 
 # Runtime stage
-FROM eclipse-temurin:21-jre-alpine
+#
+# Debian rather than Alpine, because Alpine has no LibreOffice package and the
+# application renders deal confirmation letters with a headless `soffice`.
+# Everything else about this stage is unchanged except the font packages: a
+# LibreOffice with no fonts renders every character as an empty box, which is
+# the most common way a headless PDF conversion silently produces rubbish.
+FROM eclipse-temurin:21-jre-noble
 
 WORKDIR /app
 
-RUN apk add --no-cache curl
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        curl \
+        libreoffice-calc \
+        fonts-dejavu-core \
+        fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+# LibreOffice writes caches and lock files outside its profile directory and
+# fails opaquely when HOME is unwritable. The converter redirects it to a private
+# directory per conversion; this is the fallback for anything it does not.
+ENV HOME=/tmp
 
 COPY --from=build /app/target/clickforbonds.jar clickforbonds.jar
 

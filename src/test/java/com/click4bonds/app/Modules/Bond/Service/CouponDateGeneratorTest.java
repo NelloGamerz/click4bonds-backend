@@ -4,7 +4,9 @@ import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -175,9 +177,15 @@ class CouponDateGeneratorTest {
                 "shouldNotIncludeAnnualCouponAfterMaturity -> "
                         + result);
 
+        /*
+         * The 2028 anniversary is not generated - the bond has matured by
+         * then. Maturity itself is a payment date, so it closes the schedule
+         * as the final, broken-period coupon.
+         */
         List<LocalDate> expected = List.of(
                 LocalDate.of(2026, 10, 15),
-                LocalDate.of(2027, 10, 15));
+                LocalDate.of(2027, 10, 15),
+                LocalDate.of(2028, 5, 10));
 
         assertEquals(expected, result);
     }
@@ -369,10 +377,100 @@ class CouponDateGeneratorTest {
                 "shouldNotGenerateDatesAfterMaturity -> "
                         + result);
 
+        /*
+         * No date is generated after maturity. The maturity date itself is
+         * the stub coupon that closes the broken final period.
+         */
         List<LocalDate> expected = List.of(
-                LocalDate.of(2026, 10, 15));
+                LocalDate.of(2026, 10, 15),
+                LocalDate.of(2027, 5, 1));
 
         assertEquals(expected, result);
+    }
+
+    // ============================================================
+    // STUB / BROKEN FINAL PERIOD
+    // ============================================================
+
+    @Test
+    void shouldAppendMaturityAsStubWhenItMissesTheAnniversary() {
+
+        Bond bond = createBond(
+                "20/11 Ann",
+                LocalDate.of(2036, 1, 18));
+
+        LocalDate calculationDate = LocalDate.of(2026, 10, 5);
+
+        List<LocalDate> result = couponDateGenerator.generate(
+                bond,
+                calculationDate);
+
+        System.out.println(
+                "shouldAppendMaturityAsStubWhenItMissesTheAnniversary -> "
+                        + result);
+
+        assertEquals(LocalDate.of(2035, 11, 20), result.get(result.size() - 2));
+        assertEquals(LocalDate.of(2036, 1, 18), result.get(result.size() - 1));
+    }
+
+    @Test
+    void shouldNotDuplicateMaturityWhenItIsAnAnniversary() {
+
+        Bond bond = createBond(
+                "11/12 Ann",
+                LocalDate.of(2030, 12, 11));
+
+        LocalDate calculationDate = LocalDate.of(2026, 10, 5);
+
+        List<LocalDate> result = couponDateGenerator.generate(
+                bond,
+                calculationDate);
+
+        System.out.println(
+                "shouldNotDuplicateMaturityWhenItIsAnAnniversary -> "
+                        + result);
+
+        assertEquals(1, result.stream()
+                .filter(date -> date.equals(LocalDate.of(2030, 12, 11)))
+                .count());
+    }
+
+    @Test
+    void shouldRecogniseOnlyTheMaturityStubAsABrokenPeriod() {
+
+        Bond stubBond = createBond(
+                "20/11 Ann",
+                LocalDate.of(2036, 1, 18));
+
+        assertTrue(couponDateGenerator.isStubCouponDate(
+                stubBond,
+                LocalDate.of(2036, 1, 18)));
+
+        assertFalse(couponDateGenerator.isStubCouponDate(
+                stubBond,
+                LocalDate.of(2035, 11, 20)));
+
+        Bond alignedBond = createBond(
+                "11/12 Ann",
+                LocalDate.of(2030, 12, 11));
+
+        assertFalse(couponDateGenerator.isStubCouponDate(
+                alignedBond,
+                LocalDate.of(2030, 12, 11)));
+    }
+
+    @Test
+    void shouldOpenTheStubPeriodAtThePreviousAnniversary() {
+
+        Bond bond = createBond(
+                "20/11 Ann",
+                LocalDate.of(2036, 1, 18));
+
+        assertEquals(
+                LocalDate.of(2035, 11, 20),
+                couponDateGenerator.stubPeriodStart(
+                        bond,
+                        LocalDate.of(2036, 1, 18)));
     }
 
     // ============================================================

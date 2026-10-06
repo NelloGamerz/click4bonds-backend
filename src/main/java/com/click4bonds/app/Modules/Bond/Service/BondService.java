@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Service.UserService;
 import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.coyote.BadRequestException;
@@ -25,7 +26,6 @@ import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Model.User;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -36,7 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class BondService {
 
     private final BondRepository bondRepository;
-    private final UserRepository userRepository;
+    private final UserService userService;
     private final AnalyticsService analyticsService;
 
     // =========================================================
@@ -78,9 +78,7 @@ public class BondService {
         // Find admin
         // -----------------------------------------------------
 
-        User admin = userRepository.findById(adminId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Admin not found"));
+        User admin = userService.getUser(adminId);
 
         // -----------------------------------------------------
         // Build Bond
@@ -104,6 +102,9 @@ public class BondService {
                 .couponRate(request.getCouponRate())
                 .couponFrequency(request.getCouponFrequency())
                 .ipDateDescription(request.getIpDateDescription())
+
+                // Record date rule (source of truth for coupon entitlement)
+                .recordDateDescription(request.getRecordDateDescription())
 
                 // Maturity
                 .maturityType(request.getMaturityType())
@@ -132,6 +133,9 @@ public class BondService {
                 .lotSizeDescription(request.getLotSizeDescription())
                 .lotSize(request.getLotSize())
                 .lotSizeType(request.getLotSizeType())
+
+                // Inventory
+                .remainingQuantity(request.getRemainingQuantity())
 
                 // Status
                 .status(BondStatus.DRAFT)
@@ -451,6 +455,15 @@ public class BondService {
         }
 
         // -----------------------------------------------------
+        // Record date rule (source of truth for entitlement)
+        // -----------------------------------------------------
+
+        if (request.getRecordDateDescription() != null) {
+            bond.setRecordDateDescription(
+                    request.getRecordDateDescription());
+        }
+
+        // -----------------------------------------------------
         // Maturity
         // -----------------------------------------------------
 
@@ -527,6 +540,21 @@ public class BondService {
         if (request.getLotSizeType() != null) {
             bond.setLotSizeType(
                     request.getLotSizeType());
+        }
+
+        // -----------------------------------------------------
+        // Inventory
+        // -----------------------------------------------------
+
+        /*
+         * Absolute value, not a delta: an admin restocking a bond sends the new
+         * total. Status is deliberately left alone — a restocked SOLD_OUT bond
+         * has to be activated through the existing activate endpoint, so the
+         * inventory and the status never disagree silently.
+         */
+        if (request.getRemainingQuantity() != null) {
+            bond.setRemainingQuantity(
+                    request.getRemainingQuantity());
         }
 
         if (request.getIsFlashNews() != null) {
@@ -733,6 +761,10 @@ public class BondService {
                 .ipDateDescription(
                         bond.getIpDateDescription())
 
+                // Record date rule (source of truth for coupon entitlement)
+                .recordDateDescription(
+                        bond.getRecordDateDescription())
+
                 // Maturity
                 .maturityType(
                         bond.getMaturityType())
@@ -769,6 +801,9 @@ public class BondService {
 
                 .isFlashNews(
                         bond.getIsFlashNews())
+
+                .remainingQuantity(
+                        bond.getRemainingQuantity())
 
                 // Status
                 .status(

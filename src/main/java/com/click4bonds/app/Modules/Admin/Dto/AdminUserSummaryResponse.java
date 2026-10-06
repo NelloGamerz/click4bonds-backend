@@ -26,4 +26,6 @@ public class AdminUserSummaryResponse {
     private UserRole role;
     private UserStatus status;
     private Instant updatedAt;
+    private boolean isKycCompleted;
+    private String phoneNumber;
 }

@@ -81,7 +81,7 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private OnboardingStep onboardingStep = OnboardingStep.EMAIL_VERIFICATION;
+    private OnboardingStep onboardingStep = OnboardingStep.PHONE_VERIFICATION;
 
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private UserVerification verification;
