@@ -615,12 +615,15 @@ package com.click4bonds.app.Modules.Bond.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Bond.Dto.CouponPayment;
@@ -635,7 +638,35 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
+    /*
+     * Day count for a broken (stub) coupon period. A stub covers part of a
+     * period, so it cannot be priced by dividing an annual coupon by the
+     * frequency; it is accrued over the actual days of the period instead.
+     */
+    private static final BigDecimal DAYS_PER_YEAR = BigDecimal.valueOf(365);
+
     private static final int CALCULATION_SCALE = 10;
+
+    private final CouponDateGenerator couponDateGenerator;
+
+    @Autowired
+    public CouponCalculationServiceImpl(
+            CouponDateGenerator couponDateGenerator) {
+
+        this.couponDateGenerator = Objects.requireNonNull(
+                couponDateGenerator,
+                "CouponDateGenerator is required");
+    }
+
+    /**
+     * Convenience constructor for callers that hold no generator. The stub
+     * coupon logic is the only part of this service that needs one, and a
+     * generator is dependency-free, so no Spring context is required.
+     */
+    public CouponCalculationServiceImpl() {
+
+        this(new CouponDateGenerator());
+    }
 
     @Override
     public List<CouponPayment> calculateCoupons(
@@ -824,10 +855,18 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
              * Closing principal = 80
              * --------------------------------------------------------
              */
-            BigDecimal couponAmount = calculateCoupon(
-                    outstandingPrincipal,
-                    couponRate,
-                    frequencyDivisor);
+            BigDecimal couponAmount = couponDateGenerator.isStubCouponDate(
+                    bond,
+                    paymentDate)
+                            ? calculateStubCoupon(
+                                    bond,
+                                    outstandingPrincipal,
+                                    couponRate,
+                                    paymentDate)
+                            : calculateCoupon(
+                                    outstandingPrincipal,
+                                    couponRate,
+                                    frequencyDivisor);
 
             /*
              * Store coupon payment using the OPENING principal.
@@ -926,6 +965,68 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
                 .multiply(couponRate)
                 .divide(
                         HUNDRED.multiply(frequencyDivisor),
+                        CALCULATION_SCALE,
+                        RoundingMode.HALF_UP);
+    }
+
+    /*
+     * ============================================================
+     * CALCULATE STUB COUPON
+     * ============================================================
+     *
+     * The final coupon of a bond whose maturity falls short of the next
+     * anniversary covers only the days between the previous coupon date and
+     * maturity.
+     *
+     * Formula (Actual/365):
+     *
+     * principal × couponRate × days
+     * ------------------------------
+     *          100 × 365
+     *
+     * Example:
+     *
+     * principal = 100
+     * couponRate = 9.10
+     * 20-Nov-2035 -> 18-Jan-2036 = 59 days
+     *
+     * 100 × 9.10 × 59 / (100 × 365) = 1.4709589041
+     *
+     * The amount uses the same opening principal as a regular coupon, so a
+     * repayment landing on the stub date is still applied afterwards.
+     * ============================================================
+     */
+    private BigDecimal calculateStubCoupon(
+            Bond bond,
+            BigDecimal outstandingPrincipal,
+            BigDecimal couponRate,
+            LocalDate paymentDate) {
+
+        LocalDate periodStart = couponDateGenerator.stubPeriodStart(
+                bond,
+                paymentDate);
+
+        if (periodStart == null) {
+
+            throw new IllegalArgumentException(
+                    "Unable to determine the period opening the stub coupon on "
+                            + paymentDate);
+        }
+
+        long days = ChronoUnit.DAYS.between(periodStart, paymentDate);
+
+        if (days <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Stub coupon period must cover at least one day: "
+                            + periodStart + " to " + paymentDate);
+        }
+
+        return outstandingPrincipal
+                .multiply(couponRate)
+                .multiply(BigDecimal.valueOf(days))
+                .divide(
+                        HUNDRED.multiply(DAYS_PER_YEAR),
                         CALCULATION_SCALE,
                         RoundingMode.HALF_UP);
     }

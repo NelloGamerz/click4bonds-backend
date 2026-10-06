@@ -183,6 +183,45 @@ class CouponCalculationServiceImplTest {
                 "2.25", "1.89", "1.53", "1.17", "0.81"));
     }
 
+    @Test
+    void shouldAccrueTheStubCouponOverItsBrokenPeriod() {
+
+        /*
+         * A bond paying annually on 20 November and maturing 18 January 2036.
+         * The final coupon covers the 59 days from 20-Nov-2035 to maturity,
+         * not a full year:
+         *
+         * 100 x 9.10 x 59 / (100 x 365) = 1.4709589041
+         */
+        Bond bond = bond("9.10", CouponFrequency.YEARLY);
+        bond.setIpDateDescription("20/11 Ann");
+        bond.setMaturityDate(LocalDate.of(2036, 1, 18));
+
+        List<CouponPayment> result = service.calculateCoupons(
+                bond,
+                List.of(LocalDate.of(2035, 11, 20), LocalDate.of(2036, 1, 18)),
+                repayments(List.of(LocalDate.of(2036, 1, 18)), List.of("100")),
+                LocalDate.of(2026, 10, 5));
+
+        assertAmounts(result, List.of("9.10", "1.4709589041"));
+    }
+
+    @Test
+    void shouldKeepFullCouponsWhenMaturityIsAnAnniversary() {
+
+        Bond bond = bond("9.10", CouponFrequency.YEARLY);
+        bond.setIpDateDescription("11/12 Ann");
+        bond.setMaturityDate(LocalDate.of(2030, 12, 11));
+
+        List<CouponPayment> result = service.calculateCoupons(
+                bond,
+                List.of(LocalDate.of(2029, 12, 11), LocalDate.of(2030, 12, 11)),
+                repayments(List.of(LocalDate.of(2030, 12, 11)), List.of("100")),
+                LocalDate.of(2026, 10, 5));
+
+        assertAmounts(result, List.of("9.10", "9.10"));
+    }
+
     private Bond bond(String couponRate, CouponFrequency frequency) {
         Bond bond = new Bond();
         bond.setCouponRate(new BigDecimal(couponRate));
