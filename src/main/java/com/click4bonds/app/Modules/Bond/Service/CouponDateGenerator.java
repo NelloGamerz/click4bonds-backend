@@ -100,6 +100,12 @@ public class CouponDateGenerator {
      *     <= maturityDate
      *
      * are returned.
+     *
+     * The maturity date is always a payment date. When the anniversary
+     * described by the bond does not land on maturity, the maturity date is
+     * appended as the final, broken-period ("stub") coupon date - see
+     * {@link #isStubCouponDate(Bond, LocalDate)}. A bond whose maturity
+     * already falls on its anniversary is unaffected.
      */
     public List<LocalDate> generate(
             Bond bond,
@@ -108,13 +114,109 @@ public class CouponDateGenerator {
 
         validateInput(bond, calculationDate);
 
-        String description =
-                normalizeDescription(
-                        bond.getIpDateDescription()
+        LocalDate maturityDate =
+                bond.getMaturityDate();
+
+        List<LocalDate> dates =
+                generateScheduledDates(
+                        bond.getIpDateDescription(),
+                        calculationDate,
+                        maturityDate
                 );
+
+        appendMaturityAsFinalCoupon(
+                calculationDate,
+                maturityDate,
+                dates
+        );
+
+        return dates;
+    }
+
+    /**
+     * Whether {@code paymentDate} is the broken-period coupon paid on the
+     * bond's maturity date, rather than a regular coupon on the anniversary
+     * described by the bond.
+     *
+     * A stub coupon covers less than a full coupon period, so it cannot be
+     * priced with the regular per-period formula. It is recognised by its
+     * date alone: it is the maturity date, and maturity is not itself one of
+     * the scheduled anniversary dates.
+     */
+    public boolean isStubCouponDate(
+            Bond bond,
+            LocalDate paymentDate
+    ) {
+
+        if (bond == null
+                || paymentDate == null
+                || !hasIpDateDescription(bond)) {
+
+            return false;
+        }
 
         LocalDate maturityDate =
                 bond.getMaturityDate();
+
+        if (maturityDate == null
+                || !paymentDate.equals(maturityDate)) {
+
+            return false;
+        }
+
+        return !matchesAnniversary(
+                normalizeDescription(
+                        bond.getIpDateDescription()
+                ),
+                paymentDate
+        );
+    }
+
+    /**
+     * The scheduled coupon date that opens the broken period closed by the
+     * stub coupon on {@code stubDate}.
+     *
+     * Null when the anniversary immediately preceding the stub cannot be
+     * determined. Callers must not silently treat a null as a full period.
+     */
+    public LocalDate stubPeriodStart(
+            Bond bond,
+            LocalDate stubDate
+    ) {
+
+        if (bond == null
+                || stubDate == null
+                || !hasIpDateDescription(bond)) {
+
+            return null;
+        }
+
+        List<LocalDate> scheduled =
+                generateScheduledDates(
+                        bond.getIpDateDescription(),
+                        stubDate.minusYears(5).minusDays(1),
+                        stubDate
+                );
+
+        return scheduled.stream()
+                .filter(date -> date.isBefore(stubDate))
+                .max(Comparator.naturalOrder())
+                .orElse(null);
+    }
+
+    /**
+     * The anniversary dates the bond's own description describes, bounded by
+     * the calculation date and maturity. This is the schedule before any stub
+     * is considered.
+     */
+    private List<LocalDate> generateScheduledDates(
+            String ipDateDescription,
+            LocalDate calculationDate,
+            LocalDate maturityDate
+    ) {
+
+        String description =
+                normalizeDescription(ipDateDescription);
 
         /*
          * --------------------------------------------------------
@@ -196,8 +298,102 @@ public class CouponDateGenerator {
 
         throw new IllegalArgumentException(
                 "Unsupported IP date description: "
-                        + bond.getIpDateDescription()
+                        + ipDateDescription
         );
+    }
+
+    /**
+     * Adds the maturity date to the schedule when the bond's anniversary does
+     * not already land on it.
+     *
+     * This is what gives a bond with a broken final period its stub coupon.
+     * Without it the last regular coupon would sit up to a full period before
+     * maturity and the interest for the days in between would be dropped.
+     */
+    private void appendMaturityAsFinalCoupon(
+            LocalDate calculationDate,
+            LocalDate maturityDate,
+            List<LocalDate> dates
+    ) {
+
+        if (maturityDate == null
+                || !maturityDate.isAfter(calculationDate)
+                || dates.contains(maturityDate)) {
+
+            return;
+        }
+
+        dates.add(maturityDate);
+
+        dates.sort(Comparator.naturalOrder());
+    }
+
+    /**
+     * Whether {@code date} falls on an anniversary described by the bond's
+     * IP date description.
+     *
+     * The same three grammars {@link #generateScheduledDates} understands are
+     * applied to a single date, without generating a window.
+     */
+    private boolean matchesAnniversary(
+            String description,
+            LocalDate date
+    ) {
+
+        Matcher rangeMatcher =
+                MONTH_DAY_RANGE_PATTERN.matcher(description);
+
+        if (rangeMatcher.matches()) {
+
+            return matchesMonthDay(
+                    date,
+                    Integer.parseInt(rangeMatcher.group(2)),
+                    Integer.parseInt(rangeMatcher.group(1))
+            ) || matchesMonthDay(
+                    date,
+                    Integer.parseInt(rangeMatcher.group(4)),
+                    Integer.parseInt(rangeMatcher.group(3))
+            );
+        }
+
+        Matcher annualMatcher =
+                ANNUAL_PATTERN.matcher(description);
+
+        if (annualMatcher.matches()) {
+
+            return matchesMonthDay(
+                    date,
+                    Integer.parseInt(annualMatcher.group(2)),
+                    Integer.parseInt(annualMatcher.group(1))
+            );
+        }
+
+        Matcher monthlyMatcher =
+                MONTHLY_PATTERN.matcher(description);
+
+        if (monthlyMatcher.matches()) {
+
+            int requestedDay =
+                    Integer.parseInt(monthlyMatcher.group(1));
+
+            return date.getDayOfMonth()
+                    == Math.min(
+                            requestedDay,
+                            date.lengthOfMonth()
+                    );
+        }
+
+        return false;
+    }
+
+    private boolean matchesMonthDay(
+            LocalDate date,
+            int month,
+            int day
+    ) {
+
+        return date.getMonthValue() == month
+                && date.getDayOfMonth() == day;
     }
 
     /*
@@ -546,6 +742,21 @@ public class CouponDateGenerator {
         return description
                 .trim()
                 .replaceAll("\\s+", " ");
+    }
+
+    /**
+     * Whether the bond carries an anniversary description at all.
+     *
+     * A bond without one has no anniversary to compare a maturity date
+     * against, so no payment date can be classified as a stub. Callers that
+     * reach this service directly - rather than through
+     * {@link #generate(Bond, LocalDate)}, which rejects the bond outright -
+     * keep the regular per-period coupon behaviour.
+     */
+    private boolean hasIpDateDescription(Bond bond) {
+
+        return bond.getIpDateDescription() != null
+                && !bond.getIpDateDescription().isBlank();
     }
 
     private void validateMonth(int month) {
