@@ -238,6 +238,25 @@ public class BondResponse {
     private BigDecimal price;
 
     // =========================
+    // YIELD
+    // =========================
+
+    /**
+     * Yields, stored as percentages — 6.88 means 6.88%.
+     *
+     * <p>Supplied by an admin on create/update, or calculated by the engine
+     * from the price. {@code ytmCalculatedAt} records when the value was last
+     * set, so a reader can tell how fresh it is.</p>
+     */
+    private BigDecimal semiYtm;
+
+    private BigDecimal annualYtm;
+
+    private BigDecimal ytc;
+
+    private Instant ytmCalculatedAt;
+
+    // =========================
     // QUANTUM
     // =========================
 
