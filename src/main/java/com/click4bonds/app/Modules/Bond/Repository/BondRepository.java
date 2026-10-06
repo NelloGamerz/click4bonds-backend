@@ -64,7 +64,8 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                             SELECT b
                             FROM Bond b
                             WHERE (:search IS NULL OR :search = ''
-                                   OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%')))
+                                   OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%')))
                               AND (:isFlashNews IS NULL
                                    OR :isFlashNews = false
                                    OR b.isFlashNews = true)
