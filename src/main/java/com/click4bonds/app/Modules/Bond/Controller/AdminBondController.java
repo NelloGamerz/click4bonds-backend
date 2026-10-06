@@ -97,8 +97,12 @@ public class AdminBondController {
                         @AuthenticationPrincipal Jwt jwt) {
 
                 UUID userId = UUID.fromString(jwt.getSubject());
+
+                // The class-level @PreAuthorize admits ADMIN tokens only, so
+                // this caller is never a CUSTOMER and no view is ever tracked
+                // from here. The flag is passed rather than looked up.
                 return ResponseEntity.ok(
-                                bondService.getBond(isin, userId));
+                                bondService.getBond(isin, userId, false));
         }
 
         @PatchMapping("/bonds/{isin}")
@@ -203,8 +207,10 @@ public class AdminBondController {
                         @PathVariable String isin,
                         @AuthenticationPrincipal Jwt jwt) {
                 UUID userId = jwt != null ? UUID.fromString(jwt.getSubject()) : null;
+
+                // ADMIN-only class, so this caller is never a CUSTOMER.
                 return ResponseEntity.ok(
-                                issuerService.getIssuerByIsin(isin, userId));
+                                issuerService.getIssuerByIsin(isin, userId, false));
         }
 
         /**

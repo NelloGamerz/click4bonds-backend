@@ -325,14 +325,14 @@ public class AuthService {
                 "WEB",
                 "AUTHENTICATION",
                 java.util.Map.of());
-        analyticsService.track(
-                AnalyticsEventType.SESSION_END,
-                userId,
-                null,
-                null,
-                "WEB",
-                "AUTHENTICATION",
-                java.util.Map.of());
+//        analyticsService.track(
+//                AnalyticsEventType.SESSION_END,
+//                userId,
+//                null,
+//                null,
+//                "WEB",
+//                "AUTHENTICATION",
+//                java.util.Map.of());
     }
 
     /**
@@ -352,14 +352,14 @@ public class AuthService {
                 "WEB",
                 "AUTHENTICATION",
                 java.util.Map.of("method", "PHONE_OTP"));
-        analyticsService.track(
-                AnalyticsEventType.SESSION_START,
-                user.getId(),
-                null,
-                null,
-                "WEB",
-                "AUTHENTICATION",
-                java.util.Map.of());
+//        analyticsService.track(
+//                AnalyticsEventType.SESSION_START,
+//                user.getId(),
+//                null,
+//                null,
+//                "WEB",
+//                "AUTHENTICATION",
+//                java.util.Map.of());
 
         return new IssuedSession(sessionId, buildResponse(accessToken, user));
     }

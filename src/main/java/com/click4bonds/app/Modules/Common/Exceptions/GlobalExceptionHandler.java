@@ -8,11 +8,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.click4bonds.app.Modules.Analytics.Exception.AnalyticsQueryException;
 import com.click4bonds.app.Modules.Auth.Exception.InvalidSessionException;
 import com.click4bonds.app.Modules.Auth.Exception.OtpRateLimitedException;
 import com.click4bonds.app.Modules.Common.Dto.ApiError;
@@ -52,6 +55,35 @@ public class GlobalExceptionHandler {
                                                 new ApiError(
                                                                 "BAD_REQUEST",
                                                                 ex.getMessage()));
+        }
+
+        /**
+         * Handles a caller that authenticated but holds the wrong role.
+         *
+         * <p>This method exists because of where {@code @PreAuthorize} rejects a
+         * call. The check runs on the controller bean, inside the handler, so the
+         * {@link AccessDeniedException} it raises travels back out through Spring
+         * MVC — the exception resolvers run before Spring Security's filter ever
+         * sees it. Without a handler here the catch-all at the bottom of this
+         * class would claim it and answer {@code 500}, reporting a permission
+         * decision as a server fault.</p>
+         *
+         * <p>{@code 403} rather than {@code 401}: the caller's credential is valid
+         * and was accepted, it simply does not carry the required role, and
+         * signing in again would not change that.</p>
+         */
+        @ExceptionHandler(AccessDeniedException.class)
+        public ResponseEntity<ApiError> handleAccessDenied(
+                        AccessDeniedException ex) {
+
+                log.warn("Request rejected: the caller lacks the required role");
+
+                return ResponseEntity
+                                .status(HttpStatus.FORBIDDEN)
+                                .body(
+                                                new ApiError(
+                                                                "FORBIDDEN",
+                                                                "You do not have permission to perform this action."));
         }
 
         @ExceptionHandler(ConflictException.class)
@@ -129,6 +161,38 @@ public class GlobalExceptionHandler {
                                 .body(
                                                 new ApiError(
                                                                 "VALIDATION_ERROR",
+                                                                message));
+        }
+
+        /**
+         * Handles a path variable or query parameter that Spring could not
+         * convert to the type the handler declares.
+         *
+         * <p>Reached by a UUID that is not a UUID, a number that is not a
+         * number, and an enum value outside the ones that exist. All three are
+         * the caller's mistake, and without this handler the catch-all at the
+         * bottom of this class would answer {@code 500} — telling a client to
+         * retry a request that will never succeed.</p>
+         *
+         * <p>Names the parameter and echoes the rejected value, because a
+         * caller who mistyped one of several parameters needs to know which.
+         * The target type is deliberately not mentioned: it describes the
+         * handler's signature, which is not something the caller asked about.</p>
+         */
+        @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+        public ResponseEntity<ApiError> handleTypeMismatch(
+                        MethodArgumentTypeMismatchException ex) {
+
+                String message = "The value '" + ex.getValue()
+                                + "' is not valid for '" + ex.getName() + "'.";
+
+                log.warn("Request rejected: {}", message);
+
+                return ResponseEntity
+                                .badRequest()
+                                .body(
+                                                new ApiError(
+                                                                "BAD_REQUEST",
                                                                 message));
         }
 
@@ -309,6 +373,37 @@ public class GlobalExceptionHandler {
                                                                 ex.getReason() == null
                                                                                 ? "Request could not be completed"
                                                                                 : ex.getReason()));
+        }
+
+        /**
+         * Handles an analytics read that could not be served because ClickHouse
+         * was unreachable or refused the query.
+         *
+         * <p>Answered {@code 503} rather than {@code 500}: the request was
+         * well-formed and the application is healthy — a dependency is not, and
+         * the same call is worth retrying. A {@code 500} would say the opposite
+         * and invite a client to give up on a call that would have succeeded a
+         * moment later.</p>
+         *
+         * <p>The cause is logged in full and kept out of the response. It
+         * describes the analytics schema and the host it lives on, neither of
+         * which belongs in an API answer.</p>
+         */
+        @ExceptionHandler(AnalyticsQueryException.class)
+        public ResponseEntity<ApiError> handleAnalyticsQueryFailure(
+                        AnalyticsQueryException ex) {
+
+                log.error(
+                                "Analytics could not be read: {}",
+                                ex.getMessage(),
+                                ex);
+
+                return ResponseEntity
+                                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(
+                                                new ApiError(
+                                                                "ANALYTICS_UNAVAILABLE",
+                                                                "Analytics data is unavailable right now. Please try again later."));
         }
 
         /**

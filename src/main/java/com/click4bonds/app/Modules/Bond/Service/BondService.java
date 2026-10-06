@@ -7,7 +7,6 @@ import java.util.UUID;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
-import com.click4bonds.app.Modules.User.Service.UserService;
 import io.micrometer.observation.annotation.Observed;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.coyote.BadRequestException;
@@ -38,7 +37,6 @@ public class BondService {
 
     private final BondRepository bondRepository;
     private final UserRepository userRepository;
-    private final UserService userService;
     private final AnalyticsService analyticsService;
 
     // =========================================================
@@ -207,7 +205,10 @@ public class BondService {
 //        return mapToResponse(bond);
 //    }
 
-        public BondResponse getBond(String isin, UUID userId) {
+        public BondResponse getBond(
+                String isin,
+                UUID userId,
+                boolean isCustomer) {
 
             log.info("Fetching bond: isin={}, userId={}", isin, userId);
 
@@ -220,8 +221,6 @@ public class BondService {
             );
 
             if (userId != null) {
-
-                boolean isCustomer = userService.hasRole(userId, UserRole.CUSTOMER);
 
                 log.info(
                         "Analytics role check: userId={}, role={}, isCustomer={}",
@@ -300,14 +299,15 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             Pageable pageable) {
-        return getBonds(search, isFlashNews, pageable, null);
+        return getBonds(search, isFlashNews, pageable, null, false);
     }
 
     public Page<BondResponse> getBonds(
             String search,
             Boolean isFlashNews,
             Pageable pageable,
-            UUID userId) {
+            UUID userId,
+            boolean isCustomer) {
         if ((search == null || search.isBlank()) && isFlashNews == null) {
             return getBonds(pageable);
         }
@@ -316,7 +316,7 @@ public class BondService {
                 .searchBonds(search, isFlashNews, pageable)
                 .map(this::mapToResponse);
 
-        if (userId != null && userService.hasRole(userId, UserRole.CUSTOMER)) {
+        if (userId != null && isCustomer) {
             if (search != null && !search.isBlank()) {
                 analyticsService.track(
                         AnalyticsEventType.BOND_SEARCH,

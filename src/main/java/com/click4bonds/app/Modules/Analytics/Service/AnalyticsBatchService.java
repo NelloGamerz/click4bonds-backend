@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -34,6 +35,21 @@ import lombok.extern.slf4j.Slf4j;
  * <p>Flushing is safe to run concurrently. Each flush takes a disjoint snapshot
  * under the lock, so no event is ever inserted twice; two overlapping flushes
  * simply split the backlog between them.</p>
+ *
+ * <h2>Acknowledgment</h2>
+ *
+ * <p>Each buffered event carries the Kafka {@link Acknowledgment} for the record
+ * that produced it, and a flush acknowledges them only after
+ * {@link ClickHouseService#insertBatch} has returned successfully. Nothing is
+ * acknowledged while an event is merely buffered or when an insert fails.</p>
+ *
+ * <p>That ordering is what makes the buffer safe to keep in memory. The offset
+ * is the record of "Kafka may forget this"; committing it before the row exists
+ * in ClickHouse is what loses events when the process exits between the two. The
+ * cost is the opposite failure mode: a crash after the insert but before the
+ * commit redelivers those records and they are inserted a second time — visible
+ * in the loss table in {@code docs/analytics.md}, and the reason the pipeline is
+ * at-least-once rather than exactly-once.</p>
  */
 @Service
 @Slf4j
@@ -55,7 +71,24 @@ public class AnalyticsBatchService {
     private final ClickHouseService clickHouseService;
 
     /** Oldest first; consumed by {@link #drain()}. */
-    private final Deque<AnalyticsEvent> buffer = new ArrayDeque<>();
+    private final Deque<BufferedEvent> buffer = new ArrayDeque<>();
+
+    /**
+     * One waiting event together with the Kafka acknowledgment that releases its
+     * offset.
+     *
+     * <p>The two travel as a pair because they must not be separated: an event
+     * whose acknowledgment is lost can never be committed, and an event whose
+     * acknowledgment is issued early is an event that can be lost. Keeping them
+     * in one object means {@link #drain()} cannot accidentally hand one on
+     * without the other.</p>
+     *
+     * @param event          the event to write
+     * @param acknowledgment the handle that commits the offset of the record it
+     *                       came from, once it is safely in ClickHouse
+     */
+    private record BufferedEvent(AnalyticsEvent event, Acknowledgment acknowledgment) {
+    }
 
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -88,9 +121,17 @@ public class AnalyticsBatchService {
      * event would: the newest events are the ones an operator is watching for.
      * The count is kept in {@link #droppedEventCount()} and logged.</p>
      *
-     * @param event the event to buffer; {@code null} is ignored
+     * <p>A dropped event is not acknowledged, so its offset is never committed
+     * on its own account. That does not save it — the acknowledgment of a later
+     * record on the same partition commits past it — but it does mean a
+     * partition whose buffered records were all dropped is still redelivered
+     * rather than silently skipped.</p>
+     *
+     * @param event          the event to buffer
+     * @param acknowledgment the acknowledgment for the record it came from,
+     *                       acknowledged only after a successful insert
      */
-    public void add(AnalyticsEvent event) {
+    public void add(AnalyticsEvent event, Acknowledgment acknowledgment) {
 
         if (event == null) {
             return;
@@ -99,7 +140,7 @@ public class AnalyticsBatchService {
         lock.lock();
 
         try {
-            buffer.addLast(event);
+            buffer.addLast(new BufferedEvent(event, acknowledgment));
             trimLocked();
         } finally {
             lock.unlock();
@@ -146,33 +187,35 @@ public class AnalyticsBatchService {
     }
 
     /**
-     * Sends the currently buffered events to ClickHouse.
+     * Sends the currently buffered events to ClickHouse and acknowledges them.
      *
      * <p>Events are removed from the buffer before the insert rather than after
      * it, so a slow insert cannot be overtaken by a second flush that would
      * send the same events again. If the insert then fails they are put back at
      * the front of the buffer, in their original order, for the next flush to
-     * retry.</p>
+     * retry — and nothing is acknowledged, so the records are still Kafka's to
+     * redeliver.</p>
+     *
+     * <p>The acknowledgment happens after the insert, and outside its
+     * {@code try}. Inside it, a failure to commit an offset that had already
+     * been written would be indistinguishable from a failure to write, and the
+     * events would come back to the buffer and be inserted a second time.</p>
      *
      * @return how many events were written; {@code 0} when the buffer was empty
      *         or the insert failed
      */
     public int flush() {
 
-        List<AnalyticsEvent> batch = drain();
+        List<BufferedEvent> batch = drain();
 
         if (batch.isEmpty()) {
             return 0;
         }
 
         try {
-            clickHouseService.insertBatch(batch);
+            clickHouseService.insertBatch(eventsOf(batch));
 
             lastFlushFailureNanos.set(0);
-
-            log.debug("Flushed {} analytics events to ClickHouse", batch.size());
-
-            return batch.size();
 
         } catch (RuntimeException e) {
 
@@ -182,12 +225,51 @@ public class AnalyticsBatchService {
 
             log.error(
                     "Failed to flush {} analytics events to ClickHouse; "
-                            + "returned them to the buffer to retry on the next flush",
+                            + "returned them to the buffer to retry on the next flush. "
+                            + "Their Kafka offsets stay uncommitted.",
                     batch.size(),
                     e);
 
             return 0;
         }
+
+        acknowledge(batch);
+
+        log.debug("Flushed {} analytics events to ClickHouse", batch.size());
+
+        return batch.size();
+    }
+
+    /**
+     * Commits the offset of every event just written.
+     *
+     * <p>One failure is logged and the rest are still attempted: a commit that
+     * throws costs at most a redelivery of that record, and abandoning the loop
+     * would leave every later record uncommitted for no benefit.</p>
+     *
+     * @param batch the events that were inserted successfully
+     */
+    private void acknowledge(List<BufferedEvent> batch) {
+
+        for (BufferedEvent buffered : batch) {
+
+            try {
+                buffered.acknowledgment().acknowledge();
+
+            } catch (RuntimeException e) {
+
+                log.error(
+                        "Inserted analytics event {} but could not commit its Kafka offset; "
+                                + "it may be redelivered and stored twice",
+                        buffered.event().eventId(),
+                        e);
+            }
+        }
+    }
+
+    /** @return the events of a batch, dropping the acknowledgment handles */
+    private static List<AnalyticsEvent> eventsOf(List<BufferedEvent> batch) {
+        return batch.stream().map(BufferedEvent::event).toList();
     }
 
     /**
@@ -238,7 +320,7 @@ public class AnalyticsBatchService {
      *
      * @return the buffered events in arrival order, empty when there were none
      */
-    private List<AnalyticsEvent> drain() {
+    private List<BufferedEvent> drain() {
 
         lock.lock();
 
@@ -247,7 +329,7 @@ public class AnalyticsBatchService {
                 return List.of();
             }
 
-            List<AnalyticsEvent> batch = new ArrayList<>(buffer);
+            List<BufferedEvent> batch = new ArrayList<>(buffer);
 
             buffer.clear();
 
@@ -264,7 +346,7 @@ public class AnalyticsBatchService {
      *
      * @param batch the events to restore
      */
-    private void restore(List<AnalyticsEvent> batch) {
+    private void restore(List<BufferedEvent> batch) {
 
         lock.lock();
 
