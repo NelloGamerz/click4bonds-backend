@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
 import com.click4bonds.app.Modules.Bond.Dto.BondYtmResponse;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
+import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 
@@ -34,6 +36,7 @@ public class YtmController {
 
     private final BondService bondService;
     private final YtmCalculationService ytmCalculationService;
+    private final AccruedInterestService accruedInterestService;
 
     /**
      * Calculates the annual yield to maturity for the bond with this ISIN.
@@ -41,7 +44,9 @@ public class YtmController {
      * <p>
      * The result is cached on the bond ({@code annualYtm} and
      * {@code ytmCalculatedAt}) as a side effect of the calculation, so this is
-     * not a purely read-only endpoint.
+     * not a purely read-only endpoint. The accrued interest is not cached: it is
+     * a function of the settlement date, which this call chooses, rather than a
+     * property of the bond.
      *
      * @param isin            the bond's ISIN, case-insensitive.
      * @param calculationDate ISO date the projection starts from; defaults to
@@ -68,6 +73,14 @@ public class YtmController {
         BigDecimal ytmDecimal = ytmCalculationService.calculateYtm(bond, asOf);
 
         /*
+         * The same date the yield was projected from, so the accrual and the
+         * yield describe one settlement rather than two.
+         */
+        AccruedInterest accruedInterest = accruedInterestService.accrue(
+                bond,
+                asOf);
+
+        /*
          * Read the percentage back off the bond rather than recomputing it, so
          * the response can never disagree with the value just persisted.
          */
@@ -79,6 +92,8 @@ public class YtmController {
                         bond.getAnnualYtm(),
                         ytmDecimal,
                         bond.getPrice(),
+                        accruedInterest.days(),
+                        accruedInterest.amount(),
                         bond.getYtmCalculatedAt()
                 )
         );

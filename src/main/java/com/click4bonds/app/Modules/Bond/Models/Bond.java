@@ -240,13 +240,22 @@ public class Bond {
      * Do not expose them in public APIs unless
      * explicitly required by the organization.
      */
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 10, scale = 4)
     private BigDecimal semiYtm;
 
-    @Column(precision = 10, scale = 2)
+    /**
+     * The calculated yield, as a percentage.
+     * <p>
+     * Four decimal places, because that is what the calculation produces and a
+     * basis point is the fourth: two would round away real differences between
+     * bonds that quote to a hundredth of a percent. {@code semiYtm} and
+     * {@code ytc} stay at two — they are imported, not calculated, and the
+     * source states them that way.
+     */
+    @Column(precision = 10, scale = 4)
     private BigDecimal annualYtm;
 
-    @Column(precision = 10, scale = 2)
+    @Column(precision = 10, scale = 4)
     private BigDecimal ytc;
 
     private Instant ytmCalculatedAt;
