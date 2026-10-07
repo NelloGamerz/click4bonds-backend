@@ -164,22 +164,29 @@ public class ContactInquiryService {
         return email.substring(email.indexOf('@') + 1);
     }
 
+    /**
+     * Pages through inquiries for the admin console.
+     *
+     * <p>One method for both the filtered and unfiltered listing, matching the
+     * single query behind it. A null status means "every status" rather than
+     * "no inquiries", which is why the caller can pass its optional filter
+     * straight through instead of branching on it.</p>
+     *
+     * <p>The ordering is the pageable's. Nothing here defaults it — the admin
+     * endpoint supplies a sort, and a caller that does not gets the database's
+     * own row order, which is not a stable basis for paging.</p>
+     *
+     * @param status   restrict to this status, or null for every status
+     * @param pageable page and ordering request
+     * @return one page of matching inquiries
+     */
     @Transactional(readOnly = true)
-    public Page<ContactInquiryAdminResponse> getAllInquiries(
-            Pageable pageable) {
-
-        return contactInquiryRepository
-                .findAllByOrderByCreatedAtDesc(pageable)
-                .map(ContactInquiryAdminResponse::from);
-    }
-
-    @Transactional(readOnly = true)
-    public Page<ContactInquiryAdminResponse> getInquiriesByStatus(
+    public Page<ContactInquiryAdminResponse> getInquiries(
             ContactInquiryStatus status,
             Pageable pageable) {
 
         return contactInquiryRepository
-                .findByStatusOrderByCreatedAtDesc(status, pageable)
+                .findInquiries(status, pageable)
                 .map(ContactInquiryAdminResponse::from);
     }
 

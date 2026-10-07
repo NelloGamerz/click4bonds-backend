@@ -22,13 +22,12 @@ import com.click4bonds.app.Modules.OTP.Service.IdentifierNormalizer;
 import com.click4bonds.app.Modules.OTP.Service.OtpService;
 import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Dto.UserResponse;
-import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
 import com.click4bonds.app.Modules.User.Dto.VerificationResponse;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Mapper.UserMapper;
 import com.click4bonds.app.Modules.User.Model.User;
-import com.click4bonds.app.Modules.User.Model.UserVerification;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import com.click4bonds.app.Modules.User.Service.VerificationService;
 
@@ -556,49 +555,6 @@ public class AuthService {
 //                "WEB",
 //                "PROFILE",
 //                java.util.Map.of());
-        return toUserResponse(user);
-    }
-
-    /**
-     * Projects an account into the shape the API returns.
-     *
-     * <p>The verification record is dropped once KYC is complete: every channel
-     * in it reads {@code VERIFIED} by then, so it says nothing a caller can act
-     * on. The field is left null and the DTO omits it from the JSON rather than
-     * sending an object full of identical values.</p>
-     */
-    private UserResponse toUserResponse(User user) {
-
-        boolean kycCompleted = Boolean.TRUE.equals(user.getIsKycCompleted());
-
-        UserVerification verification = kycCompleted ? null : user.getVerification();
-
-        return UserResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .mobileNumber(user.getMobileNumber())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .profileImage(user.getProfileImage())
-                .onboardingStep(user.getOnboardingStep())
-                .role(user.getRole())
-                .status(user.getStatus())
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .isKycCompleted(user.getIsKycCompleted())
-                .verification(
-                        verification == null
-                                ? null
-                                : UserVerificationResponse.builder()
-                                        .id(verification.getId())
-                                        .emailStatus(verification.getEmailStatus())
-                                        .phoneStatus(verification.getPhoneStatus())
-                                        .panStatus(verification.getPanStatus())
-                                        .bankAccountStatus(verification.getBankAccountStatus())
-                                        .dematStatus(verification.getDematStatus())
-                                        .createdAt(verification.getCreatedAt())
-                                        .updatedAt(verification.getUpdatedAt())
-                                        .build())
-                .build();
+        return UserMapper.toUserResponse(user);
     }
 }
