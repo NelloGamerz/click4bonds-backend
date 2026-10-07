@@ -4,8 +4,10 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.springframework.stereotype.Service;
 
@@ -64,6 +66,21 @@ public class AuthSessionService {
     private static final Duration ROTATION_GRACE = Duration.ofSeconds(60);
 
     private static final int SESSION_ID_BYTES = 32;
+
+    /**
+     * Length of an identifier this service generates.
+     *
+     * <p>Derived from the encoder {@link #newSessionId} uses rather than written
+     * out, so the two cannot drift apart if the byte count changes.</p>
+     */
+    private static final int SESSION_ID_LENGTH = Base64.getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(new byte[SESSION_ID_BYTES])
+            .length();
+
+    /** The exact shape {@link #newSessionId} produces: base64url, nothing else. */
+    private static final Pattern SESSION_ID_SHAPE =
+            Pattern.compile("[A-Za-z0-9_-]{" + SESSION_ID_LENGTH + "}");
 
     private final RedisService redisService;
     private final AuthProperties properties;
@@ -147,7 +164,7 @@ public class AuthSessionService {
      */
     public Optional<ResolvedSession> resolve(String presentedSessionId) {
 
-        if (presentedSessionId == null || presentedSessionId.isBlank()) {
+        if (!isValidSessionId(presentedSessionId)) {
             return Optional.empty();
         }
 
@@ -182,7 +199,7 @@ public class AuthSessionService {
      */
     public void revoke(String sessionId) {
 
-        if (sessionId == null || sessionId.isBlank()) {
+        if (!isValidSessionId(sessionId)) {
             return;
         }
 
@@ -240,19 +257,21 @@ public class AuthSessionService {
                 now,
                 userAgent != null ? userAgent : current.session().userAgent());
 
-        redisService.set(
-                AuthKeyFactory.sessionKey(newSessionId),
-                rotated,
-                properties.getSession().getTtl());
-
-        // Left behind so a simultaneous request holding the old identifier is
-        // answered instead of rejected. Short-lived by construction.
-        redisService.set(
-                AuthKeyFactory.graceKey(current.sessionId()),
-                newSessionId,
-                ROTATION_GRACE);
-
-        redisService.delete(AuthKeyFactory.sessionKey(current.sessionId()));
+        // One atomic round trip: install the replacement, leave behind the
+        // pointer a simultaneous request will follow, and retire the old
+        // identifier. Done as separate calls this would cost three round trips
+        // and leave a window where both identifiers resolve.
+        redisService.applyAtomically(
+                List.of(
+                        new RedisService.Write(
+                                AuthKeyFactory.sessionKey(newSessionId),
+                                rotated,
+                                properties.getSession().getTtl()),
+                        new RedisService.Write(
+                                AuthKeyFactory.graceKey(current.sessionId()),
+                                newSessionId,
+                                ROTATION_GRACE)),
+                List.of(AuthKeyFactory.sessionKey(current.sessionId())));
 
         return new ResolvedSession(newSessionId, rotated);
     }
@@ -275,6 +294,31 @@ public class AuthSessionService {
                 properties.getSession().getTtl());
 
         return new ResolvedSession(current.sessionId(), extended);
+    }
+
+    /**
+     * Reports whether a value has the exact shape of an identifier this service
+     * generates.
+     *
+     * <p>A presented identifier arrives from a cookie and is caller-supplied,
+     * and it is used to build a Redis key. The key builder appends it to a
+     * namespace, so a value carrying a separator could address a key in a
+     * different namespace entirely — {@code grace:...} would name a rotation
+     * pointer, and reading one as a session would fail to deserialize. This
+     * check is what makes {@link AuthKeyFactory}'s "the two live in different
+     * key spaces" true of <em>presented</em> values and not merely of generated
+     * ones.</p>
+     *
+     * <p>It is applied at every point a caller-supplied identifier reaches the
+     * key builder, including {@link #revoke}, which is destructive and would
+     * otherwise delete a pointer it was never given.</p>
+     *
+     * @param sessionId value to test, may be null
+     * @return {@code true} only for base64url of exactly the generated length
+     */
+    public static boolean isValidSessionId(String sessionId) {
+
+        return sessionId != null && SESSION_ID_SHAPE.matcher(sessionId).matches();
     }
 
     /**

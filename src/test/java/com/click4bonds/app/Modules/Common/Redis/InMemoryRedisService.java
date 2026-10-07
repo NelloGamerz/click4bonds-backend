@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.Common.Redis;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -111,6 +112,21 @@ public class InMemoryRedisService implements RedisService {
         });
 
         return result[0];
+    }
+
+    @Override
+    public void applyAtomically(List<Write> writes, List<String> deletes) {
+
+        // Not atomic in the way the Redis implementation is — this fake is used
+        // single-threaded, so there is no window for another caller to observe.
+        // The order is kept the same: writes first, then deletions.
+        for (Write write : writes) {
+            store.put(write.key(), new Entry(write.value(), expiryFrom(write.ttl())));
+        }
+
+        for (String key : deletes) {
+            store.remove(key);
+        }
     }
 
     private Entry liveEntry(String key) {
