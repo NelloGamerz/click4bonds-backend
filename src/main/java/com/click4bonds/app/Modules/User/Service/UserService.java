@@ -154,20 +154,28 @@ public class UserService {
      * Pages through accounts for the admin listing.
      *
      * <p>A blank search term is not a filter that matches everything — it means
-     * no search was asked for, and the unfiltered query is cheaper.</p>
+     * no search was asked for. It is normalised to null for the repository,
+     * because the two are not the same thing to the query: null skips the
+     * comparison entirely, while a blank string would be concatenated into
+     * {@code LIKE '%%'} and match every row while looking like a real filter.</p>
      *
      * @param role     restrict to this role, or {@code null} for every role
      * @param search   term matched against name and address, or blank for none
-     * @param pageable page request
+     * @param pageable page request, carrying the ordering
      * @return one page of matching accounts
      */
     public Page<User> getUsers(UserRole role, String search, Pageable pageable) {
 
-        if (search == null || search.isBlank()) {
-            return userRepository.findUsers(role, pageable);
-        }
+        return userRepository.findUsers(role, searchOrNull(search), pageable);
+    }
 
-        return userRepository.searchUsers(role, search, pageable);
+    /**
+     * @param search a caller's search term
+     * @return the term, or null if it is absent or carries nothing to match on
+     */
+    private static String searchOrNull(String search) {
+
+        return (search == null || search.isBlank()) ? null : search;
     }
 
     /**
