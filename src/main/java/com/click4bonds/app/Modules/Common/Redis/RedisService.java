@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Common.Redis;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -82,4 +83,31 @@ public interface RedisService {
      *         return of {@code 1} means this call opened the window
      */
     long increment(String key, Duration ttl);
+
+    /**
+     * Stores several values and removes several keys as one atomic operation,
+     * in a single round trip.
+     *
+     * <p>This is the primitive behind a multi-key change that must never be
+     * observable half-applied — installing a replacement while retiring what it
+     * replaces. Issued separately, those calls would leave a window in which
+     * some had taken effect and the rest had not, and would cost one round trip
+     * each.</p>
+     *
+     * <p>Writes are applied before deletions, so a key appearing in both lists
+     * is removed rather than left holding the value just written.</p>
+     *
+     * @param writes  entries to store, in order
+     * @param deletes keys to remove, in order
+     */
+    void applyAtomically(List<Write> writes, List<String> deletes);
+
+    /**
+     * One entry of an {@link #applyAtomically} batch.
+     *
+     * @param ttl time to live; when {@code null}, zero or negative the entry is
+     *            stored without expiry
+     */
+    record Write(String key, Object value, Duration ttl) {
+    }
 }

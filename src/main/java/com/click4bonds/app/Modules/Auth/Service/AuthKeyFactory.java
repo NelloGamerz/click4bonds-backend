@@ -22,8 +22,15 @@ public final class AuthKeyFactory {
 
     /**
      * Namespace for the post-rotation pointer. A separate segment rather than a
-     * suffix on the session key, so a session identifier can never be crafted
-     * to collide with a grace entry — the two live in different key spaces.
+     * suffix on the session key, so a session identifier can never collide with
+     * a grace entry — the two live in different key spaces.
+     *
+     * <p>That separation only holds if the identifier is what it claims to be.
+     * A generated one is base64url and carries no separator, but a
+     * <em>presented</em> one is caller-supplied and is checked against that
+     * shape by {@link AuthSessionService#isValidSessionId} before it reaches
+     * this class — which is what keeps the guarantee true of input as well as
+     * of identifiers this module made itself.</p>
      */
     private static final String GRACE = "grace";
 

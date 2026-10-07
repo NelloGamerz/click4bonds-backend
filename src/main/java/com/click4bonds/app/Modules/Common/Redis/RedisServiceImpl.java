@@ -1,11 +1,15 @@
 package com.click4bonds.app.Modules.Common.Redis;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Config.RedisConfig;
@@ -27,6 +31,36 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 @Service
 public class RedisServiceImpl implements RedisService {
+
+    /**
+     * Applies an {@link #applyAtomically} batch inside Redis, so the whole set
+     * takes effect at once or not at all.
+     *
+     * <p>Sent as one command, which is the point: three separate calls would be
+     * observably half-applied between the first and the last.</p>
+     *
+     * <p>Argument layout — {@code KEYS} holds the write keys followed by the
+     * delete keys; {@code ARGV} holds the write count, then a TTL in
+     * milliseconds per write ({@code ''} for none), then the values. Deletions
+     * need no argument, so they are addressed by position in {@code KEYS}
+     * alone.</p>
+     */
+    private static final RedisScript<Long> ATOMIC_MUTATION = new DefaultRedisScript<>("""
+            local writes = tonumber(ARGV[1])
+            for i = 1, writes do
+              local ttl = ARGV[1 + i]
+              local value = ARGV[1 + writes + i]
+              if ttl == '' then
+                redis.call('SET', KEYS[i], value)
+              else
+                redis.call('SET', KEYS[i], value, 'PX', ttl)
+              end
+            end
+            for i = writes + 1, #KEYS do
+              redis.call('DEL', KEYS[i])
+            end
+            return 1
+            """, Long.class);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -151,6 +185,43 @@ public class RedisServiceImpl implements RedisService {
             throw ex;
         } catch (RuntimeException ex) {
             throw new RedisOperationException("Could not increment a Redis counter", ex);
+        }
+    }
+
+    @Override
+    public void applyAtomically(List<Write> writes, List<String> deletes) {
+
+        if (writes.isEmpty() && deletes.isEmpty()) {
+            return;
+        }
+
+        List<String> keys = new ArrayList<>(writes.size() + deletes.size());
+        List<String> args = new ArrayList<>(1 + writes.size() * 2);
+
+        args.add(Integer.toString(writes.size()));
+
+        // TTLs first, then values: the script indexes both by write position,
+        // so the two runs have to stay in that order.
+        for (Write write : writes) {
+            keys.add(write.key());
+
+            Duration ttl = write.ttl();
+            args.add(hasExpiry(ttl) ? Long.toString(ttl.toMillis()) : "");
+        }
+
+        for (Write write : writes) {
+            args.add(write(write.value()));
+        }
+
+        for (String key : deletes) {
+            keys.add(key);
+        }
+
+        try {
+            redisTemplate.execute(ATOMIC_MUTATION, keys, args.toArray(new String[0]));
+
+        } catch (RuntimeException ex) {
+            throw new RedisOperationException("Could not apply an atomic Redis mutation", ex);
         }
     }
 
