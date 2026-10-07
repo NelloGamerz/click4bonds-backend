@@ -87,7 +87,7 @@ class YtmCalculationIntegrationTest {
         // Dirty settlement pricing lowers the staged bond's XIRR.
         // For staged amortization, XIRR should be close to coupon rate but adjusted for price
         BigDecimal expectedXirrDecimal = new BigDecimal("0.100385");
-        BigDecimal expectedYtmPercentage = new BigDecimal("10.04");
+        BigDecimal expectedYtmPercentage = new BigDecimal("10.0385");
 
         // Check that the calculated XIRR is close to expected (within 0.01 tolerance)
         assertEquals(expectedYtmPercentage, bond.getAnnualYtm());

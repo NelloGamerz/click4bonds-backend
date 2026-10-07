@@ -18,6 +18,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class YtmCalculationServiceImpl implements YtmCalculationService {
 
+    /** The rating that means "government security". */
+    private static final String SOVEREIGN_RATING = "Sovereign";
+
     private final BondCashFlowService bondCashFlowService;
     private final XirrCalculator xirrCalculator;
     private final BondRepository bondRepository;
@@ -42,13 +45,24 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
         List<XirrCalculator.CashFlow> cashFlows = bondCashFlowService.generateCashFlows(bond, calculationDate);
 
         // Step 2: Calculate XIRR (returns decimal format like 0.106947)
-        BigDecimal annualYtmDecimal = xirrCalculator.calculate(cashFlows);
+        // A Sovereign is quoted on a 30/360 year; every other bond keeps the
+        // platform's actual/365 basis exactly as before.
+        BigDecimal annualYtmDecimal = isSovereign(bond.getRating())
+                ? xirrCalculator.calculate(cashFlows, XirrCalculator.DayCountBasis.THIRTY_360)
+                : xirrCalculator.calculate(cashFlows);
 
-        // Step 3: Convert from decimal to percentage and round to 2 decimal places
-        // Example: 0.106947 -> 10.6947 -> 10.69
+        // Step 3: Convert from decimal to percentage and round to 4 decimal places
+        // Example: 0.106947 -> 10.6947
+        //
+        // The rate itself already carries six decimals, so multiplying by 100
+        // lands exactly on four: this step arranges the decimal point rather than
+        // discarding anything. Four is where the precision stops being meaningful
+        // — a basis point is the fourth place — and the two-decimal figure this
+        // used to store was throwing away real differences between bonds that
+        // quote to a hundredth of a percent.
         BigDecimal annualYtmPercentage = annualYtmDecimal
         .multiply(new BigDecimal("100"))
-        .setScale(2, RoundingMode.HALF_UP);
+        .setScale(4, RoundingMode.HALF_UP);
 
         // BigDecimal annualYtmPercentage = annualYtmDecimal
         //         .multiply(new BigDecimal("100"))
@@ -65,6 +79,23 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
 
         // Step 6: Return the YTM in decimal format (as per service contract)
         return annualYtmDecimal;
+    }
+
+    /**
+     * Whether a bond's rating means a government security.
+     *
+     * <p>{@code Bond.rating} is free text, so the whole trimmed value is matched
+     * case-insensitively: {@code "Sovereign"} and {@code "SOVEREIGN"} are one,
+     * while {@code "Sovereign GOLD"} and {@code "AAA"} are not. Null is not a
+     * Sovereign either — an unrated bond keeps the 365-day year it has always
+     * been quoted on, which is the safe way round. The same rule decides which
+     * deal-confirmation sheet a bond is lettered on (see
+     * {@code DealConfirmationSheetStrategyFactory}).</p>
+     *
+     * @param rating the bond's rating, or null when it has none
+     */
+    private static boolean isSovereign(String rating) {
+        return rating != null && rating.trim().equalsIgnoreCase(SOVEREIGN_RATING);
     }
 
     /**

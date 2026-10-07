@@ -217,7 +217,7 @@ class YtmCalculationServiceTest {
         System.out.println();
         System.out.println("STEP 9: Verifying annual YTM stored on Bond...");
 
-        BigDecimal expectedPercentage = new BigDecimal("10.69");
+        BigDecimal expectedPercentage = new BigDecimal("10.6947");
 
         System.out.println("Expected Annual YTM: " + expectedPercentage);
         System.out.println("Actual Annual YTM  : " + bond.getAnnualYtm());
@@ -995,7 +995,7 @@ class YtmCalculationServiceTest {
         BigDecimal expectedAnnualYtm = expectedXirr
                 .multiply(new BigDecimal("100"))
                 .setScale(
-                        2,
+                        4,
                         RoundingMode.HALF_UP);
 
         assertEquals(
@@ -2088,10 +2088,10 @@ class YtmCalculationServiceTest {
     }
 
     /**
-     * Converts a decimal YTM/XIRR into a 2-dp percentage, as the service stores it.
+     * Converts a decimal YTM/XIRR into a 4-dp percentage, as the service stores it.
      */
     private static BigDecimal toAnnualYtmPercentage(BigDecimal decimal) {
-        return decimal.multiply(HUNDRED).setScale(2, RoundingMode.HALF_UP);
+        return decimal.multiply(HUNDRED).setScale(4, RoundingMode.HALF_UP);
     }
 
     // private static BigDecimal toAnnualYtmPercentage(BigDecimal decimal) {

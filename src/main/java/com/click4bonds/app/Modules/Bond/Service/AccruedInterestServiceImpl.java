@@ -208,6 +208,7 @@ import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
 import com.click4bonds.app.Modules.Bond.Dto.MaturitySchedule;
 import com.click4bonds.app.Modules.Bond.Dto.PrincipalRepayment;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
@@ -259,7 +260,7 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
     }
 
     @Override
-    public BigDecimal calculate(
+    public AccruedInterest accrue(
             Bond bond,
             LocalDate calculationDate) {
 
@@ -273,7 +274,7 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
         if (bond.getCouponRate().signum() == 0
                 || bond.getCouponFrequency() == CouponFrequency.AT_MATURITY) {
 
-            return BigDecimal.ZERO;
+            return new AccruedInterest(0L, BigDecimal.ZERO);
         }
 
         /*
@@ -299,7 +300,7 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                 || schedule.next() == null
                 || schedule.previous().equals(calculationDate)) {
 
-            return BigDecimal.ZERO;
+            return new AccruedInterest(0L, BigDecimal.ZERO);
         }
 
         /*
@@ -374,12 +375,14 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
          * 1.0416666667 × 3 / 30
          * = 0.1041666667
          */
-        return couponAmount
+        BigDecimal accruedInterest = couponAmount
                 .multiply(BigDecimal.valueOf(accruedDays))
                 .divide(
                         BigDecimal.valueOf(couponPeriodDays),
                         CALCULATION_SCALE,
                         RoundingMode.HALF_UP);
+
+        return new AccruedInterest(accruedDays, accruedInterest);
     }
 
     /**
