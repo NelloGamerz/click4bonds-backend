@@ -123,11 +123,15 @@ import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class BondResponse {
 
     private UUID id;

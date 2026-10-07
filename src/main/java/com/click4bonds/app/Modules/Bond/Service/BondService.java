@@ -1,7 +1,9 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
@@ -24,7 +26,9 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
+import com.click4bonds.app.Modules.Common.Exceptions.RedisOperationException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.Common.Redis.RedisService;
 import com.click4bonds.app.Modules.User.Model.User;
 
 import lombok.RequiredArgsConstructor;
@@ -35,10 +39,30 @@ import lombok.RequiredArgsConstructor;
 @Slf4j
 public class BondService {
 
+    /**
+     * Redis namespace for a single bond as served by {@link #getBond}.
+     *
+     * <p>The {@code v1} segment is the serialization generation: it moves when
+     * what a cached {@link BondResponse} looks like changes, so entries written
+     * under the old shape expire unread instead of being bound to a type they
+     * no longer fit.</p>
+     */
+    private static final String BOND_CACHE_PREFIX = "bond:v1:get:";
+
+    /**
+     * How long a bond read by ISIN may be served from Redis.
+     *
+     * <p>Every write to a bond evicts its entry, so this is a backstop rather
+     * than the normal path to freshness — it bounds how long a missed eviction
+     * can keep serving a stale price.</p>
+     */
+    private static final Duration BOND_CACHE_TTL = Duration.ofMinutes(10);
+
     private final BondRepository bondRepository;
     private final UserService userService;
     private final AnalyticsService analyticsService;
     private final BondRequestMapper bondRequestMapper;
+    private final RedisService redisService;
 
     // =========================================================
     // CREATE
@@ -75,6 +99,8 @@ public class BondService {
 
         Bond bond = bondRequestMapper.toEntity(request, admin);
 
+        evictCachedBond(isin);
+
         Bond savedBond = bondRepository.save(bond);
 
         return mapToResponse(savedBond);
@@ -98,6 +124,7 @@ public class BondService {
 
             bond.setPrice(request.getPrice());
             invalidateYieldCalculation(bond);
+            evictCachedBond(isin);
             bonds.add(bond);
         }
 
@@ -145,7 +172,7 @@ public class BondService {
 
             log.info("Fetching bond: isin={}, userId={}", isin, userId);
 
-            Bond bond = getbondByIs(isin);
+            BondResponse bond = getCachedBond(isin);
 
             log.info(
                     "Bond fetched successfully: isin={}, bondId={}",
@@ -204,8 +231,73 @@ public class BondService {
                 );
             }
 
-            return mapToResponse(bond);
+            return bond;
         }
+
+    // =========================================================
+    // CACHE
+    // =========================================================
+
+    /**
+     * Reads a bond through Redis, loading it from the database only on a miss.
+     *
+     * <p>The cache is an optimisation, not a second source of truth: a Redis
+     * failure falls back to a database read rather than failing the request, so
+     * an unreachable cache cannot take bond detail down with it. Writes are the
+     * other half of this — see {@link #evictCachedBond}.</p>
+     */
+    private BondResponse getCachedBond(String isin) {
+
+        String normalizedIsin = normalizeIsin(isin);
+
+        if (normalizedIsin == null) {
+            return mapToResponse(getbondByIs(isin));
+        }
+
+        String cacheKey = BOND_CACHE_PREFIX + normalizedIsin;
+
+        try {
+            Optional<BondResponse> cached =
+                    redisService.get(cacheKey, BondResponse.class);
+
+            if (cached.isPresent()) {
+                return cached.get();
+            }
+        } catch (RedisOperationException ex) {
+            log.warn("Bond cache read failed, reading from the database instead: isin={}",
+                    normalizedIsin, ex);
+        }
+
+        BondResponse bond = mapToResponse(getbondByIs(normalizedIsin));
+
+        try {
+            redisService.set(cacheKey, bond, BOND_CACHE_TTL);
+        } catch (RedisOperationException ex) {
+            log.warn("Bond cache write failed: isin={}", normalizedIsin, ex);
+        }
+
+        return bond;
+    }
+
+    /**
+     * Drops the cached read for {@code isin}.
+     *
+     * <p>Called before every write, so the failure modes stay consistent: if
+     * Redis is unreachable this throws and the surrounding transaction rolls
+     * back, leaving the database and the cache in agreement. Evicting after the
+     * write instead would let a failed eviction pair a committed new price with
+     * a stale cached one.</p>
+     */
+    private void evictCachedBond(String isin) {
+
+        String normalizedIsin = normalizeIsin(isin);
+
+        if (normalizedIsin == null) {
+            return;
+        }
+
+        redisService.delete(BOND_CACHE_PREFIX + normalizedIsin);
+    }
 
     // =========================================================
     // GET ALL BONDS
@@ -338,6 +430,8 @@ public class BondService {
         // Save
         // -----------------------------------------------------
 
+        evictCachedBond(isin);
+
         Bond savedBond = bondRepository.save(bond);
 
         return mapToResponse(savedBond);
@@ -382,6 +476,8 @@ public class BondService {
 
         bond.setStatus(BondStatus.ACTIVE);
 
+        evictCachedBond(isin);
+
         return mapToResponse(
                 bondRepository.save(bond));
     }
@@ -405,6 +501,8 @@ public class BondService {
         }
 
         bond.setStatus(BondStatus.SUSPENDED);
+
+        evictCachedBond(isin);
 
         return mapToResponse(
                 bondRepository.save(bond));
@@ -441,6 +539,8 @@ public class BondService {
          */
 
         bond.setStatus(BondStatus.CANCELLED);
+
+        evictCachedBond(isin);
 
         bondRepository.save(bond);
     }
