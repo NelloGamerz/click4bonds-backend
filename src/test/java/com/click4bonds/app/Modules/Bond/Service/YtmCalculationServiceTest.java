@@ -2103,8 +2103,8 @@ class YtmCalculationServiceTest {
      * annualCoupon × days in the period / days in the year
      * </pre>
      *
-     * The year is the one the period opens in: 366 for a leap year, 365
-     * otherwise.
+     * The year is the one the coupon is paid in: 366 for a leap year, 365
+     * otherwise. A period spanning the end of a year is not split.
      */
     private static BigDecimal monthlyCoupon(
             BigDecimal annualCoupon,
@@ -2112,7 +2112,7 @@ class YtmCalculationServiceTest {
             LocalDate periodEnd) {
 
         long days = ChronoUnit.DAYS.between(periodStart, periodEnd);
-        int daysInYear = Year.isLeap(periodStart.getYear()) ? 366 : 365;
+        int daysInYear = Year.isLeap(periodEnd.getYear()) ? 366 : 365;
 
         return annualCoupon
                 .multiply(BigDecimal.valueOf(days))

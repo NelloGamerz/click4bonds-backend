@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -66,11 +67,11 @@ class MonthlyCouponDayCountTest {
     // ======================
 
     @Test
-    void measuresEveryPeriodOpeningInALeapYearOverThreeHundredAndSixtySixDays() {
+    void measuresEveryCouponPaidInALeapYearOverThreeHundredAndSixtySixDays() {
 
         /*
          * The whole leap year, not merely the period the leap day falls in:
-         * January's 2028 period has no part of the extra day in it and is still
+         * January's 2028 coupon has no part of the extra day in it and is still
          * measured over 366.
          */
         assertEquals(366, MonthlyCouponDayCount.daysInYear(
@@ -82,39 +83,121 @@ class MonthlyCouponDayCountTest {
     }
 
     @Test
-    void measuresEveryPeriodOpeningInANormalYearOverThreeHundredAndSixtyFiveDays() {
+    void measuresEveryCouponPaidInANormalYearOverThreeHundredAndSixtyFiveDays() {
 
         assertEquals(365, MonthlyCouponDayCount.daysInYear(
                 LocalDate.of(2027, 1, 1)));
         assertEquals(365, MonthlyCouponDayCount.daysInYear(
                 LocalDate.of(2027, 2, 1)));
+        assertEquals(365, MonthlyCouponDayCount.daysInYear(
+                LocalDate.of(2029, 1, 17)));
+    }
+
+    // ======================
+    // The year a period is paid in
+    // ======================
+
+    @Test
+    void measuresTheCrossYearPeriodOverTheYearItIsPaidIn() {
+
+        /*
+         * 17-Dec-2028 -> 17-Jan-2029 is 31 days of December paid in January.
+         * The year the coupon is paid in is 2029, which is not a leap year, so
+         * the period is measured over 365 — 31/365, not 31/366:
+         *
+         * 40 × 11 × 31 / (100 × 365) = 0.3736986301
+         */
+        assertAmountEquals(
+                "0.3736986301",
+                MonthlyCouponDayCount.coupon(
+                        new BigDecimal("40"),
+                        new BigDecimal("11"),
+                        LocalDate.of(2028, 12, 17),
+                        LocalDate.of(2029, 1, 17),
+                        SCALE));
     }
 
     @Test
-    void measuresTheJanuaryPeriodOverTheYearItOpensInRatherThanTheYearItIsPaid() {
+    void doesNotSplitTheCrossYearPeriodAtTheCalendarYearBoundary() {
 
         /*
-         * The period paid in January opens in the previous December, and every
-         * one of its days falls in that previous year. A January 2028 coupon
-         * opening in December 2027 is therefore measured over 365 days, while
-         * the February coupon that follows it opens in 2028 and uses 366.
+         * Splitting the period would be 14/366 + 17/365 = 0.0848267086, giving
+         * 0.3732375178 rather than the 0.3736986301 the same period pays when
+         * it is measured whole over the 365 days of the year it is paid in.
          */
-        assertAmountEquals(
-                "1.0191780822",
-                MonthlyCouponDayCount.coupon(
-                        new BigDecimal("100"),
-                        new BigDecimal("12"),
-                        LocalDate.of(2027, 12, 1),
-                        LocalDate.of(2028, 1, 1),
-                        SCALE));
+        BigDecimal splitFraction = new BigDecimal("14")
+                .divide(new BigDecimal("366"), SCALE, RoundingMode.HALF_UP)
+                .add(new BigDecimal("17").divide(new BigDecimal("365"), SCALE, RoundingMode.HALF_UP));
+
+        assertAmountEquals("0.0848267086", splitFraction);
+
+        BigDecimal splitCoupon = new BigDecimal("40")
+                .multiply(new BigDecimal("11"))
+                .multiply(splitFraction)
+                .divide(new BigDecimal("100"), SCALE, RoundingMode.HALF_UP);
+
+        assertAmountEquals("0.3732375178", splitCoupon);
 
         assertAmountEquals(
-                "1.0163934426",
+                "0.3736986301",
                 MonthlyCouponDayCount.coupon(
-                        new BigDecimal("100"),
-                        new BigDecimal("12"),
-                        LocalDate.of(2028, 1, 1),
-                        LocalDate.of(2028, 2, 1),
+                        new BigDecimal("40"),
+                        new BigDecimal("11"),
+                        LocalDate.of(2028, 12, 17),
+                        LocalDate.of(2029, 1, 17),
+                        SCALE));
+    }
+
+    @Test
+    void measuresAJanuaryToFebruaryPeriodOfALeapYearOverThreeHundredAndSixtySixDays() {
+
+        /*
+         * 17-Jan-2028 -> 17-Feb-2028 is paid in 2028, a leap year, so it is
+         * measured over 366 even though the leap day is outside it.
+         *
+         * 40 × 11 × 31 / (100 × 366) = 0.3726775956
+         */
+        assertAmountEquals(
+                "0.3726775956",
+                MonthlyCouponDayCount.coupon(
+                        new BigDecimal("40"),
+                        new BigDecimal("11"),
+                        LocalDate.of(2028, 1, 17),
+                        LocalDate.of(2028, 2, 17),
+                        SCALE));
+    }
+
+    @Test
+    void measuresAFebruaryToMarchPeriodOfALeapYearOverThreeHundredAndSixtySixDays() {
+
+        /*
+         * The 29-day February period, paid in the leap year:
+         *
+         * 40 × 11 × 29 / (100 × 366) = 0.3486338798
+         */
+        assertAmountEquals(
+                "0.3486338798",
+                MonthlyCouponDayCount.coupon(
+                        new BigDecimal("40"),
+                        new BigDecimal("11"),
+                        LocalDate.of(2028, 2, 17),
+                        LocalDate.of(2028, 3, 17),
+                        SCALE));
+    }
+
+    @Test
+    void measuresAJanuaryToFebruaryPeriodOfANormalYearOverThreeHundredAndSixtyFiveDays() {
+
+        /*
+         * 40 × 11 × 31 / (100 × 365) = 0.3736986301
+         */
+        assertAmountEquals(
+                "0.3736986301",
+                MonthlyCouponDayCount.coupon(
+                        new BigDecimal("40"),
+                        new BigDecimal("11"),
+                        LocalDate.of(2029, 1, 17),
+                        LocalDate.of(2029, 2, 17),
                         SCALE));
     }
 
@@ -123,15 +206,15 @@ class MonthlyCouponDayCountTest {
     // ======================
 
     @Test
-    void pricesAThirtyOneDayMonthOfAThreeHundredAndSixtyFiveDayYear() {
+    void pricesAThirtyOneDayMonthPaidInAThreeHundredAndSixtyFiveDayYear() {
 
         assertAmountEquals(
                 "1.0191780822",
                 MonthlyCouponDayCount.coupon(
                         new BigDecimal("100"),
                         new BigDecimal("12"),
-                        LocalDate.of(2027, 12, 1),
-                        LocalDate.of(2028, 1, 1),
+                        LocalDate.of(2028, 12, 1),
+                        LocalDate.of(2029, 1, 1),
                         SCALE));
     }
 
@@ -174,13 +257,18 @@ class MonthlyCouponDayCountTest {
     @Test
     void usesTheOutstandingPrincipalRatherThanTheFaceValue() {
 
+        /*
+         * 95.25 of principal over 31 days paid in 2029, a normal year:
+         *
+         * 95.25 × 12 × 31 / (100 × 365) = 0.9707671233
+         */
         assertAmountEquals(
                 "0.9707671233",
                 MonthlyCouponDayCount.coupon(
                         new BigDecimal("95.25"),
                         new BigDecimal("12"),
-                        LocalDate.of(2027, 12, 1),
-                        LocalDate.of(2028, 1, 1),
+                        LocalDate.of(2028, 12, 1),
+                        LocalDate.of(2029, 1, 1),
                         SCALE));
     }
 

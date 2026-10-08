@@ -64,13 +64,12 @@ class AccruedInterestServiceImplTest {
     }
 
     @Test
-    void measuresTheMonthlyAccrualOverTheYearItsPeriodOpensIn() {
+    void measuresTheMonthlyAccrualOverTheYearItsCouponIsPaidIn() {
 
         /*
-         * The period runs from 15 February 2028 to 15 March 2028, so it opens
-         * in the leap year 2028 and is measured over 366 days. Five days of it
-         * are therefore measured over that same year, even though those five
-         * days sit before 29 February:
+         * The period runs from 15 February 2028 to 15 March 2028, so the
+         * coupon is paid in the leap year 2028 and the period is measured over
+         * 366 days. Five days of it are therefore measured over that same year:
          *
          * 100 × 12 × 5 / (100 × 366) = 0.16393442622950819672
          */
@@ -78,6 +77,23 @@ class AccruedInterestServiceImplTest {
                 bond("12.00", CouponFrequency.MONTHLY, "15th of every month", LocalDate.of(2028, 12, 15)),
                 LocalDate.of(2028, 2, 20));
         assertClose(new BigDecimal("0.16393442622950819672"), result);
+    }
+
+    @Test
+    void measuresTheCrossYearMonthlyAccrualOverTheYearItsCouponIsPaidIn() {
+
+        /*
+         * Accruing to the coupon paid on 17 January 2029, from the coupon paid
+         * on 17 December 2028. That coupon is paid in 2029, which is not a leap
+         * year, so the period — and the eight days accrued of it — are measured
+         * over 365:
+         *
+         * 100 × 11 × 8 / (100 × 365) = 0.24109589041095890411
+         */
+        BigDecimal result = service.calculate(
+                bond("11.00", CouponFrequency.MONTHLY, "17th of every month", LocalDate.of(2029, 2, 17)),
+                LocalDate.of(2028, 12, 25));
+        assertClose(new BigDecimal("0.24109589041095890411"), result);
     }
 
     @Test
