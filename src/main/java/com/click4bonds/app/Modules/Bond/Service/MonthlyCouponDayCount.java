@@ -25,18 +25,25 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
  *
  * <h2>Which year the period belongs to</h2>
  *
- * <p>The year the period <em>opens</em> in. For a monthly bond that is also the
- * year every one of the period's days falls in, with one exception: the period
- * paid in January, which opens in the previous December and covers only days of
- * that previous year. A period opening in a leap year is measured over 366 days
- * — every period of that year, not merely the one containing 29 February — and
- * a period opening in any other year over 365.
+ * <p>The year the coupon is <em>paid</em> in — the year the period ends in, not
+ * the year it opens in. A period ending in a leap year is measured over 366
+ * days whatever part of it the leap day falls in, and a period ending in any
+ * other year over 365.
+ *
+ * <p>A period is never split across the years it spans. For a monthly bond the
+ * two years differ on exactly one period, the coupon paid in January, which
+ * covers the previous December:
  *
  * <pre>
- * 1-Dec-2027 -> 1-Jan-2028   31 days, opens 2027   31 / 365
- * 1-Jan-2028 -> 1-Feb-2028   31 days, opens 2028   31 / 366
- * 1-Feb-2028 -> 1-Mar-2028   29 days, opens 2028   29 / 366
+ * 17-Jan-2028 -> 17-Feb-2028   31 days, paid 2028   31 / 366
+ * 17-Feb-2028 -> 17-Mar-2028   29 days, paid 2028   29 / 366
+ * 17-Dec-2028 -> 17-Jan-2029   31 days, paid 2029   31 / 365
  * </pre>
+ *
+ * <p>The December days of that last period are therefore measured over 365, the
+ * year the coupon is paid in, rather than the 366 of the year they fall in.
+ * That is the source schedule's convention, and it is the one this class
+ * implements.
  *
  * <h2>What this does not govern</h2>
  *
@@ -46,8 +53,8 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
  * so it keeps the existing {@code rate / frequency} coupon.
  *
  * <p>The same day count governs the accrued interest a buyer pays for such a
- * bond, so an accrual inside a period is measured over the same year as the
- * coupon it accrues towards.
+ * bond: an accrual for part of a period is measured over the same year as the
+ * coupon it accrues towards, because it is given the same period end.
  */
 final class MonthlyCouponDayCount {
 
@@ -100,7 +107,7 @@ final class MonthlyCouponDayCount {
      * The interest earned over {@code days} of the period running from
      * {@code periodStart} up to but not including {@code periodEnd}.
      *
-     * <p>The period sets the year, so an accrual for part of a period is
+     * <p>The period end sets the year, so an accrual for part of a period is
      * measured over the same year as the coupon it accrues towards.
      *
      * @param days the days of the period the interest is earned over, which is
@@ -127,18 +134,21 @@ final class MonthlyCouponDayCount {
                 .divide(
                         HUNDRED.multiply(
                                 BigDecimal.valueOf(
-                                        daysInYear(periodStart))),
+                                        daysInYear(periodEnd))),
                         scale,
                         RoundingMode.HALF_UP);
     }
 
     /**
-     * The length of the year the period opens in: 366 for a leap year, 365
+     * The length of the year the coupon is paid in: 366 for a leap year, 365
      * otherwise.
+     *
+     * @param periodEnd the date the coupon is paid on — the end of the period,
+     *                  which is what decides the year
      */
-    static int daysInYear(LocalDate periodStart) {
+    static int daysInYear(LocalDate periodEnd) {
 
-        return Year.isLeap(periodStart.getYear())
+        return Year.isLeap(periodEnd.getYear())
                 ? DAYS_IN_LEAP_YEAR
                 : DAYS_IN_YEAR;
     }

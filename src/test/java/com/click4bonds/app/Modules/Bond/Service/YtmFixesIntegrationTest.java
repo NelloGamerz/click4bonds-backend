@@ -127,8 +127,9 @@ class YtmFixesIntegrationTest {
          *
          * opening principal × 12% × days in the period / (100 × 365)
          *
-         * None of these periods spans 29 February, so every one of them is
-         * measured over 365 days and only the count of days varies.
+         * Every one of these coupons is paid in 2027, which is not a leap year,
+         * so every one of them is measured over 365 days and only the count of
+         * days varies.
          */
         BigDecimal runningPrincipal = FACE;
 

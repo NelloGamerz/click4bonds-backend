@@ -360,12 +360,12 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
              * ---------------------------------
              *        100 × days in the year
              *
-             * The period sets the year, so an accrual is measured over the
-             * same year as the coupon it accrues towards: 366 days for a
-             * period opening in a leap year, 365 otherwise.
+             * The period end — the coupon date — sets the year, so an accrual
+             * is measured over the same year as the coupon it accrues towards:
+             * 366 days for a coupon paid in a leap year, 365 otherwise.
              *
              * Example for a 12.50% monthly coupon on face value 100, three
-             * days into a 31-day period opening in 2027:
+             * days into a 31-day period paid on 15 March 2027:
              *
              * 100 × 12.50 × 3 / (100 × 365)
              * = 0.1027397260

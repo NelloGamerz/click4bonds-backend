@@ -868,7 +868,7 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
                  * A monthly non-Sovereign bond is priced over the days its
                  * period actually covers, so this covers the stub period too:
                  * it is opened by the same previous anniversary as any other
-                 * period, and is measured over the year that opens in.
+                 * period, and is measured over the year it is paid in.
                  */
                 couponAmount = calculateMonthlyCoupon(
                         bond,
@@ -1003,7 +1003,7 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
      * A monthly coupon of a bond that is not a Sovereign is earned over the
      * days its period actually covers, not over a flat twelfth of a year.
      *
-     * Formula (Actual/365, or Actual/366 for a period opening in a leap year):
+     * Formula (Actual/365, or Actual/366 for a coupon paid in a leap year):
      *
      * principal × couponRate × days in the period
      * -------------------------------------------
@@ -1013,17 +1013,21 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
      *
      * principal = 100
      * couponRate = 12.00
-     * 01-Jan-2027 -> 01-Feb-2027 = 31 days, opening in a 365-day year
+     * 01-Jan-2027 -> 01-Feb-2027 = 31 days, paid in a 365-day year
      *
      * 100 × 12.00 × 31 / (100 × 365) = 1.0191780822
      *
-     * Example, a period opening in a leap year:
+     * Example, a coupon paid in a leap year:
      *
      * principal = 100
      * couponRate = 12.00
-     * 01-Feb-2028 -> 01-Mar-2028 = 29 days, opening in a 366-day year
+     * 01-Feb-2028 -> 01-Mar-2028 = 29 days, paid in a 366-day year
      *
      * 100 × 12.00 × 29 / (100 × 366) = 0.9508196721
+     *
+     * The year is taken from the payment date, so a period spanning the end of
+     * a year is not split: 17-Dec-2028 -> 17-Jan-2029 is 31 days paid in 2029,
+     * and is measured over 365.
      *
      * The period opens on the previous anniversary, which is also what opens
      * the stub period - see

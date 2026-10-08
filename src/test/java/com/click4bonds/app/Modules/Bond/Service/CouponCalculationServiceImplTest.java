@@ -80,7 +80,7 @@ class CouponCalculationServiceImplTest {
     }
 
     @Test
-    void shouldPriceEachMonthlyCouponOverTheYearItsPeriodOpensIn() {
+    void shouldPriceEachMonthlyCouponOverTheYearItIsPaidIn() {
 
         Bond bond = bond("12", CouponFrequency.MONTHLY);
         bond.setIpDateDescription("1st of every month");
@@ -94,20 +94,52 @@ class CouponCalculationServiceImplTest {
                 LocalDate.of(2027, 12, 15));
 
         /*
-         * A period is measured over the year it opens in. January's 2028 period
-         * opens in December 2027 and is measured over 365 days; the February
-         * period opens in the leap year 2028 and is measured over 366, as every
-         * period of that year is.
+         * Every one of these coupons is paid in the leap year 2028 — including
+         * January's, whose days all fall in December 2027 — so every one of
+         * them is measured over 366 days:
          *
-         * 12 × 31 / 365 = 1.0191780822
          * 12 × 31 / 366 = 1.0163934426
          * 12 × 29 / 366 = 0.9508196721
          */
         assertAmounts(result, List.of(
-                "1.0191780822",
+                "1.0163934426",
                 "1.0163934426",
                 "0.9508196721",
                 "1.0163934426"));
+    }
+
+    @Test
+    void shouldMeasureTheCrossYearMonthlyPeriodOverTheYearItIsPaidIn() {
+
+        Bond bond = bond("11", CouponFrequency.MONTHLY);
+        bond.setIpDateDescription("17th of every month");
+        bond.setMaturityDate(LocalDate.of(2029, 2, 17));
+
+        List<CouponPayment> result = service.calculateCoupons(
+                bond,
+                List.of(LocalDate.of(2028, 12, 17), LocalDate.of(2029, 1, 17),
+                        LocalDate.of(2029, 2, 17)),
+                List.of(),
+                LocalDate.of(2028, 11, 20));
+
+        /*
+         * The coupon paid on 17 January 2029 covers 17 December 2028 to 17
+         * January 2029. It is paid in 2029, which is not a leap year, so its 31
+         * days are measured over 365 and not split across the two years:
+         *
+         * 100 × 11 × 31 / (100 × 365) = 0.9342465753
+         *
+         * The December coupon before it is paid in the leap year 2028, so its
+         * 30 days are measured over 366, and the February coupon after it is a
+         * 31-day period paid in 2029:
+         *
+         * 100 × 11 × 30 / (100 × 366) = 0.9016393443
+         * 100 × 11 × 31 / (100 × 365) = 0.9342465753
+         */
+        assertAmounts(result, List.of(
+                "0.9016393443",
+                "0.9342465753",
+                "0.9342465753"));
     }
 
     @Test
