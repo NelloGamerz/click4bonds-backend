@@ -415,6 +415,73 @@ class DealConfirmationWriterTest {
     }
 
     // ============================================================
+    // VIEW ONLY
+    // ============================================================
+
+    @Test
+    void previewDescribesTheDealWithoutWritingIt() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        givenActiveCustomer();
+        givenBond(bond);
+
+        DealConfirmationWriter.CreatedDeal projected =
+                writer.preview(USER_ID, request(5L));
+
+        // Everything a customer reads on the page is filled in.
+        assertEquals(ISIN, projected.response().getIsin());
+        assertEquals(100L, projected.response().getQuantityPerLot());
+        assertEquals(5L, projected.response().getNumberOfLots());
+        assertEquals(500L, projected.response().getTotalQuantity());
+        assertEquals(
+                new BigDecimal("49470.00"),
+                projected.response().getTotalAmount());
+        assertEquals("Test Bond", projected.documentData().bondName());
+
+        /*
+         * The fields only a written deal can have are null rather than invented.
+         * The reference especially: it is issued from a table, so producing one
+         * here would mean writing a row — and it would be a number no deal holds.
+         */
+        assertNull(projected.response().getDealConfirmationId());
+        assertNull(projected.response().getDealReference());
+        assertNull(projected.response().getStatus());
+        assertNull(projected.documentData().dealReference());
+
+        /*
+         * Nothing was reserved, nothing was written, and no reference was issued —
+         * which is the whole point of the read-only path.
+         */
+        Mockito.verify(bondRepository, Mockito.never())
+                .reserveQuantity(any(), anyLong());
+        Mockito.verify(bondRepository, Mockito.never()).save(any());
+        Mockito.verifyNoInteractions(dealConfirmationRepository);
+        Mockito.verifyNoInteractions(dealReferenceGenerator);
+    }
+
+    @Test
+    void previewRefusesARequestAPurchaseWouldRefuse() {
+
+        /*
+         * The two paths share their validation on purpose. A preview that accepted
+         * a request the purchase rejects would show a customer figures for a deal
+         * they cannot have, which is worse than showing them nothing.
+         */
+        User suspended = customer();
+        suspended.setStatus(UserStatus.SUSPENDED);
+
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(suspended);
+
+        assertThrows(
+                ForbiddenException.class,
+                () -> writer.preview(USER_ID, request(5L)));
+
+        Mockito.verifyNoInteractions(bondRepository);
+    }
+
+    // ============================================================
     // CUSTOMER
     // ============================================================
 

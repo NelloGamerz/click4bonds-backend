@@ -43,6 +43,13 @@ import lombok.extern.slf4j.Slf4j;
  * conditional UPDATE before the deal is inserted. If the insert then fails, the
  * transaction rolls back and the units return to the bond. The reverse order
  * would risk a deal that exists with no units behind it.</p>
+ *
+ * <p><strong>{@link #preview} is the read-only twin of {@link #create}.</strong>
+ * It validates a request through the same {@code prepare} step and computes the
+ * same figures, but reserves nothing, issues no reference and writes no row, so
+ * a caller that is only showing the deal cannot leave the database changed. The
+ * two live together because they must agree: a preview that accepted something
+ * the purchase refuses would show a customer a deal they cannot have.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -64,6 +71,24 @@ public class DealConfirmationWriter {
     }
 
     /**
+     * Everything a request resolves to before anything is written.
+     *
+     * <p>Exists so that {@link #create} and {@link #preview} agree on what a
+     * request means: a preview that validated the bond, the lot size or the
+     * quantities differently from a purchase would show figures the purchase
+     * would refuse to honour. Only the write half differs between the two.</p>
+     */
+    private record PurchaseContext(
+            String isin,
+            User customer,
+            Bond bond,
+            long quantityPerLot,
+            long totalQuantity,
+            LocalDate dealDate,
+            LocalDate valueDate) {
+    }
+
+    /**
      * Validates the request, reserves the units and persists the deal.
      *
      * @param userId  authenticated customer, from the JWT
@@ -82,6 +107,179 @@ public class DealConfirmationWriter {
             UUID userId,
             CreateDealConfirmationRequest request,
             String idempotencyKey) {
+
+        PurchaseContext context = prepare(userId, request);
+
+        Bond bond = context.bond();
+
+        /*
+         * THE oversell guard. One conditional UPDATE, evaluated by PostgreSQL
+         * while it holds the row lock: if another buyer got there first and took
+         * the remaining units, this matches zero rows.
+         */
+        int reserved = bondRepository.reserveQuantity(bond.getId(), context.totalQuantity());
+
+        if (reserved == 0) {
+
+            log.warn(
+                    "Inventory reservation rejected: isin={} requested={} (insufficient remaining quantity)",
+                    context.isin(),
+                    context.totalQuantity());
+
+            throw new ConflictException(
+                    "Insufficient quantity available for bond: " + context.isin());
+        }
+
+        /*
+         * The UPDATE went straight to the database, so the bond in memory is
+         * stale — it still holds the pre-reservation figure. The repository
+         * clears the persistence context for exactly this reason; reload to get
+         * the post-reservation value.
+         */
+        Bond reservedBond = bondRepository.findById(bond.getId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Bond not found with ISIN: " + context.isin()));
+
+        markSoldOutIfExhausted(reservedBond);
+
+        log.info(
+                "Inventory reserved: isin={} quantity={} remaining={}",
+                context.isin(),
+                context.totalQuantity(),
+                reservedBond.getRemainingQuantity());
+
+        DealConfirmation deal = buildDeal(
+                context.customer(),
+                reservedBond,
+                request,
+                context.quantityPerLot(),
+                context.totalQuantity(),
+                idempotencyKey,
+                dealReferenceGenerator.next(context.dealDate()));
+
+        DealConfirmation saved = dealConfirmationRepository.save(deal);
+
+        log.info(
+                "Deal created: reference={} isin={} totalQuantity={}",
+                saved.getDealReference(),
+                saved.getIsin(),
+                saved.getTotalQuantity());
+
+        /*
+         * Computed here, in the transaction, because the services behind it take
+         * the Bond entity and the document step that consumes the result runs
+         * after this transaction has committed. An empty result is normal — the
+         * document step declines to generate a letter rather than printing a
+         * blank interest figure.
+         */
+        DealAccrual accrual = accrualCalculator
+                .calculate(reservedBond, context.valueDate())
+                .orElse(null);
+
+        /*
+         * Mapped while the session is open. These two DTOs are the only things
+         * that leave the transaction, so the caller can log and document the deal
+         * after it has committed without touching a lazy association.
+         */
+        return new CreatedDeal(
+                mapper.toResponse(saved),
+                mapper.toDocumentData(saved, context.valueDate(), accrual));
+    }
+
+    /**
+     * Answers what the deal would be, writing nothing.
+     *
+     * <p>For a caller that is showing the deal rather than filing it: the request
+     * is validated exactly as a purchase would be and the figures are computed
+     * from the bond as it stands, but no units are reserved, no reference is
+     * issued and no row is written. Nothing here can leave the database changed,
+     * which is why it is {@code readOnly} rather than merely refraining from
+     * saving — the setting is what makes that a property of the transaction
+     * rather than a promise about this method body.</p>
+     *
+     * <p><strong>The deal it describes has no reference and no id</strong>, and
+     * that is not a gap to fill: a reference is issued from the database by
+     * {@link DealReferenceGenerator}, so producing one here would mean writing
+     * the sequence row — and a reference allocated for a page that was only being
+     * looked at would be a number no deal ever holds. The response carries them
+     * as null, which is what "this deal does not exist yet" honestly looks
+     * like.</p>
+     *
+     * @param userId  authenticated customer, from the JWT
+     * @param request requested bond and quantities
+     * @return the figures the deal would carry, with nothing persisted
+     * @throws ResourceNotFoundException bond or customer does not exist
+     * @throws BadRequestException       bond is not purchasable, or the
+     *                                   quantities overflow
+     * @throws ConflictException         the bond does not have enough units left
+     */
+    @Transactional(readOnly = true)
+    public CreatedDeal preview(
+            UUID userId,
+            CreateDealConfirmationRequest request) {
+
+        PurchaseContext context = prepare(userId, request);
+
+        /*
+         * Measured against the bond as loaded rather than against a post-
+         * reservation reload, because there is no reservation. The accrual reads
+         * the coupon schedule and the price, neither of which the reservation
+         * touches, so this is the same figure {@link #create} would compute.
+         */
+        DealAccrual accrual = accrualCalculator
+                .calculate(context.bond(), context.valueDate())
+                .orElse(null);
+
+        DealConfirmation projected = buildDeal(
+                context.customer(),
+                context.bond(),
+                request,
+                context.quantityPerLot(),
+                context.totalQuantity(),
+                null,
+                null);
+
+        /*
+         * The entity's builder defaults the status to CREATED, which is true of a
+         * row that was written and false of one that was not. Cleared so the
+         * response cannot report a deal in a state no deal is in.
+         */
+        projected.setStatus(null);
+
+        log.info(
+                "View-only deal request: isin={} numberOfLots={} totalQuantity={}"
+                        + " (nothing was written)",
+                context.isin(),
+                request.numberOfLots(),
+                context.totalQuantity());
+
+        return new CreatedDeal(
+                mapper.toResponse(projected),
+                mapper.toDocumentData(projected, context.valueDate(), accrual));
+    }
+
+    // =========================================================
+    // THE REQUEST, BEFORE ANYTHING IS WRITTEN
+    // =========================================================
+
+    /**
+     * Resolves a request into the customer, the bond and the quantities, and
+     * refuses it if a purchase of it would be refused.
+     *
+     * <p>Reads only — the same method serves {@link #create}, which goes on to
+     * reserve and write, and {@link #preview}, which stops here. Duplicating the
+     * validation for the preview would let the two drift, and a preview that
+     * accepted something the purchase rejects is worse than no preview: it shows
+     * a customer figures for a deal they cannot have.</p>
+     *
+     * @throws ResourceNotFoundException bond or customer does not exist
+     * @throws BadRequestException       bond is not purchasable or the quantities
+     *                                   overflow
+     * @throws ConflictException         the bond does not have enough units left
+     */
+    private PurchaseContext prepare(
+            UUID userId,
+            CreateDealConfirmationRequest request) {
 
         String isin = normalizeIsin(request.isin());
 
@@ -119,7 +317,7 @@ public class DealConfirmationWriter {
                 request.numberOfLots());
 
         log.info(
-                "Deal creation attempt: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
+                "Deal request: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
                 isin,
                 quantityPerLot,
                 request.numberOfLots(),
@@ -127,78 +325,14 @@ public class DealConfirmationWriter {
 
         validatePurchasable(bond, totalQuantity);
 
-        /*
-         * THE oversell guard. One conditional UPDATE, evaluated by PostgreSQL
-         * while it holds the row lock: if another buyer got there first and took
-         * the remaining units, this matches zero rows.
-         */
-        int reserved = bondRepository.reserveQuantity(bond.getId(), totalQuantity);
-
-        if (reserved == 0) {
-
-            log.warn(
-                    "Inventory reservation rejected: isin={} requested={} (insufficient remaining quantity)",
-                    isin,
-                    totalQuantity);
-
-            throw new ConflictException(
-                    "Insufficient quantity available for bond: " + isin);
-        }
-
-        /*
-         * The UPDATE went straight to the database, so the bond in memory is
-         * stale — it still holds the pre-reservation figure. The repository
-         * clears the persistence context for exactly this reason; reload to get
-         * the post-reservation value.
-         */
-        Bond reservedBond = bondRepository.findById(bond.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + isin));
-
-        markSoldOutIfExhausted(reservedBond);
-
-        log.info(
-                "Inventory reserved: isin={} quantity={} remaining={}",
+        return new PurchaseContext(
                 isin,
-                totalQuantity,
-                reservedBond.getRemainingQuantity());
-
-        DealConfirmation deal = buildDeal(
                 customer,
-                reservedBond,
-                request,
+                bond,
                 quantityPerLot,
                 totalQuantity,
-                idempotencyKey,
-                dealDate);
-
-        DealConfirmation saved = dealConfirmationRepository.save(deal);
-
-        log.info(
-                "Deal created: reference={} isin={} totalQuantity={}",
-                saved.getDealReference(),
-                saved.getIsin(),
-                saved.getTotalQuantity());
-
-        /*
-         * Computed here, in the transaction, because the services behind it take
-         * the Bond entity and the document step that consumes the result runs
-         * after this transaction has committed. An empty result is normal — the
-         * document step declines to generate a letter rather than printing a
-         * blank interest figure.
-         */
-        DealAccrual accrual = accrualCalculator
-                .calculate(reservedBond, valueDate)
-                .orElse(null);
-
-        /*
-         * Mapped while the session is open. These two DTOs are the only things
-         * that leave the transaction, so the caller can log and document the deal
-         * after it has committed without touching a lazy association.
-         */
-        return new CreatedDeal(
-                mapper.toResponse(saved),
-                mapper.toDocumentData(saved, valueDate, accrual));
+                dealDate,
+                valueDate);
     }
 
     // =========================================================
@@ -330,6 +464,13 @@ public class DealConfirmationWriter {
     // PERSISTENCE
     // =========================================================
 
+    /**
+     * @param dealReference the reference this deal is being filed under, or null
+     *                      for a preview. Deliberately a parameter rather than
+     *                      something this method asks the generator for: issuing
+     *                      one writes to the sequence table, and a preview must
+     *                      not.
+     */
     private DealConfirmation buildDeal(
             User customer,
             Bond bond,
@@ -337,12 +478,12 @@ public class DealConfirmationWriter {
             long quantityPerLot,
             long totalQuantity,
             String idempotencyKey,
-            LocalDate dealDate) {
+            String dealReference) {
 
         BigDecimal pricePerUnit = bond.getPrice();
 
         return DealConfirmation.builder()
-                .dealReference(dealReferenceGenerator.next(dealDate))
+                .dealReference(dealReference)
                 .customer(customer)
                 .bond(bond)
                 .isin(bond.getIsin())

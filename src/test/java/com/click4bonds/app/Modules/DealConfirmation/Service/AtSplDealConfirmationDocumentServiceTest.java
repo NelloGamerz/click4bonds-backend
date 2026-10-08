@@ -353,6 +353,52 @@ class AtSplDealConfirmationDocumentServiceTest {
         verifyNoInteractions(templateWriter);
     }
 
+    @Test
+    void refusesASnapshotWithNoReference() {
+
+        /*
+         * The values factory no longer requires a reference, because the same
+         * values are built for a view-only request describing a deal that was
+         * never written. A letter is what needs one: it prints the reference in A5
+         * and files both artefacts under it, so a reference-less snapshot would
+         * mean a blank cell and a key reading "null.pdf". That guard lives here,
+         * at the layer that would build both, and it is checked before anything is
+         * written.
+         */
+        DealConfirmationDocumentData noReference = snapshot(null);
+
+        DealConfirmationDocumentData withoutReference = new DealConfirmationDocumentData(
+                null,
+                noReference.dealDate(),
+                noReference.dealCreatedAt(),
+                noReference.valueDate(),
+                noReference.customerName(),
+                noReference.customerEmail(),
+                noReference.bondName(),
+                noReference.isin(),
+                noReference.securityType(),
+                noReference.rating(),
+                noReference.couponRate(),
+                noReference.maturityDate(),
+                noReference.ipDateDescription(),
+                noReference.previousCouponDate(),
+                noReference.accruedDays(),
+                noReference.accruedInterestPerHundredFace(),
+                noReference.quantityPerLot(),
+                noReference.numberOfLots(),
+                noReference.totalQuantity(),
+                noReference.pricePerUnit(),
+                noReference.totalAmount(),
+                noReference.status());
+
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> service.generate(withoutReference));
+
+        verifyNoInteractions(storage);
+        verifyNoInteractions(templateWriter);
+    }
+
     // =========================================================
     // FIXTURES
     // =========================================================

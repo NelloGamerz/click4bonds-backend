@@ -67,11 +67,20 @@ public class DealConfirmationService {
      * @param userId    authenticated customer, from the JWT
      * @param request        bond and quantities
      * @param idempotencyKey client-supplied key, or null when the client sent none
+     * @param viewOnly  when true the request is answered without being acted on:
+     *                  the deal is validated and its figures are computed, but
+     *                  nothing is written and no letter is asked for — see
+     *                  {@link #preview}
      */
     public Result createDeal(
             UUID userId,
             CreateDealConfirmationRequest request,
-            String idempotencyKey) {
+            String idempotencyKey,
+            boolean viewOnly) {
+
+        if (viewOnly) {
+            return preview(userId, request);
+        }
 
         String key = normalizeKey(idempotencyKey);
 
@@ -130,6 +139,41 @@ public class DealConfirmationService {
         response.setLetterValues(letterValues(created.documentData()));
 
         requestDocument(created.response().getDealConfirmationId(), created.documentData());
+
+        return new Result(response, false);
+    }
+
+    /**
+     * Answers what the deal would be, writing nothing.
+     *
+     * <p>The request is validated and the figures are computed exactly as a
+     * purchase would compute them — same bond, same lot size, same value date,
+     * same accrual — but no row is written, no units are reserved, no reference
+     * is issued and no letter is asked for. The caller is looking at a deal, not
+     * making one.</p>
+     *
+     * <p><strong>Idempotency does not apply here.</strong> The key exists to stop
+     * one intended purchase becoming two rows, and this writes no row at all. The
+     * lookup is skipped rather than reused because it would answer with a deal
+     * that <em>was</em> written — a real reference, a real letter — for a caller
+     * that asked to see what a deal would look like. A caller that previews and
+     * then buys sends no key on the preview and its own key on the purchase.</p>
+     *
+     * <p>The response carries no reference, no id, no status and no timestamp,
+     * because there is no deal for them to describe. Everything a customer reads
+     * — the bond, the quantities, the money, and the same {@code letterValues} a
+     * confirmation letter would print — is filled in.</p>
+     *
+     * @return the projected deal, always {@code replayed = false}: nothing was
+     *         created, and nothing was replayed either
+     */
+    private Result preview(UUID userId, CreateDealConfirmationRequest request) {
+
+        DealConfirmationWriter.CreatedDeal projected = writer.preview(userId, request);
+
+        DealConfirmationResponse response = projected.response();
+
+        response.setLetterValues(letterValues(projected.documentData()));
 
         return new Result(response, false);
     }

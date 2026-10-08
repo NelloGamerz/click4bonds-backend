@@ -25,7 +25,8 @@ public class CorsConfig {
                 configuration.setAllowedOrigins(List.of(
                                 frontendUrl,
                                 frontendWwwUrl,
-                                "http://localhost:3000"));
+                                "http://localhost:3000",
+                                "http://localhost:8081"));
 
                 configuration.setAllowedMethods(List.of(
                                 "GET",

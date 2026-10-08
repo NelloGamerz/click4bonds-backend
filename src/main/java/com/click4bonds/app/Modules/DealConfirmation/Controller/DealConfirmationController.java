@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
@@ -58,28 +59,41 @@ public class DealConfirmationController {
      *                       may retry (double click, flaky mobile connection)
      *                       should send a fresh value per intended purchase and
      *                       the same value for every retry of it.
+     * @param viewOnly       {@code ?viewOnly=true} answers what the deal would be
+     *                       without creating one. The request is validated and
+     *                       every figure is computed — including the values a
+     *                       confirmation letter would print — but nothing is
+     *                       written, no reference is issued and no document is
+     *                       asked for. Used by a caller that is showing the deal
+     *                       rather than filing it.
      * @param jwt            verified token; its subject identifies the customer
-     * @return 201 with the new deal, or 200 with the existing one when the
-     *         request was a retry and bought nothing further
+     * @return 201 with the new deal; 200 with the existing one when the request
+     *         was a retry and bought nothing further; 200 with the projected deal
+     *         when it was a view-only request, because nothing was created for
+     *         {@code 201} to mean
      */
     @PostMapping
     public ResponseEntity<DealConfirmationResponse> createDealConfirmation(
             @Valid @RequestBody CreateDealConfirmationRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey,
+            @RequestParam(value = "viewOnly", required = false, defaultValue = "true") boolean viewOnly,
             @AuthenticationPrincipal Jwt jwt) {
 
         DealConfirmationService.Result result = dealConfirmationService.createDeal(
                 UUID.fromString(jwt.getSubject()),
                 request,
-                idempotencyKey);
+                idempotencyKey,
+                viewOnly);
 
         /*
          * A replayed request is answered 200 rather than 201: nothing was
          * created this time, and a client that treats 201 as "a new purchase
-         * happened" would be misled.
+         * happened" would be misled. A view-only request is answered the same
+         * way, and for the same reason — it created nothing at all, and it is
+         * the more misleading of the two to call "Created".
          */
         return ResponseEntity
-                .status(result.replayed()
+                .status(result.replayed() || viewOnly
                         ? HttpStatus.OK
                         : HttpStatus.CREATED)
                 .body(result.response());

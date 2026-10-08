@@ -88,7 +88,7 @@ class DealConfirmationServiceTest {
         givenWriterCreatesDeal();
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), null);
+                service.createDeal(USER_ID, request(), null, false);
 
         assertFalse(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
@@ -107,7 +107,7 @@ class DealConfirmationServiceTest {
         givenWriterCreatesDeal();
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), "   ");
+                service.createDeal(USER_ID, request(), "   ", false);
 
         assertFalse(result.replayed());
 
@@ -129,7 +129,7 @@ class DealConfirmationServiceTest {
                 .thenReturn(Optional.of(original));
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), KEY);
+                service.createDeal(USER_ID, request(), KEY, false);
 
         assertTrue(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
@@ -157,7 +157,7 @@ class DealConfirmationServiceTest {
                 .findByCustomer_IdAndIdempotencyKey(USER_ID, KEY))
                 .thenReturn(Optional.of(original));
 
-        service.createDeal(USER_ID, request(), KEY);
+        service.createDeal(USER_ID, request(), KEY, false);
 
         verify(documentProducer, never()).publish(any());
     }
@@ -179,7 +179,7 @@ class DealConfirmationServiceTest {
                 .thenReturn(Optional.of(original));
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), KEY);
+                service.createDeal(USER_ID, request(), KEY, false);
 
         assertNull(result.response().getLetterValues());
         verify(sheetValuesFactory, never()).build(any());
@@ -199,7 +199,7 @@ class DealConfirmationServiceTest {
 
         givenWriterCreatesDeal();
 
-        service.createDeal(OTHER_USER_ID, request(), KEY);
+        service.createDeal(OTHER_USER_ID, request(), KEY, false);
 
         verify(dealConfirmationRepository)
                 .findByCustomer_IdAndIdempotencyKey(OTHER_USER_ID, KEY);
@@ -229,7 +229,7 @@ class DealConfirmationServiceTest {
                 .thenReturn(Optional.of(winner));
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), KEY);
+                service.createDeal(USER_ID, request(), KEY, false);
 
         assertTrue(result.replayed());
         assertEquals("DC-20260922-000001", result.response().getDealReference());
@@ -243,7 +243,7 @@ class DealConfirmationServiceTest {
 
         assertThrows(
                 DataIntegrityViolationException.class,
-                () -> service.createDeal(USER_ID, request(), null));
+                () -> service.createDeal(USER_ID, request(), null, false));
 
         verify(dealConfirmationRepository, never())
                 .findByCustomer_IdAndIdempotencyKey(any(), any());
@@ -264,7 +264,7 @@ class DealConfirmationServiceTest {
         givenWriterCreatesDeal();
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), null);
+                service.createDeal(USER_ID, request(), null, false);
 
         ArgumentCaptor<DealConfirmationDocumentEvent> published =
                 ArgumentCaptor.forClass(DealConfirmationDocumentEvent.class);
@@ -298,7 +298,7 @@ class DealConfirmationServiceTest {
 
         givenWriterCreatesDeal();
 
-        service.createDeal(USER_ID, request(), null);
+        service.createDeal(USER_ID, request(), null, false);
 
         verify(documentProducer, never()).publish(any());
     }
@@ -318,10 +318,91 @@ class DealConfirmationServiceTest {
                 .publish(any());
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), null);
+                service.createDeal(USER_ID, request(), null, false);
 
         assertEquals("DC-20260922-000001", result.response().getDealReference());
         assertFalse(result.replayed());
+    }
+
+    // ============================================================
+    // VIEW ONLY
+    // ============================================================
+
+    @Test
+    void aViewOnlyRequestWritesNothingAndAsksForNothing() {
+
+        /*
+         * The caller is showing the deal, not making one. Nothing is written and
+         * nothing is published: no deal row, no reference issued, no document
+         * request sent. The writer's preview is the read-only twin of its create,
+         * and this is the test that keeps the service routing to it.
+         */
+        givenWriterProjectsDeal();
+
+        service.createDeal(USER_ID, request(), null, true);
+
+        verify(writer).preview(USER_ID, request());
+        verify(writer, never()).create(any(), any(), any());
+        verify(documentProducer, never()).publish(any());
+    }
+
+    @Test
+    void aViewOnlyRequestIgnoresTheIdempotencyKey() {
+
+        /*
+         * The key exists to stop one intended purchase becoming two rows, and this
+         * writes no row at all. The lookup is skipped rather than reused because it
+         * would answer with a deal that *was* written — a real reference, a real
+         * letter — for a caller that only asked what a deal would look like.
+         */
+        givenWriterProjectsDeal();
+
+        service.createDeal(USER_ID, request(), KEY, true);
+
+        verify(dealConfirmationRepository, never())
+                .findByCustomer_IdAndIdempotencyKey(any(), any());
+    }
+
+    @Test
+    void aViewOnlyRequestStillCarriesTheFiguresTheLetterWouldPrint() {
+
+        /*
+         * These are what the viewing page renders, so they have to come back even
+         * though no letter will ever print them. The projected deal has no
+         * reference for them to be filed under, which is exactly why the values
+         * factory no longer demands one.
+         */
+        givenWriterProjectsDeal();
+
+        DealConfirmationSheetValues values = sheetValues();
+
+        when(sheetValuesFactory.build(any())).thenReturn(values);
+
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), null, true);
+
+        assertSame(values, result.response().getLetterValues());
+        assertFalse(result.replayed());
+    }
+
+    @Test
+    void aViewOnlyRequestDescribesADealThatWasNeverWritten() {
+
+        /*
+         * Nothing backs these fields, so they are null rather than invented. A
+         * reference here would be a number no deal holds — the sequence that
+         * issues them is a table, and writing it is what the flag exists to avoid.
+         */
+        givenWriterProjectsDeal();
+
+        DealConfirmationService.Result result =
+                service.createDeal(USER_ID, request(), null, true);
+
+        assertNull(result.response().getDealConfirmationId());
+        assertNull(result.response().getDealReference());
+        assertNull(result.response().getStatus());
+        assertNotNull(result.response().getIsin());
+        assertNotNull(result.response().getTotalQuantity());
     }
 
     // ============================================================
@@ -343,7 +424,7 @@ class DealConfirmationServiceTest {
         when(sheetValuesFactory.build(any())).thenReturn(values);
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), null);
+                service.createDeal(USER_ID, request(), null, false);
 
         assertSame(values, result.response().getLetterValues());
     }
@@ -363,7 +444,7 @@ class DealConfirmationServiceTest {
                 .thenThrow(new IllegalStateException("no accrued interest"));
 
         DealConfirmationService.Result result =
-                service.createDeal(USER_ID, request(), null);
+                service.createDeal(USER_ID, request(), null, false);
 
         assertEquals("DC-20260922-000001", result.response().getDealReference());
         assertNull(result.response().getLetterValues());
@@ -406,6 +487,43 @@ class DealConfirmationServiceTest {
                 null,
                 null,
                 null);
+    }
+
+    /**
+     * What the writer returns for a view-only request: a deal that was never
+     * written, so with no id, no reference and no status — nothing allocated
+     * them, because the writer builds the entity in memory and never saves it.
+     */
+    private void givenWriterProjectsDeal() {
+
+        User customer = User.builder()
+                .id(USER_ID)
+                .email("customer@example.com")
+                .build();
+
+        Bond bond = Bond.builder()
+                .id(UUID.randomUUID())
+                .name("Test Bond")
+                .isin(ISIN)
+                .build();
+
+        DealConfirmation projected = DealConfirmation.builder()
+                .customer(customer)
+                .bond(bond)
+                .isin(ISIN)
+                .quantityPerLot(100L)
+                .numberOfLots(5L)
+                .totalQuantity(500L)
+                .status(null)
+                .build();
+
+        when(writer.preview(any(), any()))
+                .thenReturn(new DealConfirmationWriter.CreatedDeal(
+                        new DealConfirmationMapper().toResponse(projected),
+                        DealConfirmationDocumentData.from(
+                                projected,
+                                LocalDate.of(2026, 9, 22),
+                                null)));
     }
 
     private void givenWriterCreatesDeal() {
