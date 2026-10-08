@@ -277,22 +277,26 @@ public class DealConfirmationSheetValuesFactory {
     }
 
     /**
-     * Rejects a deal the letter cannot be completed from.
+     * Rejects a deal the letter's arithmetic cannot be completed from.
      *
-     * <p>Only figures the letter must print are required. A null maturity date is
+     * <p>Only the figures the sums need are required. A null maturity date is
      * accepted because a perpetual bond genuinely has none, and a missing
      * interest-payment description prints as an empty cell rather than a wrong
      * one.</p>
+     *
+     * <p><strong>A reference is deliberately not required here.</strong> The
+     * values are also built for a view-only request, which describes a deal that
+     * was never written and therefore has no reference — refusing that would mean
+     * a caller shown a deal could not be shown what it costs. A <em>letter</em>
+     * does need one: it prints the reference and is filed under it, so that
+     * requirement lives in {@code AtSplDealConfirmationDocumentService}, next to
+     * the storage key it protects, rather than here where it would also block the
+     * arithmetic.</p>
      */
     private void requirePresent(DealConfirmationDocumentData snapshot) {
 
         if (snapshot == null) {
             throw new DocumentGenerationException("No deal snapshot was supplied");
-        }
-
-        if (snapshot.dealReference() == null || snapshot.dealReference().isBlank()) {
-            throw new DocumentGenerationException(
-                    "Deal has no reference, so no letter can be produced for it");
         }
 
         if (snapshot.totalQuantity() == null) {

@@ -9,6 +9,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
+import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 import com.click4bonds.app.Modules.Document.Model.DocumentFormat;
 import com.click4bonds.app.Modules.Document.Model.StoredDocument;
 import com.click4bonds.app.Modules.Document.Service.DocumentKeys;
@@ -73,6 +74,8 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
 
     @Override
     public DealConfirmationDocument generate(DealConfirmationDocumentData dealConfirmation) {
+
+        requireReference(dealConfirmation);
 
         DealConfirmationSheetValues values = valuesFactory.build(dealConfirmation);
 
@@ -182,6 +185,35 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
                 storedPdf.contentType(),
                 pdf,
                 storedPdf.storageKey());
+    }
+
+    /**
+     * Refuses a snapshot with no reference.
+     *
+     * <p>Checked here rather than in
+     * {@link DealConfirmationSheetValuesFactory}, which no longer requires one:
+     * the same values are built for a view-only request describing a deal that was
+     * never written, and that has no reference to give. A letter is different —
+     * the reference is printed in A5 on both sheets and the two artefacts are
+     * filed under it, so a letter without one is a blank cell and a key reading
+     * {@code null.pdf}. This is the layer that would produce both, so this is
+     * where the requirement belongs.</p>
+     *
+     * @throws DocumentGenerationException when there is no reference to file the
+     *         letter under
+     */
+    private void requireReference(DealConfirmationDocumentData dealConfirmation) {
+
+        if (dealConfirmation == null) {
+            throw new DocumentGenerationException("No deal snapshot was supplied");
+        }
+
+        String reference = dealConfirmation.dealReference();
+
+        if (reference == null || reference.isBlank()) {
+            throw new DocumentGenerationException(
+                    "Deal has no reference, so no letter can be produced for it");
+        }
     }
 
     private StoredDocument store(
