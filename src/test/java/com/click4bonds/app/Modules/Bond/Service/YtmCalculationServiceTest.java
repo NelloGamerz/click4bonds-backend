@@ -3,6 +3,8 @@ package com.click4bonds.app.Modules.Bond.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.Year;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -45,7 +47,6 @@ class YtmCalculationServiceTest {
     private static final BigDecimal FACE_VALUE = new BigDecimal("100");
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final BigDecimal CASH_FLOW_TOLERANCE = new BigDecimal("0.00000000000001");
-    private static final BigDecimal TWELVE = new BigDecimal("12");
     private static final int DIVISION_SCALE = 10;
 
     @Mock
@@ -1478,8 +1479,8 @@ class YtmCalculationServiceTest {
 
         assertInitialPurchaseCashFlow(flows, calculationDate, price.dirtyPrice());
 
-        // Annual coupon 12.50% paid monthly => 12.50 / 12 per coupon.
-        BigDecimal expectedMonthlyCoupon = monthlyCoupon(new BigDecimal("12.50"));
+        // A monthly coupon is earned over the days its own period covers, and
+        // the coupon date is the end of that period.
         XirrCalculator.CashFlow firstCoupon = flows.stream()
                 .skip(1)
                 .filter(cashFlow -> cashFlow.date()
@@ -1487,15 +1488,25 @@ class YtmCalculationServiceTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError(
                         "Expected at least one regular monthly coupon"));
+
+        BigDecimal expectedMonthlyCoupon = monthlyCoupon(
+                new BigDecimal("12.50"),
+                firstCoupon.date().minusMonths(1),
+                firstCoupon.date());
+
         assertEquals(
                 0,
                 firstCoupon.amount().compareTo(expectedMonthlyCoupon),
-                "Regular monthly coupon should be 12.50% / 12");
+                "Regular monthly coupon should be 12.50% over the days of its month");
         System.out.println("First coupon         : " + firstCoupon);
 
-        // Maturity payment = principal + last monthly coupon.
+        // Maturity payment = principal + the last month's own coupon.
         XirrCalculator.CashFlow finalCashFlow = finalCashFlowOf(flows);
-        BigDecimal expectedFinalCashFlow = new BigDecimal("100.00").add(expectedMonthlyCoupon);
+        BigDecimal finalMonthlyCoupon = monthlyCoupon(
+                new BigDecimal("12.50"),
+                bond.getMaturityDate().minusMonths(1),
+                bond.getMaturityDate());
+        BigDecimal expectedFinalCashFlow = new BigDecimal("100.00").add(finalMonthlyCoupon);
         assertEquals(
                 LocalDate.of(2031, 12, 5),
                 finalCashFlow.date(),
@@ -1603,7 +1614,15 @@ class YtmCalculationServiceTest {
         PriceCalculation price = calculatePrice(ctx, bond, calculationDate);
         List<XirrCalculator.CashFlow> flows = generateCashFlows(ctx, bond, calculationDate);
 
-        BigDecimal expectedMonthlyCoupon = monthlyCoupon(new BigDecimal("13.70"));
+        /*
+         * The monthly coupon is earned over the days of its period. This smoke
+         * test prints the coupon of the final period, which is always there to
+         * be read whatever day the test runs on.
+         */
+        BigDecimal expectedMonthlyCoupon = monthlyCoupon(
+                new BigDecimal("13.70"),
+                bond.getMaturityDate().minusMonths(1),
+                bond.getMaturityDate());
         BigDecimal monthlyPrincipal = FACE_VALUE
                 .multiply(new BigDecimal("20"))
                 .divide(HUNDRED, DIVISION_SCALE, RoundingMode.HALF_UP);
@@ -2077,14 +2096,27 @@ class YtmCalculationServiceTest {
     }
 
     /**
-     * Annual coupon expressed per-month:
+     * A monthly coupon of a bond that is not a Sovereign, earned over the days
+     * its period actually covers:
      *
      * <pre>
-     * annualCoupon / 12
+     * annualCoupon × days in the period / days in the year
      * </pre>
+     *
+     * The year is the one the period opens in: 366 for a leap year, 365
+     * otherwise.
      */
-    private static BigDecimal monthlyCoupon(BigDecimal annualCoupon) {
-        return annualCoupon.divide(TWELVE, DIVISION_SCALE, RoundingMode.HALF_UP);
+    private static BigDecimal monthlyCoupon(
+            BigDecimal annualCoupon,
+            LocalDate periodStart,
+            LocalDate periodEnd) {
+
+        long days = ChronoUnit.DAYS.between(periodStart, periodEnd);
+        int daysInYear = Year.isLeap(periodStart.getYear()) ? 366 : 365;
+
+        return annualCoupon
+                .multiply(BigDecimal.valueOf(days))
+                .divide(BigDecimal.valueOf(daysInYear), DIVISION_SCALE, RoundingMode.HALF_UP);
     }
 
     /**

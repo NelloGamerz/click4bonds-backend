@@ -227,8 +227,28 @@ public class CouponDateGenerator {
             LocalDate stubDate
     ) {
 
+        return previousScheduledDate(bond, stubDate);
+    }
+
+    /**
+     * The scheduled anniversary immediately before {@code paymentDate}.
+     *
+     * <p>This is the date the coupon period ending on {@code paymentDate} opened
+     * on: for a monthly bond, the previous month's payment date. It is the same
+     * date as {@link #stubPeriodStart(Bond, LocalDate)} — a stub period is
+     * opened by the same previous anniversary as any other period — named for
+     * the day count that reads it.
+     *
+     * <p>Null when the bond carries no anniversary description to read the
+     * period from. Callers must not treat a null as a zero-day period.
+     */
+    public LocalDate previousScheduledDate(
+            Bond bond,
+            LocalDate paymentDate
+    ) {
+
         if (bond == null
-                || stubDate == null
+                || paymentDate == null
                 || !hasIpDateDescription(bond)) {
 
             return null;
@@ -237,12 +257,12 @@ public class CouponDateGenerator {
         List<LocalDate> scheduled =
                 generateScheduledDates(
                         bond.getIpDateDescription(),
-                        stubDate.minusYears(5).minusDays(1),
-                        stubDate
+                        paymentDate.minusYears(5).minusDays(1),
+                        paymentDate
                 );
 
         return scheduled.stream()
-                .filter(date -> date.isBefore(stubDate))
+                .filter(date -> date.isBefore(paymentDate))
                 .max(Comparator.naturalOrder())
                 .orElse(null);
     }

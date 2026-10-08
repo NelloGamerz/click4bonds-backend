@@ -314,24 +314,6 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                 calculationDate);
 
         /*
-         * Calculate the coupon amount for the complete coupon period.
-         *
-         * Example for a 12.50% monthly coupon on face value 100:
-         *
-         * 100 × 12.50% / 12
-         * = 1.0416666667
-         */
-        BigDecimal frequencyDivisor = frequencyDivisor(
-                bond.getCouponFrequency());
-
-        BigDecimal couponAmount = outstandingPrincipal
-                .multiply(bond.getCouponRate())
-                .divide(
-                        HUNDRED.multiply(frequencyDivisor),
-                        CALCULATION_SCALE,
-                        RoundingMode.HALF_UP);
-
-        /*
          * Calculate the number of days that have accrued.
          *
          * Example:
@@ -365,22 +347,74 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                             + schedule.next());
         }
 
-        /*
-         * Accrued Interest:
-         *
-         * Coupon Amount × Accrued Days / Coupon Period Days
-         *
-         * For this bond:
-         *
-         * 1.0416666667 × 3 / 30
-         * = 0.1041666667
-         */
-        BigDecimal accruedInterest = couponAmount
-                .multiply(BigDecimal.valueOf(accruedDays))
-                .divide(
-                        BigDecimal.valueOf(couponPeriodDays),
-                        CALCULATION_SCALE,
-                        RoundingMode.HALF_UP);
+        BigDecimal accruedInterest;
+
+        if (MonthlyCouponDayCount.appliesTo(bond)) {
+
+            /*
+             * A monthly non-Sovereign coupon is priced over the actual days of
+             * its period, so its accrual is the same day count applied to the
+             * days so far:
+             *
+             *  principal × rate × accrued days
+             * ---------------------------------
+             *        100 × days in the year
+             *
+             * The period sets the year, so an accrual is measured over the
+             * same year as the coupon it accrues towards: 366 days for a
+             * period opening in a leap year, 365 otherwise.
+             *
+             * Example for a 12.50% monthly coupon on face value 100, three
+             * days into a 31-day period opening in 2027:
+             *
+             * 100 × 12.50 × 3 / (100 × 365)
+             * = 0.1027397260
+             */
+            accruedInterest = MonthlyCouponDayCount.amount(
+                    outstandingPrincipal,
+                    bond.getCouponRate(),
+                    accruedDays,
+                    schedule.previous(),
+                    schedule.next(),
+                    CALCULATION_SCALE);
+
+        } else {
+
+            /*
+             * Calculate the coupon amount for the complete coupon period.
+             *
+             * Example for a 12.50% coupon on face value 100:
+             *
+             * 100 × 12.50% / 12
+             * = 1.0416666667
+             */
+            BigDecimal frequencyDivisor = frequencyDivisor(
+                    bond.getCouponFrequency());
+
+            BigDecimal couponAmount = outstandingPrincipal
+                    .multiply(bond.getCouponRate())
+                    .divide(
+                            HUNDRED.multiply(frequencyDivisor),
+                            CALCULATION_SCALE,
+                            RoundingMode.HALF_UP);
+
+            /*
+             * Accrued Interest:
+             *
+             * Coupon Amount × Accrued Days / Coupon Period Days
+             *
+             * For this bond:
+             *
+             * 1.0416666667 × 3 / 30
+             * = 0.1041666667
+             */
+            accruedInterest = couponAmount
+                    .multiply(BigDecimal.valueOf(accruedDays))
+                    .divide(
+                            BigDecimal.valueOf(couponPeriodDays),
+                            CALCULATION_SCALE,
+                            RoundingMode.HALF_UP);
+        }
 
         return new AccruedInterest(accruedDays, accruedInterest);
     }

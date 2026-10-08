@@ -63,11 +63,74 @@ class CouponCalculationServiceImplTest {
 
     @Test
     void shouldSupportMonthlyFrequency() {
+
+        /*
+         * A monthly non-Sovereign coupon is earned over the days of its
+         * period, so the two months here are not the same amount: September
+         * is thirty days and October thirty-one.
+         *
+         * This bond carries no IP date description, so its periods open on the
+         * same day of the previous month.
+         */
         Bond bond = bond("12", CouponFrequency.MONTHLY);
         List<CouponPayment> result = service.calculateCoupons(bond,
                 List.of(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 11, 1)), List.of(), CALCULATION_DATE);
 
-        assertAmounts(result, List.of("1", "1"));
+        assertAmounts(result, List.of("0.9863013699", "1.0191780822"));
+    }
+
+    @Test
+    void shouldPriceEachMonthlyCouponOverTheYearItsPeriodOpensIn() {
+
+        Bond bond = bond("12", CouponFrequency.MONTHLY);
+        bond.setIpDateDescription("1st of every month");
+        bond.setMaturityDate(LocalDate.of(2028, 4, 1));
+
+        List<CouponPayment> result = service.calculateCoupons(
+                bond,
+                List.of(LocalDate.of(2028, 1, 1), LocalDate.of(2028, 2, 1),
+                        LocalDate.of(2028, 3, 1), LocalDate.of(2028, 4, 1)),
+                List.of(),
+                LocalDate.of(2027, 12, 15));
+
+        /*
+         * A period is measured over the year it opens in. January's 2028 period
+         * opens in December 2027 and is measured over 365 days; the February
+         * period opens in the leap year 2028 and is measured over 366, as every
+         * period of that year is.
+         *
+         * 12 × 31 / 365 = 1.0191780822
+         * 12 × 31 / 366 = 1.0163934426
+         * 12 × 29 / 366 = 0.9508196721
+         */
+        assertAmounts(result, List.of(
+                "1.0191780822",
+                "1.0163934426",
+                "0.9508196721",
+                "1.0163934426"));
+    }
+
+    @Test
+    void shouldKeepTheFlatTwelfthOfTheYearForASovereignMonthlyCoupon() {
+
+        /*
+         * A Sovereign is a government security quoted on 30/360: its monthly
+         * coupon stays a flat twelfth of the annual rate however long the
+         * month is.
+         */
+        Bond bond = bond("12", CouponFrequency.MONTHLY);
+        bond.setRating("Sovereign");
+        bond.setIpDateDescription("1st of every month");
+        bond.setMaturityDate(LocalDate.of(2028, 4, 1));
+
+        List<CouponPayment> result = service.calculateCoupons(
+                bond,
+                List.of(LocalDate.of(2028, 1, 1), LocalDate.of(2028, 2, 1),
+                        LocalDate.of(2028, 3, 1), LocalDate.of(2028, 4, 1)),
+                List.of(),
+                LocalDate.of(2027, 12, 15));
+
+        assertAmounts(result, List.of("1", "1", "1", "1"));
     }
 
     @Test
