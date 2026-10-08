@@ -62,7 +62,7 @@ public class SmsService {
         }
     }
 
-    // Gateway example uses a 10-digit number (999950XXXX), so drop any +91 / 91 prefix
+    // Gateway example uses a 10-digit number (999950XXXX), so drop any  +91 / 91 prefix
     private String toMsisdn(String phone) {
         String digits = phone.replaceAll("\\D", "");
         return digits.length() > 10 ? digits.substring(digits.length() - 10) : digits;

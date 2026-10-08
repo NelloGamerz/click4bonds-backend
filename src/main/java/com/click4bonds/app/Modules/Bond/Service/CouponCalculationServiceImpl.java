@@ -793,6 +793,11 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
          * × couponRate
          * / frequency
          *
+         * One exception, applied below: a monthly coupon of a bond that is
+         * not a Sovereign is earned over the actual days of its period
+         * instead of a flat twelfth of the year. Every other bond, a
+         * Sovereign included, keeps the formula above.
+         *
          * ------------------------------------------------------------
          */
         for (LocalDate paymentDate : paymentDates) {
@@ -855,18 +860,39 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
              * Closing principal = 80
              * --------------------------------------------------------
              */
-            BigDecimal couponAmount = couponDateGenerator.isStubCouponDate(
+            BigDecimal couponAmount;
+
+            if (MonthlyCouponDayCount.appliesTo(bond)) {
+
+                /*
+                 * A monthly non-Sovereign bond is priced over the days its
+                 * period actually covers, so this covers the stub period too:
+                 * it is opened by the same previous anniversary as any other
+                 * period, and is measured over the year that opens in.
+                 */
+                couponAmount = calculateMonthlyCoupon(
+                        bond,
+                        outstandingPrincipal,
+                        couponRate,
+                        paymentDate);
+
+            } else if (couponDateGenerator.isStubCouponDate(
                     bond,
-                    paymentDate)
-                            ? calculateStubCoupon(
-                                    bond,
-                                    outstandingPrincipal,
-                                    couponRate,
-                                    paymentDate)
-                            : calculateCoupon(
-                                    outstandingPrincipal,
-                                    couponRate,
-                                    frequencyDivisor);
+                    paymentDate)) {
+
+                couponAmount = calculateStubCoupon(
+                        bond,
+                        outstandingPrincipal,
+                        couponRate,
+                        paymentDate);
+
+            } else {
+
+                couponAmount = calculateCoupon(
+                        outstandingPrincipal,
+                        couponRate,
+                        frequencyDivisor);
+            }
 
             /*
              * Store coupon payment using the OPENING principal.
@@ -967,6 +993,90 @@ public class CouponCalculationServiceImpl implements CouponCalculationService {
                         HUNDRED.multiply(frequencyDivisor),
                         CALCULATION_SCALE,
                         RoundingMode.HALF_UP);
+    }
+
+    /*
+     * ============================================================
+     * CALCULATE MONTHLY COUPON
+     * ============================================================
+     *
+     * A monthly coupon of a bond that is not a Sovereign is earned over the
+     * days its period actually covers, not over a flat twelfth of a year.
+     *
+     * Formula (Actual/365, or Actual/366 for a period opening in a leap year):
+     *
+     * principal × couponRate × days in the period
+     * -------------------------------------------
+     *          100 × days in the year
+     *
+     * Example:
+     *
+     * principal = 100
+     * couponRate = 12.00
+     * 01-Jan-2027 -> 01-Feb-2027 = 31 days, opening in a 365-day year
+     *
+     * 100 × 12.00 × 31 / (100 × 365) = 1.0191780822
+     *
+     * Example, a period opening in a leap year:
+     *
+     * principal = 100
+     * couponRate = 12.00
+     * 01-Feb-2028 -> 01-Mar-2028 = 29 days, opening in a 366-day year
+     *
+     * 100 × 12.00 × 29 / (100 × 366) = 0.9508196721
+     *
+     * The period opens on the previous anniversary, which is also what opens
+     * the stub period - see
+     * {@link CouponDateGenerator#previousScheduledDate(Bond, LocalDate)}.
+     * ============================================================
+     */
+    private BigDecimal calculateMonthlyCoupon(
+            Bond bond,
+            BigDecimal outstandingPrincipal,
+            BigDecimal couponRate,
+            LocalDate paymentDate) {
+
+        LocalDate periodStart = monthlyPeriodStart(bond, paymentDate);
+
+        if (periodStart == null) {
+
+            throw new IllegalArgumentException(
+                    "Unable to determine the period opening the monthly coupon on "
+                            + paymentDate);
+        }
+
+        return MonthlyCouponDayCount.coupon(
+                outstandingPrincipal,
+                couponRate,
+                periodStart,
+                paymentDate,
+                CALCULATION_SCALE);
+    }
+
+    /**
+     * The date the monthly period ending on {@code paymentDate} opened on.
+     *
+     * <p>Read from the bond's own anniversary description, so a bond paying on
+     * the 31st opens November's period on 31 October and December's on
+     * 30 November - the dates the schedule itself pays on, rather than a month
+     * subtracted from a date the previous month had already clamped.
+     *
+     * <p>A bond with no anniversary description to read has no schedule to
+     * consult, so its period opens on the same day of the previous month.
+     * Callers reaching this service through
+     * {@link BondCashFlowServiceImpl} always have a description.
+     */
+    private LocalDate monthlyPeriodStart(
+            Bond bond,
+            LocalDate paymentDate) {
+
+        LocalDate scheduled = couponDateGenerator.previousScheduledDate(
+                bond,
+                paymentDate);
+
+        return scheduled != null
+                ? scheduled
+                : paymentDate.minusMonths(1);
     }
 
     /*

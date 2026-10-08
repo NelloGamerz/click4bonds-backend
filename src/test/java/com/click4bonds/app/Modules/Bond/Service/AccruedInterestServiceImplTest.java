@@ -49,10 +49,50 @@ class AccruedInterestServiceImplTest {
 
     @Test
     void calculatesMonthlyAccruedInterest() {
+
+        /*
+         * 12% on face value 100, seventeen days into the 31-day period that
+         * opens on 15 January 2026. A monthly non-Sovereign bond accrues over
+         * the days of its period rather than over a twelfth of the year:
+         *
+         * 100 × 12 × 17 / (100 × 365) = 0.55890410958904109589
+         */
         BigDecimal result = service.calculate(
                 bond("12.00", CouponFrequency.MONTHLY, "15th of every month", LocalDate.of(2028, 12, 15)),
                 LocalDate.of(2026, 2, 1));
-        assertClose(new BigDecimal("0.04657534246575"), result);
+        assertClose(new BigDecimal("0.55890410958904109589"), result);
+    }
+
+    @Test
+    void measuresTheMonthlyAccrualOverTheYearItsPeriodOpensIn() {
+
+        /*
+         * The period runs from 15 February 2028 to 15 March 2028, so it opens
+         * in the leap year 2028 and is measured over 366 days. Five days of it
+         * are therefore measured over that same year, even though those five
+         * days sit before 29 February:
+         *
+         * 100 × 12 × 5 / (100 × 366) = 0.16393442622950819672
+         */
+        BigDecimal result = service.calculate(
+                bond("12.00", CouponFrequency.MONTHLY, "15th of every month", LocalDate.of(2028, 12, 15)),
+                LocalDate.of(2028, 2, 20));
+        assertClose(new BigDecimal("0.16393442622950819672"), result);
+    }
+
+    @Test
+    void keepsThePeriodProRataForASovereignMonthlyBond() {
+
+        /*
+         * A Sovereign is quoted on 30/360 and keeps the flat twelfth of the
+         * year: seventeen of the 31 days of a 1.00 coupon.
+         */
+        Bond bond = bond("12.00", CouponFrequency.MONTHLY, "15th of every month", LocalDate.of(2028, 12, 15));
+        bond.setRating("Sovereign");
+
+        assertClose(
+                new BigDecimal("0.54838709677419354839"),
+                service.calculate(bond, LocalDate.of(2026, 2, 1)));
     }
 
     @Test

@@ -121,26 +121,44 @@ class YtmFixesIntegrationTest {
         assertEquals(10, coupons.size(), "Expected 10 monthly coupons");
         assertEquals(10, repayments.size(), "Expected 10 monthly principal repayments");
 
-        // coupon = outstanding principal * 12% / 12
-        BigDecimal expectedCoupon = FACE.multiply(bond.getCouponRate())
-                .divide(new BigDecimal("1200"), COUPON_SCALE, RoundingMode.HALF_UP);
-        assertEquals(0, coupons.get(0).couponAmount().compareTo(expectedCoupon),
-                "First monthly coupon should be 12% / 12 on 100 = 1.00");
+        /*
+         * A monthly non-Sovereign coupon is earned over the days its period
+         * actually covers rather than over a flat twelfth of a year:
+         *
+         * opening principal × 12% × days in the period / (100 × 365)
+         *
+         * None of these periods spans 29 February, so every one of them is
+         * measured over 365 days and only the count of days varies.
+         */
+        BigDecimal runningPrincipal = FACE;
 
-        BigDecimal expectedFirst = new BigDecimal("1.00");
-        assertEquals(0, coupons.get(0).couponAmount().compareTo(expectedFirst));
+        for (int i = 0; i < coupons.size(); i++) {
 
-        for (int i = 1; i < coupons.size(); i++) {
-            BigDecimal prev = coupons.get(i - 1).couponAmount();
-            BigDecimal cur = coupons.get(i).couponAmount();
-            BigDecimal step = new BigDecimal("0.10");
-            assertEquals(0, prev.subtract(cur).compareTo(step),
-                    "Monthly coupons must decline by 0.10 each month");
+            LocalDate paymentDate = coupons.get(i).date();
+            long days = ChronoUnit.DAYS.between(paymentDate.minusMonths(1), paymentDate);
+
+            BigDecimal expectedCoupon = runningPrincipal
+                    .multiply(bond.getCouponRate())
+                    .multiply(BigDecimal.valueOf(days))
+                    .divide(new BigDecimal("36500"), COUPON_SCALE, RoundingMode.HALF_UP);
+
+            assertEquals(0, coupons.get(i).couponAmount().compareTo(expectedCoupon),
+                    "Coupon " + i + " must be the opening principal over the "
+                            + days + " days of its period");
+            assertEquals(0, coupons.get(i).outstandingPrincipalBeforePayment()
+                    .compareTo(runningPrincipal),
+                    "Coupon " + i + " must be earned on the opening principal");
+
+            runningPrincipal = runningPrincipal.subtract(repayments.get(i).principalAmount());
         }
 
-        BigDecimal expectedLast = new BigDecimal("0.10");
-        assertEquals(0, coupons.get(coupons.size() - 1).couponAmount().compareTo(expectedLast),
-                "Last monthly coupon should be 0.10");
+        assertEquals(0, runningPrincipal.compareTo(BigDecimal.ZERO),
+                "Closing principal after 10 monthly repayments must be zero");
+
+        // Spot-check the ends: 31 days on 100, and 30 days on the last 10.
+        assertEquals(0, coupons.get(0).couponAmount().compareTo(new BigDecimal("1.0191780822")));
+        assertEquals(0, coupons.get(coupons.size() - 1).couponAmount()
+                .compareTo(new BigDecimal("0.0986301370")));
 
         BigDecimal totalPrincipal = repayments.stream()
                 .map(PrincipalRepayment::principalAmount)
