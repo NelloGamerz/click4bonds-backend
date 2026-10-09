@@ -2,6 +2,8 @@ package com.click4bonds.app.Modules.Bond.Service;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -26,6 +28,7 @@ import com.lowagie.text.FontFactory;
 import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
+import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
@@ -230,7 +233,7 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
             Bond bond,
             BondCashFlowResponse cashFlow) throws DocumentException {
 
-        document.add(sectionTitle("BOND DETAILS"));
+        document.add(sectionTitleRegular("BOND DETAILS"));
 
         PdfPTable table = detailsTable();
 
@@ -252,7 +255,7 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
             Document document,
             BondCashFlowResponse cashFlow) throws DocumentException {
 
-        document.add(sectionTitle("INVESTMENT DETAILS"));
+        document.add(sectionTitleRegular("INVESTMENT DETAILS"));
 
         PdfPTable table = detailsTable();
 
@@ -374,9 +377,30 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
 
     private Paragraph sectionTitle(String text) {
 
-        Paragraph paragraph = new Paragraph(
+        return sectionTitle(
                 text,
                 FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10, Font.BOLD, BRAND));
+    }
+
+    /**
+     * The heading above a block of label/value rows.
+     *
+     * <p>
+     * Held at regular weight rather than bold: these two headings introduce
+     * quiet supporting detail, and the blue already distinguishes them from the
+     * rows beneath. Keeping them light stops the block from competing with the
+     * title at the head of the statement.
+     */
+    private Paragraph sectionTitleRegular(String text) {
+
+        return sectionTitle(
+                text,
+                FontFactory.getFont(FontFactory.HELVETICA, 10, Font.NORMAL, BRAND));
+    }
+
+    private Paragraph sectionTitle(String text, Font font) {
+
+        Paragraph paragraph = new Paragraph(text, font);
 
         paragraph.setSpacingBefore(10f);
         paragraph.setSpacingAfter(4f);
@@ -395,9 +419,7 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
 
     private void addDetailRow(PdfPTable table, String key, String value) {
 
-        PdfPCell keyCell = new PdfPCell(new Phrase(
-                key,
-                FontFactory.getFont(FontFactory.HELVETICA_BOLD, 9, Font.BOLD)));
+        PdfPCell keyCell = new PdfPCell(new Phrase(key, MediumFont.at(9)));
         keyCell.setBackgroundColor(KEY_FILL);
         keyCell.setBorderColor(GRID);
         keyCell.setPadding(5f);
@@ -414,9 +436,7 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
 
     private PdfPCell scheduleHeaderCell(String text) {
 
-        PdfPCell cell = new PdfPCell(new Phrase(
-                text,
-                FontFactory.getFont(FontFactory.HELVETICA_BOLD, 8, Font.BOLD, Color.WHITE)));
+        PdfPCell cell = new PdfPCell(new Phrase(text, MediumFont.at(8, Color.WHITE)));
         cell.setBackgroundColor(HEADER_FILL);
         cell.setBorderColor(GRID);
         cell.setPadding(4f);
@@ -491,6 +511,86 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
     private static String nameOf(Enum<?> value) {
 
         return value == null ? null : value.name();
+    }
+
+    /**
+     * A face at the weight between regular and bold.
+     *
+     * <p>
+     * The statement asks for a "slightly bold" heading — the 500 weight. None
+     * of the PDF base-14 fonts has one: Helvetica offers regular or bold and
+     * nothing between, so the only way to land on that weight is to carry a
+     * face that has it. Roboto Medium is bundled with the application for
+     * exactly this, and travels inside the artifact so the document renders the
+     * same on a developer's machine and on the server, with no font installed
+     * on either.
+     *
+     * <p>
+     * Loading is deliberately forgiving. A statement whose headings fall back
+     * to Helvetica-Bold still reads correctly, whereas one that fails to render
+     * at all is a download the reader cannot get; so a resource that is missing
+     * or unreadable degrades to the previous appearance and logs the reason
+     * rather than propagating the failure.
+     */
+    private static final class MediumFont {
+
+        private static final String RESOURCE = "/fonts/Roboto-Medium.ttf";
+        private static final String FILE_NAME = "Roboto-Medium.ttf";
+
+        /**
+         * Null when the face could not be loaded, which is what the fallback in
+         * {@link #at(float, Color)} keys off.
+         */
+        private static final BaseFont BASE = load();
+
+        private MediumFont() {
+        }
+
+        private static BaseFont load() {
+
+            try (InputStream stream = BondCashFlowPdfServiceImpl.class.getResourceAsStream(RESOURCE)) {
+
+                if (stream == null) {
+                    log.warn("{} is not on the classpath, headings fall back to Helvetica-Bold", RESOURCE);
+                    return null;
+                }
+
+                /*
+                 * The bytes are read here and handed to OpenPDF rather than
+                 * passing a path for it to resolve: the resource sits inside a
+                 * jar on the server and in a directory during development, and
+                 * the byte-array form behaves the same in both.
+                 *
+                 * IDENTITY_H is required for a Unicode face, and embedding is
+                 * what makes the weight survive on a machine that has no
+                 * Roboto installed.
+                 */
+                return BaseFont.createFont(
+                        FILE_NAME,
+                        BaseFont.IDENTITY_H,
+                        BaseFont.EMBEDDED,
+                        true,
+                        stream.readAllBytes(),
+                        null);
+
+            } catch (DocumentException | IOException failure) {
+
+                log.warn("Could not load {}, headings fall back to Helvetica-Bold", RESOURCE, failure);
+                return null;
+            }
+        }
+
+        private static Font at(float size) {
+
+            return at(size, null);
+        }
+
+        private static Font at(float size, Color color) {
+
+            return BASE == null
+                    ? FontFactory.getFont(FontFactory.HELVETICA_BOLD, size, Font.BOLD, color)
+                    : new Font(BASE, size, Font.NORMAL, color);
+        }
     }
 
     /**
