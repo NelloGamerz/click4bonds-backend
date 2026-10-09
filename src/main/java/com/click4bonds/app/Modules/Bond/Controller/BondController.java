@@ -26,6 +26,7 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 
 import lombok.RequiredArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -168,27 +169,37 @@ public class BondController {
      * @param calculationDate ISO date the projection starts from; defaults to
      *                        today. An amortizing bond bought later therefore
      *                        reports fewer remaining cash flows.
+     * @param totalBond       how many bonds to project for; defaults to 1. Every
+     *                        amount is per single bond and is scaled by this, so
+     *                        {@code totalBond=5} returns the schedule for five.
      * @return 404 when no bond carries that ISIN.
      */
     @GetMapping("/{isin}/cashflow")
     public ResponseEntity<BondCashFlowResponse> getBondCashFlow(
             @PathVariable String isin,
-            @RequestParam(required = false) LocalDate calculationDate) {
+            @RequestParam(required = false) LocalDate calculationDate,
+            @RequestParam(required = false) BigDecimal totalBond) {
 
         LocalDate asOf = calculationDate != null
                 ? calculationDate
                 : LocalDate.now();
 
+        BigDecimal quantity = totalBond != null
+                ? totalBond
+                : BigDecimal.ONE;
+
         log.info(
-                "GET /bonds/{}/cashflow - calculationDate={}",
+                "GET /bonds/{}/cashflow - calculationDate={} totalBond={}",
                 isin,
-                asOf
+                asOf,
+                quantity
         );
 
         return ResponseEntity.ok(
                 bondCashFlowService.generateSchedule(
                         bondService.findBond(isin),
-                        asOf
+                        asOf,
+                        quantity
                 )
         );
     }

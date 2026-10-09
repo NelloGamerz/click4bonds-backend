@@ -170,6 +170,17 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
             Bond bond,
             LocalDate calculationDate) {
 
+        return generateSchedule(bond, calculationDate, BigDecimal.ONE);
+    }
+
+    @Override
+    public BondCashFlowResponse generateSchedule(
+            Bond bond,
+            LocalDate calculationDate,
+            BigDecimal totalBond) {
+
+        BigDecimal quantity = validateQuantity(totalBond);
+
         BondSchedule schedule = buildSchedule(bond, calculationDate);
 
         List<BondCashFlowEntry> entries = new ArrayList<>();
@@ -185,12 +196,14 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
                         BondCashFlowType.PURCHASE,
                         null,
                         null,
-                        purchase.purchaseCashFlow(),
+                        scale(purchase.purchaseCashFlow(), quantity),
                         null
                 )
         ));
 
-        entries.addAll(schedule.entries());
+        for (BondCashFlowEntry entry : schedule.entries()) {
+            entries.add(scale(entry, quantity));
+        }
 
         // Stable sort, so the purchase row stays first on a shared date.
         entries.sort(Comparator.comparing(BondCashFlowEntry::date));
@@ -199,14 +212,52 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
                 bond.getIsin(),
                 bond.getName(),
                 calculationDate,
+                quantity,
                 schedule.purchase()
-                        .map(PurchaseConsideration::purchaseConsideration)
+                        .map(purchase -> scale(purchase.purchaseConsideration(), quantity))
                         .orElse(null),
                 total(entries, BondCashFlowEntry::couponAmount),
                 total(entries, BondCashFlowEntry::principalAmount),
                 total(entries, BondCashFlowEntry::amount),
                 List.copyOf(entries)
         );
+    }
+
+    /**
+     * Rescales one projected movement from a single bond to {@code quantity}
+     * bonds. Dates and the movement type are untouched: only the money moves.
+     */
+    private static BondCashFlowEntry scale(BondCashFlowEntry entry, BigDecimal quantity) {
+
+        return new BondCashFlowEntry(
+                entry.date(),
+                entry.type(),
+                scale(entry.couponAmount(), quantity),
+                scale(entry.principalAmount(), quantity),
+                scale(entry.amount(), quantity),
+                scale(entry.outstandingPrincipal(), quantity)
+        );
+    }
+
+    private static BigDecimal scale(BigDecimal amount, BigDecimal quantity) {
+        return amount == null ? null : amount.multiply(quantity);
+    }
+
+    /**
+     * A missing quantity means one bond. Zero or a negative quantity has no
+     * meaning as a holding, so it is rejected rather than silently projected as
+     * an empty schedule.
+     */
+    private static BigDecimal validateQuantity(BigDecimal totalBond) {
+
+        if (totalBond == null) {
+            return BigDecimal.ONE;
+        }
+        if (totalBond.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Total bond quantity must be positive");
+        }
+
+        return totalBond;
     }
 
     /**

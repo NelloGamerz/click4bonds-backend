@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -28,9 +29,31 @@ public interface BondCashFlowService {
      * Unlike the XIRR series this does not require a price. Without a usable
      * price the purchase leg is omitted, so the schedule holds only the
      * coupons and principal the holder receives.
+     *
+     * <p>
+     * Equivalent to {@link #generateSchedule(Bond, LocalDate, BigDecimal)} with a
+     * quantity of one.
      */
     BondCashFlowResponse generateSchedule(
             Bond bond,
             LocalDate calculationDate
+    );
+
+    /**
+     * Projects the schedule for {@code totalBond} bonds of this issue.
+     *
+     * <p>
+     * Every amount in the projection is per single bond, so the quantity simply
+     * scales each one: the purchase consideration, each coupon and principal
+     * repayment, the outstanding principal, and every total. The dates do not
+     * change — five bonds pay on the same days as one, just five times over.
+     *
+     * @param totalBond how many bonds the schedule is for; must be positive.
+     *                  {@code null} is read as one.
+     */
+    BondCashFlowResponse generateSchedule(
+            Bond bond,
+            LocalDate calculationDate,
+            BigDecimal totalBond
     );
 }
