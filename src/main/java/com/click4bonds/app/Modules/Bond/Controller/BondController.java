@@ -6,6 +6,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -19,7 +22,9 @@ import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
 import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
+import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondCashFlowService;
+import com.click4bonds.app.Modules.Bond.Service.BondCashFlowPdfService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.IssuerService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
@@ -39,6 +44,7 @@ public class BondController {
     private final BondService bondService;
     private final IssuerService issuerService;
     private final BondCashFlowService bondCashFlowService;
+    private final BondCashFlowPdfService bondCashFlowPdfService;
     private final AuthJwtService authJwtService;
 
     @GetMapping
@@ -172,13 +178,20 @@ public class BondController {
      * @param totalBond       how many bonds to project for; defaults to 1. Every
      *                        amount is per single bond and is scaled by this, so
      *                        {@code totalBond=5} returns the schedule for five.
-     * @return 404 when no bond carries that ISIN.
+     * @param download        {@code ?download=true} answers with the statement as
+     *                        a PDF attachment instead of JSON. The figures are the
+     *                        same either way; only the representation changes.
+     *                        Absent or false leaves the response exactly as it was.
+     * @return 404 when no bond carries that ISIN. With {@code download=false} the
+     *         projected schedule; with {@code download=true} that same projection
+     *         as a PDF.
      */
     @GetMapping("/{isin}/cashflow")
-    public ResponseEntity<BondCashFlowResponse> getBondCashFlow(
+    public ResponseEntity<?> getBondCashFlow(
             @PathVariable String isin,
             @RequestParam(required = false) LocalDate calculationDate,
-            @RequestParam(required = false) BigDecimal totalBond) {
+            @RequestParam(required = false) BigDecimal totalBond,
+            @RequestParam(required = false, defaultValue = "false") boolean download) {
 
         LocalDate asOf = calculationDate != null
                 ? calculationDate
@@ -189,18 +202,37 @@ public class BondController {
                 : BigDecimal.ONE;
 
         log.info(
-                "GET /bonds/{}/cashflow - calculationDate={} totalBond={}",
+                "GET /bonds/{}/cashflow - calculationDate={} totalBond={} download={}",
                 isin,
+                asOf,
+                quantity,
+                download
+        );
+
+        Bond bond = bondService.findBond(isin);
+
+        BondCashFlowResponse cashFlow = bondCashFlowService.generateSchedule(
+                bond,
                 asOf,
                 quantity
         );
 
-        return ResponseEntity.ok(
-                bondCashFlowService.generateSchedule(
-                        bondService.findBond(isin),
-                        asOf,
-                        quantity
-                )
-        );
+        if (!download) {
+            return ResponseEntity.ok(cashFlow);
+        }
+
+        /*
+         * Sent as an attachment so the browser saves the statement rather than
+         * trying to render it in a tab, and named after the ISIN so two
+         * downloads do not collide.
+         */
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(bondCashFlowPdfService.fileName(bond))
+                .build();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(bondCashFlowPdfService.render(bond, cashFlow));
     }
 }

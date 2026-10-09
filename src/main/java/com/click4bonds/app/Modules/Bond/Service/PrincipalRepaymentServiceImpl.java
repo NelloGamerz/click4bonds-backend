@@ -185,7 +185,6 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 @Service
 public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService {
 
-    private static final BigDecimal FACE_VALUE = BigDecimal.valueOf(100);
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final BigDecimal ZERO = BigDecimal.ZERO;
 
@@ -209,6 +208,12 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
                 bond,
                 couponDates,
                 calculationDate);
+
+        /*
+         * Every repayment below is a percentage of one unit's face value, so
+         * the lot is applied once here rather than to each instalment.
+         */
+        BigDecimal faceValue = BondFaceValue.of(bond);
 
         MaturitySchedule schedule = maturityDescriptionParser.parse(
                 bond.getMaturityDescription(),
@@ -248,7 +253,8 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
 
             return maturityRepayment(
                     maturityDate,
-                    calculationDate);
+                    calculationDate,
+                    faceValue);
         }
 
         /*
@@ -285,7 +291,7 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
          */
         List<PrincipalRepayment> repayments = new ArrayList<>();
 
-        BigDecimal remainingPrincipal = FACE_VALUE;
+        BigDecimal remainingPrincipal = faceValue;
 
         /*
          * TreeMap guarantees chronological order.
@@ -298,7 +304,7 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
                 break;
             }
 
-            BigDecimal scheduledAmount = scheduledAmount(entry.getValue());
+            BigDecimal scheduledAmount = scheduledAmount(entry.getValue(), faceValue);
 
             /*
              * Never allow scheduled amortization to exceed
@@ -573,7 +579,8 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
      * ------------------------------------------------------------
      */
     private BigDecimal scheduledAmount(
-            List<AmortizationRule> rules) {
+            List<AmortizationRule> rules,
+            BigDecimal faceValue) {
 
         if (rules == null || rules.isEmpty()) {
             return ZERO;
@@ -585,7 +592,7 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
 
         validatePercentage(percentage);
 
-        return FACE_VALUE
+        return faceValue
                 .multiply(percentage)
                 .divide(
                         HUNDRED,
@@ -659,7 +666,8 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
      */
     private List<PrincipalRepayment> maturityRepayment(
             LocalDate maturityDate,
-            LocalDate calculationDate) {
+            LocalDate calculationDate,
+            BigDecimal faceValue) {
 
         if (maturityDate == null) {
             throw new IllegalArgumentException(
@@ -678,7 +686,7 @@ public class PrincipalRepaymentServiceImpl implements PrincipalRepaymentService 
         return List.of(
                 new PrincipalRepayment(
                         maturityDate,
-                        FACE_VALUE,
+                        faceValue,
                         ZERO));
     }
 

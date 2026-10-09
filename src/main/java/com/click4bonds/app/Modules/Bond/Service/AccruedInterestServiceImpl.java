@@ -217,7 +217,6 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 @Service
 public class AccruedInterestServiceImpl implements AccruedInterestService {
 
-    private static final BigDecimal FACE_VALUE = BigDecimal.valueOf(100);
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final int CALCULATION_SCALE = 20;
 
@@ -441,13 +440,21 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
             LocalDate settlement) {
 
         /*
+         * Accrual runs on the same base as the coupons it is a fraction of, so
+         * the bond's lot is applied here too. On a different base the accrued
+         * interest would be a fraction of a coupon that is not the one being
+         * paid.
+         */
+        BigDecimal faceValue = BondFaceValue.of(bond);
+
+        /*
          * Lightweight constructor is used for bullet-bond tests.
          *
          * In that case there is no principal repayment service, so the
          * entire face value remains outstanding.
          */
         if (principalRepaymentService == null) {
-            return FACE_VALUE;
+            return faceValue;
         }
 
         MaturitySchedule schedule = maturityDescriptionParser.parse(
@@ -460,7 +467,7 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
         if (schedule.perpetual()
                 || schedule.amortizationRules().isEmpty()) {
 
-            return FACE_VALUE;
+            return faceValue;
         }
 
         /*
@@ -504,7 +511,7 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
          * Outstanding principal =
          * Face value - principal already repaid.
          */
-        BigDecimal outstanding = FACE_VALUE.subtract(
+        BigDecimal outstanding = faceValue.subtract(
                 repaidBeforeSettlement);
 
         /*

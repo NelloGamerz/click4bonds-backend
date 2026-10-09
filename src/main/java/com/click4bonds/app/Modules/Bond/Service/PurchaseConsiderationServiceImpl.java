@@ -72,7 +72,7 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
 
         validateInput(bond, calculationDate, accruedInterest);
 
-        BigDecimal cleanPrice = bond.getPrice();
+        BigDecimal cleanPrice = BondFaceValue.cleanPrice(bond);
         BigDecimal cumInterestConsideration = cleanPrice.add(accruedInterest);
 
         Optional<CouponPayment> upcomingCoupon = firstFutureCoupon(
