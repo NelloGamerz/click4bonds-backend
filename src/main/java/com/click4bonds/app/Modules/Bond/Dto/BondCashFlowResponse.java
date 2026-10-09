@@ -14,9 +14,12 @@ import java.util.List;
  * @param isin                  the bond's ISIN
  * @param bondName              the bond's name
  * @param calculationDate       the date the projection starts from
- * @param purchaseConsideration what the buyer pays today, before being negated
- *                              for the series; {@code null} when the bond has no
- *                              usable price and the purchase leg is omitted
+ * @param totalBond             how many bonds the schedule is projected for; every
+ *                              amount below is already scaled by it
+ * @param purchaseConsideration what the buyer pays today for the whole holding,
+ *                              before being negated for the series; {@code null}
+ *                              when the bond has no usable price and the purchase
+ *                              leg is omitted
  * @param totalCoupon           sum of all projected coupons
  * @param totalPrincipal        sum of all projected principal repayments
  * @param totalCashFlow         sum of every entry's {@code amount} — the net of
@@ -27,6 +30,7 @@ public record BondCashFlowResponse(
         String isin,
         String bondName,
         LocalDate calculationDate,
+        BigDecimal totalBond,
         BigDecimal purchaseConsideration,
         BigDecimal totalCoupon,
         BigDecimal totalPrincipal,
