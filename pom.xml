@@ -141,6 +141,23 @@
             <version>5.5.1</version>
         </dependency>
         <!--
+            Renders the bond cash-flow statement as a downloadable PDF.
+
+            Chosen over filling a template and converting it with LibreOffice
+            because this statement is generated row by row from the projection
+            rather than filled into a fixed sheet, and because a download must
+            not depend on a desktop application being installed on the server.
+
+            The version is explicit for the same reason POI's is: Spring Boot's
+            dependency management does not cover OpenPDF, so omitting it leaves
+            the version unresolved.
+        -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>2.2.5</version>
+        </dependency>
+        <!--
             Uploads generated documents to Cloudflare R2.
 
             R2 exposes an S3-compatible API, and this is the client its own
