@@ -13,16 +13,21 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
  * <h2>Why this exists</h2>
  *
  * <p>
- * {@code Bond.recordDateDescription} is the <strong>source rule</strong> - the
- * text that arrived from the backend / Excel feed. A record date is
- * <strong>derived</strong> from that rule and a specific coupon payment date,
- * because a bond with monthly coupons has a different record date for every one
- * of its coupon payments.
+ * {@code Bond.recordDate} is the <strong>source rule</strong> - the number of
+ * days before the payment date on which the record date falls, as sent by the
+ * admin. A record date is <strong>derived</strong> from that offset and a
+ * specific coupon payment date, because a bond with monthly coupons has a
+ * different record date for every one of its coupon payments.
  *
  * <p>
- * One record date therefore cannot be stored per bond. The description is the
- * source of truth and this parser is the only place that converts it into
- * dates.
+ * One record date therefore cannot be stored per bond. The offset is the source
+ * of truth and this parser is the only place that converts it into dates.
+ *
+ * <p>
+ * The text-based methods ({@link #parse(String, LocalDate)},
+ * {@link #parseOffsetDays(String)}, {@link #isApplicable(String)}) remain for
+ * the historic free-text form of the rule. They are not on the bond path any
+ * more.
  *
  * <h2>What a record date is not</h2>
  *
@@ -78,12 +83,20 @@ public interface RecordDateParser {
     boolean isApplicable(String description);
 
     /**
-     * Convenience form of {@link #parse(String, LocalDate)} using the bond's own
-     * description.
+     * Resolves the record date for one payment date from the bond's own offset.
+     *
+     * <pre>
+     * bond.recordDate = 15
+     * paymentDate     = 2026-10-23
+     * result          = 2026-10-08
+     * </pre>
      *
      * @param bond        the bond; must not be {@code null}
-     * @param paymentDate the coupon / interest payment date
-     * @return the record date for that payment, or {@link Optional#empty()}
+     * @param paymentDate the coupon / interest payment date; must not be
+     *                    {@code null}
+     * @return the record date for that payment, or {@link Optional#empty()} when
+     *         the bond has no record-date rule (a negative or {@code null}
+     *         offset)
      */
     Optional<LocalDate> calculateRecordDate(Bond bond, LocalDate paymentDate);
 

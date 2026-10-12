@@ -38,7 +38,7 @@ import org.springframework.stereotype.Service;
  * <h2>Bonds without a record-date rule are unaffected</h2>
  *
  * <p>
- * When {@code Bond.recordDateDescription} is absent / {@code "NA"} the parser
+ * When {@code Bond.recordDate} is absent the parser
  * returns no record date and the pre-existing behaviour is preserved exactly:
  * every coupon paid after the calculation date is included. This keeps YTM
  * unchanged for all historical data that carries no record-date information.

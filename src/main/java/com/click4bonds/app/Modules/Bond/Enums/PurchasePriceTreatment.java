@@ -27,17 +27,20 @@ public enum PurchasePriceTreatment {
     CUM_INTEREST,
 
     /**
-     * Ex-interest: the upcoming coupon belongs to the seller, so there is
-     * nothing to compensate the seller for.
+     * Ex-interest: the upcoming coupon belongs to the seller, so the buyer is
+     * owed the part of it covering the stretch from settlement to the coupon
+     * date.
      *
      * <pre>
-     * purchase consideration = clean price
+     * purchase consideration = clean price + (negative accrued interest)
+     *                        = clean price - |accrued interest|
      * </pre>
      *
      * <p>
-     * The accrued interest reported by {@code AccruedInterestService} is exactly
-     * the accrued portion of that excluded coupon, so charging it would pay the
-     * seller twice: once through the coupon and again through the price.
+     * That accrual is reported negative by {@code AccruedInterestService}, which
+     * is what makes this treatment the sign of the accrual rather than a
+     * separate adjustment: charging the positive accrual would charge the buyer
+     * for a coupon the seller keeps.
      */
     EX_INTEREST
 }

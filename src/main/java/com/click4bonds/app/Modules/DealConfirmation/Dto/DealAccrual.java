@@ -15,8 +15,11 @@ import java.time.LocalDate;
  * @param previousCouponDate the coupon date on or before the value date — the
  *                           letter's "Last Interest Payment Date". Null when the
  *                           bond's coupon schedule could not be resolved.
- * @param accruedDays        days from {@code previousCouponDate} to the value
- *                           date. Zero when there is no previous coupon.
+ * @param accruedDays        days of interest accruing to the buyer at the value
+ *                           date: from {@code previousCouponDate} to the value
+ *                           date, or zero when there is no previous coupon or
+ *                           the settlement is ex-interest and nothing accrues
+ *                           to the buyer.
  * @param accruedInterestPerHundredFace accrued interest for one bond of face
  *                           value 100, so the letter multiplies by quantity
  *                           rather than the calculator knowing the quantity.

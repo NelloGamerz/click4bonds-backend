@@ -78,16 +78,19 @@ public class UpdateBondRequest {
     // =========================
 
     /**
-     * The record-date rule as supplied by the source.
+     * Number of days before each interest payment date on which the record date
+     * falls.
      *
      * Examples:
      *
-     * 15 days prior to interest payment date
-     * 2 days before coupon
-     * NA
+     * 15
+     * 2
+     *
+     * <p>
+     * Optional. {@code null} means "leave untouched".
      */
-    @Size(max = 255)
-    private String recordDateDescription;
+    @Min(1)
+    private Integer recordDate;
 
     // =========================
     // MATURITY

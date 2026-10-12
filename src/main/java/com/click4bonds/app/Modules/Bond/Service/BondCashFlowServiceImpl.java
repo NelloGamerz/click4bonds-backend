@@ -67,10 +67,9 @@ import lombok.extern.slf4j.Slf4j;
  * upcoming coupon rather than from a bond-level flag.
  *
  * <p>
- * When {@code Bond.recordDateDescription} is absent or {@code "NA"}, the parser
- * returns no record date, no bond is classified as ex-interest, and every
- * coupon after the calculation date is included exactly as it was before this
- * feature existed.
+ * When {@code Bond.recordDate} is absent or non-positive, the parser returns no
+ * record date, no bond is classified as ex-interest, and every coupon after the
+ * calculation date is included exactly as it was before this feature existed.
  */
 @Service
 @Slf4j

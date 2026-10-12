@@ -2,11 +2,11 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
+import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.CouponScheduleService;
@@ -75,25 +75,20 @@ public class DealAccrualCalculator {
             CouponScheduleService.CouponSchedule schedule =
                     couponScheduleService.resolve(bond, valueDate);
 
-            LocalDate previousCouponDate = schedule.previous();
-
             /*
-             * Mirrors the expression AccruedInterestServiceImpl uses
-             * internally. The same calculation rather than a new method on that
-             * service, which would mean changing its interface and its tests to
-             * expose a number it already computes for its own use.
+             * The days and the money are taken from one accrual computation
+             * rather than counted here and priced in the service. Counting them
+             * separately let the letter print a day count that did not produce
+             * the interest beside it: on an ex-interest settlement the service
+             * charges nothing, while a separately counted 25 days still read as
+             * if something had accrued.
              */
-            long accruedDays = previousCouponDate == null
-                    ? 0L
-                    : ChronoUnit.DAYS.between(previousCouponDate, valueDate);
-
-            BigDecimal accruedInterest =
-                    accruedInterestService.calculate(bond, valueDate);
+            AccruedInterest accrued = accruedInterestService.accrue(bond, valueDate);
 
             return Optional.of(new DealAccrual(
-                    previousCouponDate,
-                    accruedDays,
-                    accruedInterest == null ? BigDecimal.ZERO : accruedInterest));
+                    schedule.previous(),
+                    accrued.days(),
+                    accrued.amount() == null ? BigDecimal.ZERO : accrued.amount()));
 
         } catch (RuntimeException unpredictable) {
 

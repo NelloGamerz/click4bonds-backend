@@ -322,7 +322,7 @@ class RecordDateParserTest {
         void derivesARecordDatePerMonthlyPayment() {
 
                 Bond bond = monthlyBond("23rd of every month");
-                bond.setRecordDateDescription("15 days prior to interest payment date");
+                bond.setRecordDate(15);
 
                 List<LocalDate> paymentDates = List.of(
                                 LocalDate.of(2026, 10, 23),
@@ -351,10 +351,10 @@ class RecordDateParserTest {
         }
 
         @Test
-        void calculateRecordDatesHonoursTheBondDescription() {
+        void calculateRecordDatesHonoursTheBondRecordDate() {
 
                 Bond bond = monthlyBond("23rd of every month");
-                bond.setRecordDateDescription("2 days before coupon");
+                bond.setRecordDate(2);
 
                 assertEquals(
                                 LocalDate.of(2026, 10, 21),
@@ -369,10 +369,10 @@ class RecordDateParserTest {
         }
 
         @Test
-        void bondWithNoDescriptionProducesNoRecordDates() {
+        void bondWithNoRecordDateProducesNoRecordDates() {
 
                 Bond bond = monthlyBond("23rd of every month");
-                bond.setRecordDateDescription("NA");
+                bond.setRecordDate(null);
 
                 assertTrue(parser.calculateRecordDates(
                                 bond,
