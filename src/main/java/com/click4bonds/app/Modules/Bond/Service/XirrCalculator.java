@@ -19,6 +19,9 @@ public class XirrCalculator {
     private static final double INITIAL_UPPER_RATE = 1.0;
     private static final double MAX_RATE = 1e10;
 
+    /** Scale of a present value expressed in money. */
+    private static final int PRESENT_VALUE_SCALE = 10;
+
     /**
      * How a span between two dates becomes a fraction of a year.
      *
@@ -174,6 +177,69 @@ public class XirrCalculator {
         }
 
         throw new IllegalStateException("Unable to calculate XIRR for the given cash flows");
+    }
+
+    /**
+     * The present value of a series of dated amounts at a known annual rate.
+     *
+     * <p>
+     * This is the inverse of {@link #calculate(List, DayCountBasis)} and is the
+     * whole of a price-from-yield calculation: a bond's price is the value today
+     * of the money it will pay, discounted at the yield it is quoted on. Solving
+     * for the rate on a series that includes its own price recovers that price,
+     * because the rate is the one at which the series' net present value is zero
+     * — so discounting the receipts at the solved rate and subtracting the price
+     * leaves nothing behind.
+     *
+     * <p>
+     * The same day-count convention discounts; the two directions cannot
+     * disagree about what {@code years} means.
+     *
+     * @param cashFlows     the dated amounts to discount; the caller passes the
+     *                      receipts only. A flow dated on {@code valuationDate}
+     *                      counts in full, undiscounted
+     * @param valuationDate the date the value is expressed at, normally the
+     *                      settlement date
+     * @param annualRate    the annual discount rate as a decimal, e.g.
+     *                      {@code 0.106947}. Must be greater than {@code -1}:
+     *                      a rate of {@code -100%} or less discounts every
+     *                      amount by an undefined factor
+     * @param basis         {@link DayCountBasis#ACTUAL_365} for a corporate bond,
+     *                      {@link DayCountBasis#THIRTY_360} for a Sovereign
+     * @return the present value in the cash flows' own units, to 10 decimals
+     * @throws IllegalArgumentException when an argument is {@code null} or the
+     *                                  rate is {@code -1} or lower
+     */
+    public BigDecimal presentValue(
+            List<CashFlow> cashFlows,
+            LocalDate valuationDate,
+            BigDecimal annualRate,
+            DayCountBasis basis) {
+
+        if (cashFlows == null) {
+            throw new IllegalArgumentException("Cash flows cannot be null");
+        }
+        if (valuationDate == null) {
+            throw new IllegalArgumentException("Valuation date cannot be null");
+        }
+        if (annualRate == null) {
+            throw new IllegalArgumentException("Discount rate cannot be null");
+        }
+        if (annualRate.compareTo(BigDecimal.valueOf(-1)) <= 0) {
+            throw new IllegalArgumentException(
+                    "Discount rate must be greater than -1 (i.e. above -100%)");
+        }
+        if (basis == null) {
+            throw new IllegalArgumentException("Day-count basis cannot be null");
+        }
+
+        /*
+         * Discarded on the same path as the yield: a present value has a sign,
+         * not two, so unlike validateCashFlows there is nothing to insist on.
+         */
+        double value = npv(cashFlows, valuationDate, annualRate.doubleValue(), basis);
+
+        return BigDecimal.valueOf(value).setScale(PRESENT_VALUE_SCALE, RoundingMode.HALF_UP);
     }
 
     private void validateCashFlows(List<CashFlow> cashFlows) {

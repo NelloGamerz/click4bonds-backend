@@ -73,7 +73,57 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
         validateInput(bond, calculationDate, accruedInterest);
 
         BigDecimal cleanPrice = BondFaceValue.cleanPrice(bond);
-        BigDecimal cumInterestConsideration = cleanPrice.add(accruedInterest);
+        Treatment treatment = resolveTreatment(bond, calculationDate, couponPayments);
+        BigDecimal accruedInterestCharged = accruedInterestCharged(treatment, accruedInterest);
+
+        if (treatment.treatment() == PurchasePriceTreatment.EX_INTEREST) {
+
+            log.debug(
+                    "Ex-interest purchase: isin={} calculationDate={} upcomingPaymentDate={} upcomingRecordDate={} cleanPrice={} accruedInterestNotCharged={}",
+                    bond.getIsin(),
+                    calculationDate,
+                    treatment.upcomingPaymentDate(),
+                    treatment.upcomingRecordDate(),
+                    cleanPrice,
+                    accruedInterest);
+        }
+
+        return new PurchaseConsideration(
+                treatment.treatment(),
+                cleanPrice,
+                accruedInterestCharged,
+                cleanPrice.add(accruedInterestCharged),
+                treatment.upcomingPaymentDate(),
+                treatment.upcomingRecordDate());
+    }
+
+    @Override
+    public BigDecimal accruedInterestCharged(
+            Bond bond,
+            LocalDate calculationDate,
+            BigDecimal accruedInterest,
+            List<CouponPayment> couponPayments) {
+
+        validateInput(bond, calculationDate, accruedInterest);
+
+        return accruedInterestCharged(
+                resolveTreatment(bond, calculationDate, couponPayments),
+                accruedInterest);
+    }
+
+    /**
+     * The treatment decided by the first future coupon and that coupon's own
+     * record date, together with the dates it was decided from.
+     *
+     * <p>
+     * Kept apart from the money so the same decision serves both
+     * {@link #determine} — which needs the dates to report them — and
+     * {@link #accruedInterestCharged}, which needs only the treatment.
+     */
+    private Treatment resolveTreatment(
+            Bond bond,
+            LocalDate calculationDate,
+            List<CouponPayment> couponPayments) {
 
         Optional<CouponPayment> upcomingCoupon = firstFutureCoupon(
                 couponPayments,
@@ -86,11 +136,8 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
          */
         if (upcomingCoupon.isEmpty()) {
 
-            return new PurchaseConsideration(
+            return new Treatment(
                     PurchasePriceTreatment.CUM_INTEREST,
-                    cleanPrice,
-                    accruedInterest,
-                    cumInterestConsideration,
                     null,
                     null);
         }
@@ -110,33 +157,26 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
                 recordDate,
                 paymentDate);
 
-        if (entitled) {
-
-            return new PurchaseConsideration(
-                    PurchasePriceTreatment.CUM_INTEREST,
-                    cleanPrice,
-                    accruedInterest,
-                    cumInterestConsideration,
-                    paymentDate,
-                    recordDate);
-        }
-
-        log.debug(
-                "Ex-interest purchase: isin={} calculationDate={} upcomingPaymentDate={} upcomingRecordDate={} cleanPrice={} accruedInterestNotCharged={}",
-                bond.getIsin(),
-                calculationDate,
-                paymentDate,
-                recordDate,
-                cleanPrice,
-                accruedInterest);
-
-        return new PurchaseConsideration(
-                PurchasePriceTreatment.EX_INTEREST,
-                cleanPrice,
-                BigDecimal.ZERO,
-                cleanPrice,
+        return new Treatment(
+                entitled
+                        ? PurchasePriceTreatment.CUM_INTEREST
+                        : PurchasePriceTreatment.EX_INTEREST,
                 paymentDate,
                 recordDate);
+    }
+
+    /**
+     * Charging the accrual under cum-interest and nothing under ex-interest: the
+     * accrual is the seller's compensation for the coupon the buyer will not
+     * receive, so charging it as well would pay the seller twice.
+     */
+    private static BigDecimal accruedInterestCharged(
+            Treatment treatment,
+            BigDecimal accruedInterest) {
+
+        return treatment.treatment() == PurchasePriceTreatment.EX_INTEREST
+                ? BigDecimal.ZERO
+                : accruedInterest;
     }
 
     /**
@@ -172,5 +212,20 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
         if (accruedInterest == null) {
             throw new IllegalArgumentException("Accrued interest cannot be null");
         }
+    }
+
+    /**
+     * The settlement convention and the coupon it was read from.
+     *
+     * @param treatment          cum- or ex-interest
+     * @param upcomingPaymentDate the first future coupon's payment date, or
+     *                            {@code null} when the bond has no future coupon
+     * @param upcomingRecordDate  that coupon's record date, or {@code null} when
+     *                            none was resolved
+     */
+    private record Treatment(
+            PurchasePriceTreatment treatment,
+            LocalDate upcomingPaymentDate,
+            LocalDate upcomingRecordDate) {
     }
 }

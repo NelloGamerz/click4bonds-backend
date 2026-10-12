@@ -12,6 +12,7 @@ import com.click4bonds.app.Modules.Bond.Dto.MaturitySchedule;
 import com.click4bonds.app.Modules.Bond.Dto.ParsedLotSize;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.CalculationType;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
@@ -119,6 +120,13 @@ public class BondRequestMapper {
 
                 // Market
                 .price(price)
+
+                /*
+                 * Which half of the price/yield pair the request supplied. The
+                 * other half is worked out after this mapper returns, by
+                 * BondValuationService — the mapper only records the choice.
+                 */
+                .calculationType(parseCalculationType(request.getCalculationType()))
 
                 // YTM supplied by the caller. It is overwritten the next time the
                 // engine calculates a yield from the price.
@@ -569,6 +577,21 @@ public class BondRequestMapper {
                 parseOptionalPercentage(annualYtm, "annualYtm"),
                 parseOptionalPercentage(ytc, "ytc"),
                 anySupplied);
+    }
+
+    /**
+     * The declared calculation type, or {@code null} when the caller did not say
+     * — which is left as "both halves stored as sent" rather than guessed at,
+     * because inferring it from which field happened to be filled would change
+     * the behaviour of every request that sends both.
+     */
+    private CalculationType parseCalculationType(String raw) {
+
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        return fieldParser.parseEnum(CalculationType.class, raw, "calculationType");
     }
 
     private void invalidateYield(Bond bond) {

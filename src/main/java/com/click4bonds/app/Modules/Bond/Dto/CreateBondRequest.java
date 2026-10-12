@@ -217,6 +217,35 @@ public class CreateBondRequest {
     private String ytc;
 
     // =========================
+    // CALCULATION
+    // =========================
+
+    /**
+     * Which of {@link #price} and {@link #annualYtm} the request is supplying, and
+     * so which one the platform works out:
+     *
+     * <pre>
+     * BY_PRICE : price supplied -> the yield is calculated from it
+     * BY_YTM   : yield supplied -> the price is calculated from it
+     * </pre>
+     *
+     * <p>
+     * The derived figure overwrites whatever the request sent for the other half,
+     * so the two can never disagree. Optional: when absent, neither is derived and
+     * both are stored exactly as sent, which is the behaviour existing clients
+     * rely on.
+     *
+     * <p>
+     * Read case-insensitively; an unrecognized value fails the request with
+     * {@code 400}, naming the field.
+     *
+     * Examples:
+     * BY_PRICE
+     * BY_YTM
+     */
+    private String calculationType;
+
+    // =========================
     // QUANTUM
     // =========================
 

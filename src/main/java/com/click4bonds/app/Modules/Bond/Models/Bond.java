@@ -9,6 +9,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.CalculationType;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
@@ -218,6 +219,20 @@ public class Bond {
     // =========================
     // PRICE
     // =========================
+
+    /**
+     * Which half of the price/yield pair this bond was created from, and so
+     * which half the platform derived.
+     *
+     * <p>
+     * {@code BY_YTM} means the yield was the input and {@link #price} was
+     * calculated; {@code BY_PRICE} means the price was the input and
+     * {@link #annualYtm} was calculated. Null means the create request declared
+     * neither, and both were stored as supplied.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private CalculationType calculationType;
 
     /**
      * Current market/selling price.

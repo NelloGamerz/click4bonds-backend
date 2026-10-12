@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,12 +43,13 @@ public class BondService {
     /**
      * Redis namespace for a single bond as served by {@link #getBond}.
      *
-     * <p>The {@code v1} segment is the serialization generation: it moves when
+     * <p>The {@code v2} segment is the serialization generation: it moves when
      * what a cached {@link BondResponse} looks like changes, so entries written
      * under the old shape expire unread instead of being bound to a type they
-     * no longer fit.</p>
+     * no longer fit. It moved from {@code v1} when {@code BondResponse} gained
+     * {@code calculationType}.</p>
      */
-    private static final String BOND_CACHE_PREFIX = "bond:v1:get:";
+    private static final String BOND_CACHE_PREFIX = "bond:v2:get:";
 
     /**
      * How long a bond read by ISIN may be served from Redis.
@@ -62,6 +64,7 @@ public class BondService {
     private final UserService userService;
     private final AnalyticsService analyticsService;
     private final BondRequestMapper bondRequestMapper;
+    private final BondValuationService bondValuationService;
     private final RedisService redisService;
 
     // =========================================================
@@ -98,6 +101,17 @@ public class BondService {
         // rejects the whole request before anything is written.
 
         Bond bond = bondRequestMapper.toEntity(request, admin);
+
+        // -----------------------------------------------------
+        // Derive the other half of the price/yield pair
+        // -----------------------------------------------------
+        //
+        // The request says which of price and annualYtm it supplied; the other is
+        // calculated here, so the stored bond holds two readings of the same bond
+        // rather than one number and a blank. A request that declared neither is
+        // left untouched, as it always was.
+
+        bondValuationService.applyCalculationType(bond, LocalDate.now());
 
         evictCachedBond(isin);
 
@@ -648,6 +662,9 @@ public class BondService {
                         bond.getPutCallDescription())
 
                 // Market
+                .calculationType(
+                        bond.getCalculationType())
+
                 .price(
                         bond.getPrice())
 

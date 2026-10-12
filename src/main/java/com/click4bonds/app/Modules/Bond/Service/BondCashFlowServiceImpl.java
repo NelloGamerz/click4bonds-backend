@@ -223,6 +223,37 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
         );
     }
 
+    @Override
+    public List<XirrCalculator.CashFlow> generateReceiptCashFlows(
+            Bond bond,
+            LocalDate calculationDate) {
+
+        validateInput(bond, calculationDate);
+
+        /*
+         * The same rows the XIRR series is built from, minus the purchase leg:
+         * one projection, so a discounted price and a solved yield can only
+         * differ by the price itself.
+         */
+        return buildSchedule(bond, calculationDate).entries().stream()
+                .map(entry -> new XirrCalculator.CashFlow(entry.date(), entry.amount()))
+                .toList();
+    }
+
+    @Override
+    public BigDecimal accruedInterestCharged(
+            Bond bond,
+            LocalDate calculationDate) {
+
+        validateInput(bond, calculationDate);
+
+        return purchaseConsiderationService.accruedInterestCharged(
+                bond,
+                calculationDate,
+                accruedInterestService.calculate(bond, calculationDate),
+                buildSchedule(bond, calculationDate).couponPayments());
+    }
+
     /**
      * Rescales one projected movement from a single bond to {@code quantity}
      * bonds. Dates and the movement type are untouched: only the money moves.
@@ -298,7 +329,8 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
 
         return new BondSchedule(
                 purchase,
-                rows.values().stream().map(CashFlowRow::toEntry).toList()
+                rows.values().stream().map(CashFlowRow::toEntry).toList(),
+                couponPayments
         );
     }
 
@@ -517,8 +549,19 @@ public class BondCashFlowServiceImpl implements BondCashFlowService {
         }
     }
 
+    /**
+     * One projection of a bond.
+     *
+     * @param purchase       the purchase leg, empty when the bond has no usable
+     *                       price
+     * @param entries        the coupon and principal movements, by date
+     * @param couponPayments the coupons behind {@code entries}, before the
+     *                       entitlement filter, so the settlement convention can
+     *                       be resolved from the first future coupon
+     */
     private record BondSchedule(
             Optional<PurchaseConsideration> purchase,
-            List<BondCashFlowEntry> entries) {
+            List<BondCashFlowEntry> entries,
+            List<CouponPayment> couponPayments) {
     }
 }
