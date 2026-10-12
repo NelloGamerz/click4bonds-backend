@@ -1,5 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
@@ -20,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
+import com.click4bonds.app.Modules.Bond.Dto.CachedBond;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
@@ -43,13 +46,14 @@ public class BondService {
     /**
      * Redis namespace for a single bond as served by {@link #getBond}.
      *
-     * <p>The {@code v2} segment is the serialization generation: it moves when
+     * <p>The {@code v3} segment is the serialization generation: it moves when
      * what a cached {@link BondResponse} looks like changes, so entries written
      * under the old shape expire unread instead of being bound to a type they
-     * no longer fit. It moved from {@code v1} when {@code BondResponse} gained
-     * {@code calculationType}.</p>
+     * no longer fit. It moved from {@code v2} when {@code BondResponse} was
+     * reduced to its summary fields, which dropped the {@code id} — a stale v2
+     * entry would fail to bind rather than merely carry extra keys.</p>
      */
-    private static final String BOND_CACHE_PREFIX = "bond:v2:get:";
+    private static final String BOND_CACHE_PREFIX = "bond:v3:get:";
 
     /**
      * How long a bond read by ISIN may be served from Redis.
@@ -186,12 +190,14 @@ public class BondService {
 
             log.info("Fetching bond: isin={}, userId={}", isin, userId);
 
-            BondResponse bond = getCachedBond(isin);
+            CachedBond cached = getCachedBond(isin);
+
+            BondResponse bond = cached.getBond();
 
             log.info(
                     "Bond fetched successfully: isin={}, bondId={}",
                     isin,
-                    bond.getId()
+                    cached.getId()
             );
 
             if (userId != null) {
@@ -208,14 +214,14 @@ public class BondService {
                     log.info(
                             "Tracking BOND_VIEW analytics event: userId={}, bondId={}, source=WEB, page=BOND_DETAILS",
                             userId,
-                            bond.getId()
+                            cached.getId()
                     );
 
                     analyticsService.track(
                             AnalyticsEventType.BOND_VIEW,
                             userId,
                             null,
-                            bond.getId(),
+                            cached.getId(),
                             "WEB",
                             "BOND_DETAILS",
                             Map.of(
@@ -227,7 +233,7 @@ public class BondService {
                     log.info(
                             "BOND_VIEW analytics event submitted: userId={}, bondId={}",
                             userId,
-                            bond.getId()
+                            cached.getId()
                     );
                 } else {
 
@@ -259,20 +265,24 @@ public class BondService {
      * failure falls back to a database read rather than failing the request, so
      * an unreachable cache cannot take bond detail down with it. Writes are the
      * other half of this — see {@link #evictCachedBond}.</p>
+     *
+     * <p>The entry is a {@link CachedBond} rather than a bare
+     * {@link BondResponse} because the caller needs the bond's id for analytics
+     * while the response no longer carries one; see {@link CachedBond}.</p>
      */
-    private BondResponse getCachedBond(String isin) {
+    private CachedBond getCachedBond(String isin) {
 
         String normalizedIsin = normalizeIsin(isin);
 
         if (normalizedIsin == null) {
-            return mapToResponse(getbondByIs(isin));
+            return toCachedBond(getbondByIs(isin));
         }
 
         String cacheKey = BOND_CACHE_PREFIX + normalizedIsin;
 
         try {
-            Optional<BondResponse> cached =
-                    redisService.get(cacheKey, BondResponse.class);
+            Optional<CachedBond> cached =
+                    redisService.get(cacheKey, CachedBond.class);
 
             if (cached.isPresent()) {
                 return cached.get();
@@ -282,7 +292,7 @@ public class BondService {
                     normalizedIsin, ex);
         }
 
-        BondResponse bond = mapToResponse(getbondByIs(normalizedIsin));
+        CachedBond bond = toCachedBond(getbondByIs(normalizedIsin));
 
         try {
             redisService.set(cacheKey, bond, BOND_CACHE_TTL);
@@ -291,6 +301,13 @@ public class BondService {
         }
 
         return bond;
+    }
+
+    private CachedBond toCachedBond(Bond bond) {
+
+        return new CachedBond(
+                bond.getId(),
+                mapToResponse(bond));
     }
 
     /**
@@ -628,111 +645,79 @@ public class BondService {
 
         return BondResponse.builder()
 
-                .id(bond.getId())
-
-                .serialNumber(
-                        bond.getSerialNumber())
-
                 .name(
                         bond.getName())
 
                 .isin(
                         bond.getIsin())
 
-                // Classification
-                .category(
-                        bond.getCategory())
-
-                .securityType(
-                        bond.getSecurityType())
-
-                .rating(
-                        bond.getRating())
-
-                .ratingAgency(
-                        bond.getRatingAgency())
-
-                // Coupon
                 .couponRate(
                         bond.getCouponRate())
-
-                .couponFrequency(
-                        bond.getCouponFrequency())
-
-                .ipDateDescription(
-                        bond.getIpDateDescription())
-
-                // Record date rule (source of truth for coupon entitlement)
-                .recordDate(
-                        bond.getRecordDate())
-
-                // Maturity
-                .maturityType(
-                        bond.getMaturityType())
 
                 .maturityDate(
                         bond.getMaturityDate())
 
-                .maturityDescription(
-                        bond.getMaturityDescription())
+                .rating(
+                        combineRating(
+                                bond.getRatingAgency(),
+                                bond.getRating()))
 
-                .putCallDescription(
-                        bond.getPutCallDescription())
-
-                // Market
-                .calculationType(
-                        bond.getCalculationType())
-
-                .price(
-                        bond.getPrice())
-
-                // Yield
-                .semiYtm(
-                        bond.getSemiYtm())
-
-                .annualYtm(
-                        bond.getAnnualYtm())
-
-                .ytc(
-                        bond.getYtc())
-
-                .ytmCalculatedAt(
-                        bond.getYtmCalculatedAt())
-
-                // Quantum
-                .quantumDescription(
-                        bond.getQuantumDescription())
-
-                .quantumInLacs(
-                        bond.getQuantumInLacs())
-
-                // Lot
-                .lotSizeDescription(
-                        bond.getLotSizeDescription())
-
-                .lotSize(
-                        bond.getLotSize())
-
-                .lotSizeType(
-                        bond.getLotSizeType())
-
-                .isFlashNews(
-                        bond.getIsFlashNews())
-
-                .remainingQuantity(
-                        bond.getRemainingQuantity())
-
-                // Status
-                .status(
-                        bond.getStatus())
-
-                // Audit
-                .createdAt(
-                        bond.getCreatedAt())
-
-                .updatedAt(
-                        bond.getUpdatedAt())
+                .minimumInvestment(
+                        minimumInvestment(
+                                bond.getPrice(),
+                                bond.getLotSize()))
 
                 .build();
+    }
+
+    /**
+     * Joins the rating agency and the grade into the single string the response
+     * carries, e.g. {@code "CRISIL AAA"}.
+     *
+     * <p>A bond may have been entered with only one of the two — or neither —
+     * so what is present is what is shown, and a bond with no rating at all
+     * reports null rather than an empty string.</p>
+     */
+    private static String combineRating(
+            String ratingAgency,
+            String rating) {
+
+        boolean hasAgency = ratingAgency != null && !ratingAgency.isBlank();
+        boolean hasRating = rating != null && !rating.isBlank();
+
+        if (hasAgency && hasRating) {
+            return ratingAgency.trim() + " " + rating.trim();
+        }
+
+        if (hasAgency) {
+            return ratingAgency.trim();
+        }
+
+        return hasRating ? rating.trim() : null;
+    }
+
+    /**
+     * What one lot costs: the price is quoted per 100 of face value, so
+     * {@code lotSize} units come to {@code price × lotSize ÷ 100}.
+     *
+     * <p>Null when either input is unknown. A bond with no price has nothing to
+     * multiply, and a bond trading in DEMAT/SGL has no numeric lot size at all
+     * — in both cases "unknown" is the honest answer, where a zero would read
+     * as a bond that costs nothing.</p>
+     */
+    private static BigDecimal minimumInvestment(
+            BigDecimal price,
+            BigDecimal lotSize) {
+
+        if (price == null || lotSize == null) {
+            return null;
+        }
+
+        // Rupees and paise; dividing by 100 is exact, but the scale is stated
+        // so the response does not inherit whatever precision the two inputs
+        // happened to carry.
+        return price
+                .multiply(lotSize)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 }

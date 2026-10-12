@@ -19,7 +19,6 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
-import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 
 import lombok.RequiredArgsConstructor;
@@ -29,15 +28,13 @@ import lombok.extern.slf4j.Slf4j;
  * Read access to a bond's yield to maturity, and to the price that yield implies.
  *
  * <p>
- * Kept apart from {@link BondController} because a YTM lookup is a computation
- * over the bond's cash flow rather than a read of the bond's own fields, and it
- * has the side effect of caching the result on the bond.
+ * Kept apart from {@link BondController} because both endpoints are about the
+ * bond's price/yield pair rather than its descriptive fields.
  *
  * <p>
- * The two endpoints are the two directions of one calculation: {@code /ytm} asks
- * what a bond yields at the price it carries, {@code /price} asks what it would
- * have to be priced at to yield a given rate. Solving one and then the other
- * returns the number it started from.
+ * The yield endpoint reports the figure already stored on the bond; the price
+ * endpoint solves the opposite direction, for a yield the caller supplies. Both
+ * rest on the same cash-flow schedule, so the two agree.
  */
 @RestController
 @RequestMapping("/api/bonds")
@@ -49,23 +46,23 @@ public class YtmController {
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final BondService bondService;
-    private final YtmCalculationService ytmCalculationService;
     private final PriceCalculationService priceCalculationService;
     private final AccruedInterestService accruedInterestService;
 
     /**
-     * Calculates the annual yield to maturity for the bond with this ISIN.
+     * Reports the annual yield to maturity stored for the bond with this ISIN.
      *
      * <p>
-     * The result is cached on the bond ({@code annualYtm} and
-     * {@code ytmCalculatedAt}) as a side effect of the calculation, so this is
-     * not a purely read-only endpoint. The accrued interest is not cached: it is
-     * a function of the settlement date, which this call chooses, rather than a
-     * property of the bond.
+     * Read-only: the yield is not solved for here. {@code annualYtm} is
+     * calculated when a bond is created or updated — see
+     * {@link com.click4bonds.app.Modules.Bond.Service.BondValuationService} — and
+     * this endpoint returns that stored figure, so reading a yield can never move
+     * the value it reports.
      *
      * @param isin            the bond's ISIN, case-insensitive.
-     * @param calculationDate ISO date the projection starts from; defaults to
-     *                        today, which is the usual settlement horizon.
+     * @param calculationDate ISO date the accrued interest is measured to;
+     *                        defaults to today, which is the usual settlement
+     *                        horizon.
      * @return 404 when no bond carries that ISIN.
      */
     @GetMapping("/{isin}/ytm")
@@ -85,26 +82,34 @@ public class YtmController {
 
         Bond bond = bondService.findBond(isin);
 
-        BigDecimal ytmDecimal = ytmCalculationService.calculateYtm(bond, asOf);
+        /*
+         * Both representations are read off the one stored percentage. Moving the
+         * decimal point is a change of representation, not a second calculation,
+         * so the two can never disagree. A bond whose yield has never been
+         * calculated has neither: null is the honest answer, where a zero would
+         * read as a bond that yields nothing.
+         */
+        BigDecimal ytmPercentage = bond.getAnnualYtm();
+
+        BigDecimal ytmDecimal = ytmPercentage == null
+                ? null
+                : ytmPercentage.divide(HUNDRED);
 
         /*
-         * The same date the yield was projected from, so the accrual and the
-         * yield describe one settlement rather than two.
+         * The accrual is the one figure here with no column behind it: it is a
+         * function of the settlement date, which this call chooses rather than
+         * reads. Computing it writes nothing, so the endpoint stays a read.
          */
         AccruedInterest accruedInterest = accruedInterestService.accrue(
                 bond,
                 asOf);
 
-        /*
-         * Read the percentage back off the bond rather than recomputing it, so
-         * the response can never disagree with the value just persisted.
-         */
         return ResponseEntity.ok(
                 new BondYtmResponse(
                         bond.getIsin(),
                         bond.getName(),
                         asOf,
-                        bond.getAnnualYtm(),
+                        ytmPercentage,
                         ytmDecimal,
                         bond.getPrice(),
                         accruedInterest.days(),
