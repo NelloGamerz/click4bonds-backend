@@ -17,8 +17,9 @@ import com.click4bonds.app.Modules.Bond.Enums.PurchasePriceTreatment;
  * @param treatment              cum-interest or ex-interest
  * @param cleanPrice             the bond's quoted clean price
  * @param accruedInterestCharged the accrued interest component actually included
- *                               in the consideration; zero for an ex-interest
- *                               purchase
+ *                               in the consideration, sign included; negative
+ *                               for an ex-interest purchase, which lowers what
+ *                               the buyer pays
  * @param purchaseConsideration  what the buyer pays, before being negated for
  *                               the XIRR series
  * @param upcomingPaymentDate    payment date of the next coupon, or {@code null}

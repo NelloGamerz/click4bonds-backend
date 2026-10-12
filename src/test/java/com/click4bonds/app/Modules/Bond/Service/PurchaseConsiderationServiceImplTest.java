@@ -24,7 +24,8 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
  *
  * <pre>
  * buyer entitled to the first future coupon -&gt; CUM_INTEREST  -&gt; clean + accrued
- * buyer not entitled                         -&gt; EX_INTEREST   -&gt; clean only
+ * buyer not entitled                         -&gt; EX_INTEREST   -&gt; clean + accrual
+ *                                                (the accrual is negative)
  * </pre>
  *
  * <p>
@@ -35,7 +36,7 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 class PurchaseConsiderationServiceImplTest {
 
         /** The record-date rule used throughout the Satin Creditcare example. */
-        private static final String FIFTEEN_DAYS_PRIOR = "15 days prior to interest payment date";
+        private static final Integer FIFTEEN_DAYS_PRIOR = 15;
 
         private static final BigDecimal CLEAN_PRICE = new BigDecimal("98.94");
 
@@ -44,6 +45,15 @@ class PurchaseConsiderationServiceImplTest {
 
         /** Accrued interest that accrues toward the 2026-10-23 coupon. */
         private static final BigDecimal ACCRUED_AT_OCT_09 = new BigDecimal("0.53333333333333333333");
+
+        /**
+         * The accrual a settlement on 2026-10-09 carries. The 2026-10-08 record
+         * date has passed, so the buyer is not entitled to the 2026-10-23 coupon
+         * and the accrual is the 14 days from settlement to that coupon, of its
+         * 30-day period, carried negative.
+         */
+        private static final BigDecimal NEGATIVE_ACCRUAL_OCT_09 =
+                new BigDecimal("-0.46666666666666666667");
 
         private PurchaseConsiderationService service;
 
@@ -110,11 +120,11 @@ class PurchaseConsiderationServiceImplTest {
 
                 /*
                  * 2026-10-09 > 2026-10-08, so the coupon belongs to the seller and
-                 * the accrued interest on it must not be charged.
+                 * the accrual for the settlement is the negative one.
                  */
                 PurchaseConsideration result = determine(
                                 LocalDate.of(2026, 10, 9),
-                                ACCRUED_AT_OCT_09,
+                                NEGATIVE_ACCRUAL_OCT_09,
                                 List.of(coupon(LocalDate.of(2026, 10, 23))));
 
                 assertEquals(PurchasePriceTreatment.EX_INTEREST, result.treatment());
@@ -122,18 +132,21 @@ class PurchaseConsiderationServiceImplTest {
 
                 assertEquals(
                                 0,
-                                result.accruedInterestCharged().compareTo(BigDecimal.ZERO),
-                                "Ex-interest must charge no accrued interest");
+                                result.accruedInterestCharged().compareTo(NEGATIVE_ACCRUAL_OCT_09),
+                                "Ex-interest charges the negative accrual as it stands");
+
+                BigDecimal expectedConsideration =
+                                CLEAN_PRICE.add(NEGATIVE_ACCRUAL_OCT_09);
 
                 assertEquals(
                                 0,
-                                result.purchaseConsideration().compareTo(CLEAN_PRICE),
-                                "Ex-interest consideration must be the clean price only");
+                                result.purchaseConsideration().compareTo(expectedConsideration),
+                                "Ex-interest consideration is the clean price less the accrual");
 
                 assertEquals(
                                 0,
-                                result.purchaseCashFlow().compareTo(CLEAN_PRICE.negate()),
-                                "The XIRR purchase cash flow must be the negative clean price");
+                                result.purchaseCashFlow().compareTo(expectedConsideration.negate()),
+                                "The XIRR purchase cash flow must be the negated consideration");
 
                 assertEquals(LocalDate.of(2026, 10, 23), result.upcomingPaymentDate());
                 assertEquals(LocalDate.of(2026, 10, 8), result.upcomingRecordDate());
@@ -206,7 +219,7 @@ class PurchaseConsiderationServiceImplTest {
         void noRecordDateRuleNeverProducesExInterest() {
 
                 Bond bond = satinBond2031();
-                bond.setRecordDateDescription("NA");
+                bond.setRecordDate(null);
 
                 PurchaseConsideration result = service.determine(
                                 bond,
@@ -232,7 +245,7 @@ class PurchaseConsiderationServiceImplTest {
         void nullDescriptionNeverProducesExInterest() {
 
                 Bond bond = satinBond2031();
-                bond.setRecordDateDescription(null);
+                bond.setRecordDate(null);
 
                 PurchaseConsideration result = service.determine(
                                 bond,
@@ -276,7 +289,7 @@ class PurchaseConsiderationServiceImplTest {
                         List<CouponPayment> couponPayments) {
 
                 Bond bond = satinBond2031();
-                bond.setRecordDateDescription(FIFTEEN_DAYS_PRIOR);
+                bond.setRecordDate(FIFTEEN_DAYS_PRIOR);
 
                 return service.determine(bond, calculationDate, accruedInterest, couponPayments);
         }

@@ -16,10 +16,12 @@ import java.time.LocalDate;
  * <p>
  * The accrued interest and the days it accrued for are returned alongside,
  * because they are the other half of what the settlement date means: the yield is
- * the return from here to maturity, and the accrual is what the seller is owed
- * for the period already run. Both are measured at the same date, on the same
- * coupon schedule, so a caller showing one beside the other is not mixing two
- * readings of the bond.
+ * the return from here to maturity, and the accrual is what moves between buyer
+ * and seller for the period already run — positive when the buyer is entitled to
+ * the coming coupon, negative when the settlement is ex-interest and the buyer is
+ * owed the stretch they will hold without being paid. Both are measured at the
+ * same date, on the same coupon schedule, and both carry that sign, so a caller
+ * showing one beside the other is not mixing two readings of the bond.
  *
  * @param isin            the bond's ISIN
  * @param bondName        the bond's name

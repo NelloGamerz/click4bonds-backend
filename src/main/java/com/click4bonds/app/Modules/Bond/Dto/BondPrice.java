@@ -22,10 +22,11 @@ import java.math.BigDecimal;
  * <p>
  * The accrued interest appears twice because the two figures answer different
  * questions. {@link #accruedInterest} is what has accrued by the calendar;
- * {@link #accruedInterestCharged} is what the buyer actually pays for it, which
- * is nothing when the purchase is ex-interest and the coupon the accrual belongs
- * to will go to the seller instead. Reporting only the first would leave a
- * caller unable to reconcile the dirty price with the clean one.
+ * {@link #accruedInterestCharged} is what the buyer actually pays for it. The
+ * two are the same figure: the sign decides the treatment, so an ex-interest
+ * purchase charges a negative accrual rather than none, and the clean price
+ * rises by that amount. Reporting only the first would leave a caller unable to
+ * reconcile the dirty price with the clean one.
  *
  * @param price                  clean price as a percentage of par, to 2
  *                               decimals — the form {@code Bond.price} is
@@ -34,10 +35,15 @@ import java.math.BigDecimal;
  *                               rupees per unit of face value, at the platform's
  *                               full working precision
  * @param accruedInterest        interest accrued from the previous coupon date to
- *                               the settlement date, in rupees per unit
- * @param accruedInterestCharged accrued interest the buyer pays: the accrual on a
- *                               cum-interest purchase, zero on an ex-interest one
- * @param accruedDays            days the accrual covers
+ *                               the settlement date, in rupees per unit;
+ *                               negative in the record period of the coming
+ *                               coupon
+ * @param accruedInterestCharged accrued interest the buyer pays: the accrual
+ *                               itself, sign included — positive on a
+ *                               cum-interest purchase, negative on an
+ *                               ex-interest one
+ * @param accruedDays            days the accrual covers; negative wherever the
+ *                               accrual is
  */
 public record BondPrice(
         BigDecimal price,

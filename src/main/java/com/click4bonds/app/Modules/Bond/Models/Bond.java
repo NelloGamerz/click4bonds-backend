@@ -132,39 +132,31 @@ public class Bond {
     // =========================
 
     /**
-     * Original record-date rule from Excel/source.
+     * Number of days before each interest payment date on which the record date
+     * falls — the entitlement rule for this bond.
      * <p>
-     * IMPORTANT - this description is the SOURCE OF TRUTH for record dates.
+     * IMPORTANT - this integer is the SOURCE OF TRUTH for record dates.
      * <p>
-     * A record date is NOT stored on the bond. It is derived per coupon payment
-     * date by {@code RecordDateParser}, because a bond with MONTHLY / QUARTERLY /
-     * HALF_YEARLY / YEARLY coupons has a different record date for every coupon
-     * it pays. Storing a single date here would be wrong for all but one of them.
+     * An admin sends the offset directly, for example {@code 15}. A record date
+     * is NOT stored on the bond: it is derived per coupon payment date by
+     * {@code RecordDateParser} as {@code paymentDate.minusDays(recordDate)},
+     * because a bond with MONTHLY / QUARTERLY / HALF_YEARLY / YEARLY coupons has
+     * a different record date for every coupon it pays. Storing a single date
+     * here would be wrong for all but one of them.
      * <p>
-     * The number of days is always read from this text. There is no default
-     * offset: a description saying 7 days means 7, saying 10 means 10, and a
-     * description that cannot be interpreted raises
-     * {@code UnsupportedRecordDateDescriptionException} rather than silently
-     * assuming 15 days.
+     * The window from the record date up to (and including) the interest payment
+     * date is the <strong>record period</strong>. A settlement falling anywhere
+     * inside that window is ex-interest: the coupon belongs to the seller, so
+     * the buyer is not entitled to it and the accrued interest on it is not
+     * charged ({@code PurchaseConsiderationService}).
      * <p>
-     * Supported today (see {@code RelativeDaysRecordDateRule}):
-     * <p>
-     * "15 days prior to interest payment date"
-     * <p>
-     * "2 days before coupon"
-     * <p>
-     * "15 days prior"
-     * <p>
-     * Absent / blank / "NA" / "N/A" / "Not Applicable" means the bond has no
-     * record-date rule; those bonds keep their exact historical YTM behaviour.
-     * <p>
-     * A description that carries meaning the parser does not model (for example
-     * "21st of every month", "20/09/2026", or "3 days prior to the last working
-     * day") is rejected. Such wording needs a new {@code RecordDateRule}
-     * implementation before it can be used.
+     * There is no default offset. {@code NULL} or a non-positive value means the
+     * bond has no record-date rule, and those bonds keep their exact historical
+     * YTM behaviour: every future coupon is included and accrued interest is
+     * always charged.
      */
-    @Column(length = 255)
-    private String recordDateDescription;
+    @Column(name = "record_date")
+    private Integer recordDate;
 
 
     // =========================

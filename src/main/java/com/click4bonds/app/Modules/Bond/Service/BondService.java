@@ -645,8 +645,8 @@ public class BondService {
                         bond.getIpDateDescription())
 
                 // Record date rule (source of truth for coupon entitlement)
-                .recordDateDescription(
-                        bond.getRecordDateDescription())
+                .recordDate(
+                        bond.getRecordDate())
 
                 // Maturity
                 .maturityType(

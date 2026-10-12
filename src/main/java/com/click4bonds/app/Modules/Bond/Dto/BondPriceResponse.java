@@ -30,10 +30,13 @@ import java.time.LocalDate;
  * @param dirtyPrice             present value of the future receipts in rupees
  *                               per unit of face value
  * @param accruedInterest        interest accrued to the settlement date, in
- *                               rupees per unit
- * @param accruedInterestCharged accrued interest the buyer pays; zero when the
- *                               purchase is ex-interest
- * @param accruedDays            days the accrual covers
+ *                               rupees per unit; negative when the settlement is
+ *                               in the record period of the coming coupon
+ * @param accruedInterestCharged accrued interest the buyer pays: the accrual
+ *                               itself, sign included — negative on an
+ *                               ex-interest purchase
+ * @param accruedDays            days the accrual covers; negative wherever the
+ *                               accrual is
  * @param calculatedAt           when this price was computed
  */
 public record BondPriceResponse(

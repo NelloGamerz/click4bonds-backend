@@ -122,20 +122,24 @@ public class CreateBondRequest {
     // =========================
 
     /**
-     * The record-date rule as supplied by the source.
+     * Number of days before each interest payment date on which the record date
+     * falls.
      *
      * <p>
-     * This is the source of truth for entitlement. Record dates themselves are
-     * derived per coupon payment date and are never supplied by a client.
+     * This is the source of truth for entitlement. The record date itself is
+     * derived per coupon payment date as {@code paymentDate - recordDate} and is
+     * never supplied by a client.
      *
      * Examples:
      *
-     * 15 days prior to interest payment date
-     * 2 days before coupon
-     * NA
+     * 15
+     * 2
+     *
+     * <p>
+     * Optional. Omitted or {@code null} means the bond has no record-date rule.
      */
-    @Size(max = 255)
-    private String recordDateDescription;
+    @Min(1)
+    private Integer recordDate;
 
     // =========================
     // MATURITY

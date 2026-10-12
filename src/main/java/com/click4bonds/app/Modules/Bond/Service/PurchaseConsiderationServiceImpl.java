@@ -22,38 +22,38 @@ import lombok.extern.slf4j.Slf4j;
  * <h2>Convention implemented here</h2>
  *
  * <pre>
- * CUM_INTEREST : purchase = clean price + accrued interest
- * EX_INTEREST  : purchase = clean price
+ * CUM_INTEREST : accrued interest positive -&gt; purchase = clean price + accrual
+ * EX_INTEREST  : accrued interest negative -&gt; purchase = clean price + accrual
+ *                                             = clean price - |accrual|
  * </pre>
  *
  * <p>
- * A purchase is ex-interest when the buyer is not entitled to the first future
- * coupon. The projected accrued interest reported by
- * {@code AccruedInterestService} is a fraction of exactly that coupon, so it is
- * the seller's compensation for keeping it. Charging it to a buyer who will not
- * receive the coupon would pay the seller twice, once through the coupon and
- * again through the price, which is why it is dropped rather than merely
- * removed from the future series.
+ * The treatment is one and the same thing as the sign of the accrual, so this
+ * service does not adjust the accrual - it charges the figure
+ * {@code AccruedInterestService} produced. A purchase is ex-interest when the
+ * buyer is not entitled to the first future coupon, and the accrual for such a
+ * settlement is negative: it is the part of that coupon covering the stretch
+ * the buyer will hold without being paid. Setting it against the price is what
+ * keeps the clean price continuous as the bond goes ex.
  *
- * <h2>Worked example: 12% Satin Creditcare 2031, "15 days prior"</h2>
+ * <h2>Worked example: 12% monthly bond paying on the 17th, record date 2nd</h2>
  *
  * <pre>
- * calculationDate 2026-10-09
- *   first future coupon     2026-10-23
- *   its record date         2026-10-08
- *   2026-10-09 &gt; 2026-10-08  -&gt; not entitled -&gt; EX_INTEREST
- *   clean price 98.94, accrued interest 0.51613 (16/31 of 1.00)
- *   purchase = 98.94        (accrued interest NOT charged)
+ * calculationDate 2026-05-12
+ *   first future coupon     2026-05-17
+ *   its record date         2026-05-02
+ *   2026-05-12 &gt; 2026-05-02  -&gt; not entitled -&gt; EX_INTEREST
+ *   clean price 98.94, accrual -5 days of the 30-day period, i.e. -0.16438
+ *   purchase = 98.94 - 0.16438 = 98.77562
  * </pre>
  *
  * <h2>Absence of a record-date rule</h2>
  *
  * <p>
- * When the bond has no record-date description the parser resolves no record
- * date, entitlement falls back to "is the coupon in the future", and the
- * treatment is CUM_INTEREST with accrued interest charged. No bond is ever
- * classified as ex-interest without a record-date rule, so historical YTM is
- * unchanged.
+ * When the bond has no record-date offset the parser resolves no record date,
+ * entitlement falls back to "is the coupon in the future", and the accrual is
+ * the ordinary positive one. No bond is ever classified as ex-interest without a
+ * record-date rule, so historical YTM is unchanged.
  */
 @Service
 @RequiredArgsConstructor
@@ -74,7 +74,17 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
 
         BigDecimal cleanPrice = BondFaceValue.cleanPrice(bond);
         Treatment treatment = resolveTreatment(bond, calculationDate, couponPayments);
-        BigDecimal accruedInterestCharged = accruedInterestCharged(treatment, accruedInterest);
+
+        /*
+         * The accrual is charged exactly as it stands, sign included: positive
+         * on a cum-interest purchase (interest run up to settlement), negative
+         * on an ex-interest one (the part of the coming coupon the buyer will
+         * not receive, set against the price). Nothing is zeroed here, because
+         * the sign is already the treatment - dropping the negative accrual
+         * would leave the figure AccruedInterestService reports with nothing
+         * behind it, and would charge the buyer for a coupon the seller keeps.
+         */
+        BigDecimal accruedInterestCharged = accruedInterest;
 
         if (treatment.treatment() == PurchasePriceTreatment.EX_INTEREST) {
 
@@ -106,9 +116,12 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
 
         validateInput(bond, calculationDate, accruedInterest);
 
-        return accruedInterestCharged(
-                resolveTreatment(bond, calculationDate, couponPayments),
-                accruedInterest);
+        /*
+         * The same value the consideration is built from, so the price and the
+         * figure reported beside it can never disagree. The treatment is not
+         * consulted: it is the accrual's sign, resolved on the same coupon.
+         */
+        return accruedInterest;
     }
 
     /**
@@ -163,20 +176,6 @@ public class PurchaseConsiderationServiceImpl implements PurchaseConsiderationSe
                         : PurchasePriceTreatment.EX_INTEREST,
                 paymentDate,
                 recordDate);
-    }
-
-    /**
-     * Charging the accrual under cum-interest and nothing under ex-interest: the
-     * accrual is the seller's compensation for the coupon the buyer will not
-     * receive, so charging it as well would pay the seller twice.
-     */
-    private static BigDecimal accruedInterestCharged(
-            Treatment treatment,
-            BigDecimal accruedInterest) {
-
-        return treatment.treatment() == PurchasePriceTreatment.EX_INTEREST
-                ? BigDecimal.ZERO
-                : accruedInterest;
     }
 
     /**

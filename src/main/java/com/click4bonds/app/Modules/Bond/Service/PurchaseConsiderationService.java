@@ -31,8 +31,9 @@ public interface PurchaseConsiderationService {
      * @param calculationDate  the purchase/settlement date; must not be
      *                         {@code null}
      * @param accruedInterest  accrued interest from
-     *                         {@code AccruedInterestService}; charged only on a
-     *                         cum-interest purchase
+     *                         {@code AccruedInterestService}, charged exactly as
+     *                         it stands — positive on a cum-interest purchase,
+     *                         negative on an ex-interest one
      * @param couponPayments   the projected coupon payments; may be {@code null}
      * @return the purchase leg and the convention that produced it
      * @throws IllegalArgumentException when {@code bond},
@@ -50,19 +51,21 @@ public interface PurchaseConsiderationService {
      * own.
      *
      * <p>
-     * Derived from the same treatment decision as {@link #determine}: the accrual
-     * on a cum-interest purchase, zero on an ex-interest one. It is reachable
-     * separately because pricing a bond from a yield needs the treatment
-     * <em>without</em> a price. {@link #determine} reads the bond's stored price
-     * to report the clean price it was given, and that price is precisely what a
-     * price-from-yield calculation is solving for, so it cannot be an input.
+     * The same figure {@link #determine} builds its consideration from, and the
+     * same one {@code AccruedInterestService} reports: the accrual, sign
+     * included. It is reachable separately because pricing a bond from a yield
+     * needs the accrual <em>without</em> a price. {@link #determine} reads the
+     * bond's stored price to report the clean price it was given, and that price
+     * is precisely what a price-from-yield calculation is solving for, so it
+     * cannot be an input.
      *
      * @param bond            the bond; must not be {@code null}
      * @param calculationDate the purchase/settlement date; must not be
      *                        {@code null}
      * @param accruedInterest accrued interest from
-     *                        {@code AccruedInterestService}; charged only on a
-     *                        cum-interest purchase
+     *                        {@code AccruedInterestService}, returned as it
+     *                        stands — positive cum-interest, negative
+     *                        ex-interest
      * @param couponPayments  the projected coupon payments; may be {@code null}
      * @return the accrued interest the buyer is charged, never {@code null}
      * @throws IllegalArgumentException when {@code bond},

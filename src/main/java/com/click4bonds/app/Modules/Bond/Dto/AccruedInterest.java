@@ -11,11 +11,19 @@ import java.math.BigDecimal;
  * the period's length. Computing them in one place keeps a caller from reporting a
  * day count that does not produce the figure beside it.
  *
+ * <p>
+ * Both figures carry the same sign. They are positive while the buyer is
+ * entitled to the coupon the period accrues towards, and negative when the
+ * settlement falls in the record period of that coupon: the buyer will not
+ * receive it, so the accrual is the part of it covering the stretch from
+ * settlement to the coupon date, counted down to zero as the coupon approaches.
+ *
  * @param days   days accrued at the calculation date, from the previous coupon
- *               date — zero when nothing has accrued, including for a bond that
- *               pays no coupon
+ *               date — negative in the record period of the coming coupon, and
+ *               zero when nothing has accrued, including for a bond that pays no
+ *               coupon
  * @param amount accrued interest per 100 face value, at the platform's full
- *               working precision
+ *               working precision; negative wherever {@code days} is
  */
 public record AccruedInterest(
         long days,

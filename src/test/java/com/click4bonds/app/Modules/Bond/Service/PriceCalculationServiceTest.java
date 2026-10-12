@@ -270,14 +270,15 @@ class PriceCalculationServiceTest {
     // ------------------------------------------------------------------
 
     /**
-     * Bought before the record date the buyer receives the coupon and pays for
-     * the accrual; bought after it they receive neither.
+     * Bought before the record date the buyer receives the coupon and pays the
+     * accrual; bought after it the coupon goes to the seller, so the accrual
+     * turns negative and is set against the price.
      */
     @Test
-    void chargesNoAccruedInterestOnAnExInterestPurchase() {
+    void chargesTheNegativeAccrualOnAnExInterestPurchase() {
 
         Bond bond = satinCreditcare2031();
-        bond.setRecordDateDescription("15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         /*
          * The coupon on 2026-10-23 has a record date of 2026-10-08, so settling
@@ -300,7 +301,16 @@ class PriceCalculationServiceTest {
                 cum.accruedInterestCharged(),
                 "a cum-interest purchase charges the accrual");
 
-        assertMoneyEquals("0", ex.accruedInterestCharged(), "an ex-interest purchase charges none");
+        assertTrue(
+                ex.accruedInterest().signum() < 0,
+                "The ex-interest accrual is negative");
+        assertTrue(
+                ex.accruedDays() < 0,
+                "The ex-interest day count counts down to the coupon, so it is negative");
+        assertMoneyEquals(
+                ex.accruedInterest().toPlainString(),
+                ex.accruedInterestCharged(),
+                "an ex-interest purchase charges the negative accrual as it stands");
 
         assertTrue(
                 ex.dirtyPrice().compareTo(cum.dirtyPrice()) < 0,

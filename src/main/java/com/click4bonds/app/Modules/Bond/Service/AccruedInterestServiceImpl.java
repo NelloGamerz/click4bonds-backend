@@ -224,6 +224,8 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
     private final MaturityDescriptionParser maturityDescriptionParser;
     private final CouponDateGenerator couponDateGenerator;
     private final PrincipalRepaymentService principalRepaymentService;
+    private final RecordDateParser recordDateParser;
+    private final CouponEntitlementService couponEntitlementService;
 
     /**
      * Full constructor used by the Spring container.
@@ -233,12 +235,40 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
             CouponScheduleService couponScheduleService,
             MaturityDescriptionParser maturityDescriptionParser,
             CouponDateGenerator couponDateGenerator,
-            PrincipalRepaymentService principalRepaymentService) {
+            PrincipalRepaymentService principalRepaymentService,
+            RecordDateParser recordDateParser,
+            CouponEntitlementService couponEntitlementService) {
 
         this.couponScheduleService = couponScheduleService;
         this.maturityDescriptionParser = maturityDescriptionParser;
         this.couponDateGenerator = couponDateGenerator;
         this.principalRepaymentService = principalRepaymentService;
+        this.recordDateParser = recordDateParser;
+        this.couponEntitlementService = couponEntitlementService;
+    }
+
+    /**
+     * Constructor for callers that do not care about record dates, retained for
+     * the existing tests.
+     *
+     * <p>
+     * Both record-date collaborators are dependency-free, so the record-date
+     * decision is live rather than switched off: a bond that carries no
+     * record-date offset is unaffected either way.
+     */
+    public AccruedInterestServiceImpl(
+            CouponScheduleService couponScheduleService,
+            MaturityDescriptionParser maturityDescriptionParser,
+            CouponDateGenerator couponDateGenerator,
+            PrincipalRepaymentService principalRepaymentService) {
+
+        this(
+                couponScheduleService,
+                maturityDescriptionParser,
+                couponDateGenerator,
+                principalRepaymentService,
+                new RecordDateParserImpl(),
+                new CouponEntitlementServiceImpl());
     }
 
     /**
@@ -313,21 +343,8 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                 calculationDate);
 
         /*
-         * Calculate the number of days that have accrued.
-         *
-         * Example:
-         *
-         * Previous coupon : 2026-09-05
-         * Calculation date : 2026-09-08
-         *
-         * Accrued days = 3
-         */
-        long accruedDays = ChronoUnit.DAYS.between(
-                schedule.previous(),
-                calculationDate);
-
-        /*
-         * Calculate the actual number of days in the coupon period.
+         * The actual number of days in the coupon period, which is the
+         * denominator of the accrual in both directions.
          *
          * Example:
          *
@@ -345,6 +362,49 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                             + ", next coupon date "
                             + schedule.next());
         }
+
+        /*
+         * Which way the accrual runs.
+         *
+         * Cum-interest (the ordinary case): interest has run from the previous
+         * coupon up to the settlement date, and is positive.
+         *
+         * Ex-interest: the settlement falls in the record period of the coupon
+         * this period accrues towards, so that coupon belongs to the seller and
+         * the buyer will not receive it. The buyer is then owed the part of the
+         * coupon covering the stretch they will hold without being paid -
+         * settlement up to the coupon date - and that part is carried negative,
+         * so it counts down to zero as the coupon approaches. This is the
+         * negative accrued interest convention for an ex-dividend period.
+         *
+         * Either way the accrual covers one coupon period, measured over the
+         * same year, so only the start date and the sign differ.
+         *
+         * The window is read from CouponEntitlementService rather than decided
+         * again here: one rule, applied once, so the accrual and the
+         * consideration can never disagree about whether the buyer is entitled.
+         * A bond with no record-date offset resolves no record date, is always
+         * entitled, and is left exactly as it was.
+         */
+        boolean exInterest = isExInterest(bond, calculationDate, schedule.next());
+
+        LocalDate accrualStart = exInterest ? calculationDate : schedule.previous();
+        LocalDate accrualEnd = exInterest ? schedule.next() : calculationDate;
+
+        /*
+         * Example (cum-interest):
+         *
+         * Previous coupon : 2026-09-05
+         * Calculation date : 2026-09-08
+         *
+         * Accrued days = 3
+         *
+         * Example (ex-interest, a monthly bond paying on the 17th with a record
+         * date 15 days earlier, settling on the 12th):
+         *
+         * Accrued days = 12 -> 17 = 5, carried as -5
+         */
+        long accruedDays = ChronoUnit.DAYS.between(accrualStart, accrualEnd);
 
         BigDecimal accruedInterest;
 
@@ -415,7 +475,57 @@ public class AccruedInterestServiceImpl implements AccruedInterestService {
                             RoundingMode.HALF_UP);
         }
 
+        if (exInterest) {
+
+            /*
+             * Both figures take the sign: a settlement that is owed interest
+             * cannot report negative days beside a positive amount, or the pair
+             * would describe two different trades.
+             */
+            return new AccruedInterest(-accruedDays, accruedInterest.negate());
+        }
+
         return new AccruedInterest(accruedDays, accruedInterest);
+    }
+
+    /**
+     * Whether the settlement falls in the record period of the next coupon, so
+     * that the buyer is not entitled to it.
+     *
+     * <p>
+     * The rule is not restated here: the record date is resolved from the bond's
+     * own offset and handed to {@link CouponEntitlementService}, which is the one
+     * place the entitlement convention lives. A bond with no record-date offset
+     * resolves no record date and is entitled by default, which is what keeps
+     * every bond without a record date on its previous accrual behaviour.
+     *
+     * @param bond            the bond
+     * @param calculationDate the settlement date
+     * @param nextCoupon      the first coupon date after the settlement date;
+     *                        strictly after it by construction
+     */
+    private boolean isExInterest(
+            Bond bond,
+            LocalDate calculationDate,
+            LocalDate nextCoupon) {
+
+        /*
+         * Every constructor that a caller outside Spring can reach wires both
+         * collaborators; a null here would mean one was passed in explicitly, in
+         * which case there is no record-date opinion to apply.
+         */
+        if (recordDateParser == null || couponEntitlementService == null) {
+            return false;
+        }
+
+        LocalDate recordDate = recordDateParser
+                .calculateRecordDate(bond, nextCoupon)
+                .orElse(null);
+
+        return !couponEntitlementService.isCouponEntitled(
+                calculationDate,
+                recordDate,
+                nextCoupon);
     }
 
     /**

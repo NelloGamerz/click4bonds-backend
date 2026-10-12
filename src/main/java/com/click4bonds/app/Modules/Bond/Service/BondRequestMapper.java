@@ -108,7 +108,7 @@ public class BondRequestMapper {
                 .ipDateDescription(trimToNull(request.getIpDateDescription()))
 
                 // Record date rule (source of truth for coupon entitlement)
-                .recordDateDescription(trimToNull(request.getRecordDateDescription()))
+                .recordDate(request.getRecordDate())
 
                 // Maturity
                 .maturityType(maturity.type())
@@ -241,8 +241,8 @@ public class BondRequestMapper {
         // Record date rule (source of truth for entitlement)
         // -----------------------------------------------------
 
-        if (request.getRecordDateDescription() != null) {
-            bond.setRecordDateDescription(trimToNull(request.getRecordDateDescription()));
+        if (request.getRecordDate() != null) {
+            bond.setRecordDate(request.getRecordDate());
         }
 
         // -----------------------------------------------------

@@ -20,11 +20,16 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
  * generator, or the XIRR calculation.
  *
  * <p>
- * There is deliberately no fallback offset. {@code Bond.recordDateDescription}
- * is the source rule: if it says 7 days, 7 is used; if it says 10, 10 is used;
- * if it says something this parser does not understand, parsing fails loudly. A
- * silently applied default would produce a wrong record date, a wrong
- * entitlement decision and therefore a wrong YTM.
+ * There is deliberately no fallback offset. {@code Bond.recordDate} is the
+ * source rule: if the admin sent 7, 7 is used; if 10, 10 is used. A silently
+ * applied default would produce a wrong record date, a wrong entitlement
+ * decision and therefore a wrong YTM.
+ *
+ * <p>
+ * The {@link RecordDateRule} strategies and the text-based methods on
+ * {@link RecordDateParser} are retained for the historic free-text form of the
+ * rule, but the bond path no longer uses them: a bond now carries the offset
+ * itself and {@link #calculateRecordDate(Bond, LocalDate)} reads it directly.
  */
 @Service
 public class RecordDateParserImpl implements RecordDateParser {
@@ -75,7 +80,12 @@ public class RecordDateParserImpl implements RecordDateParser {
             throw new IllegalArgumentException("Bond cannot be null");
         }
 
-        return parse(bond.getRecordDateDescription(), paymentDate);
+        if (paymentDate == null) {
+            throw new IllegalArgumentException("Payment date cannot be null");
+        }
+
+        return recordDateOffset(bond)
+                .map(paymentDate::minusDays);
     }
 
     @Override
@@ -99,11 +109,35 @@ public class RecordDateParserImpl implements RecordDateParser {
                 continue;
             }
 
-            parse(bond.getRecordDateDescription(), paymentDate)
+            recordDateOffset(bond)
+                    .map(paymentDate::minusDays)
                     .ifPresent(recordDate -> recordDatesByPaymentDate.put(paymentDate, recordDate));
         }
 
         return recordDatesByPaymentDate;
+    }
+
+    /**
+     * The bond's record-date offset, when it has one.
+     *
+     * <p>
+     * {@code NULL} and non-positive values both mean "no record-date rule", so
+     * those bonds resolve no record date and keep their historical cum-interest
+     * behaviour. The offset is used exactly as sent - it is never defaulted.
+     *
+     * @param bond the bond; must not be {@code null}
+     * @return the number of days before the payment date, or
+     *         {@link Optional#empty()} when the bond has no record-date rule
+     */
+    private static Optional<Integer> recordDateOffset(Bond bond) {
+
+        Integer days = bond.getRecordDate();
+
+        if (days == null || days <= 0) {
+            return Optional.empty();
+        }
+
+        return Optional.of(days);
     }
 
     /**

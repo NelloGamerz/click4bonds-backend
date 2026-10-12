@@ -1158,10 +1158,11 @@ class YtmCalculationServiceTest {
 
         /*
          * The record-date rule exactly as it should be stored from the
-         * source. No record date is set on the bond - every record date is
-         * derived by RecordDateParser from this text and a payment date.
+         * source: 15 days before each payment date. No record date is set on
+         * the bond - every record date is derived by RecordDateParser from
+         * this offset and a payment date.
          */
-        bond.setRecordDateDescription("15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         /*
          * The first future coupon from 2026-09-21 is 2026-09-23, only two
@@ -1178,19 +1179,19 @@ class YtmCalculationServiceTest {
 
         /*
          * 15 days prior to 2026-10-23 is 2026-10-08. The parser must
-         * reach this from the description alone.
+         * reach this from the bond's offset alone.
          */
         assertEquals(
                 LocalDate.of(2026, 10, 8),
-                recordDateParser.parse(
-                        bond.getRecordDateDescription(),
+                recordDateParser.calculateRecordDate(
+                        bond,
                         LocalDate.of(2026, 10, 23)).orElseThrow(),
-                "Record date must be derived from the description");
+                "Record date must be derived from the bond's record date offset");
 
         assertEquals(
                 LocalDate.of(2026, 9, 8),
-                recordDateParser.parse(
-                        bond.getRecordDateDescription(),
+                recordDateParser.calculateRecordDate(
+                        bond,
                         LocalDate.of(2026, 9, 23)).orElseThrow(),
                 "Record date must be derived for the imminent coupon too");
 
@@ -1284,7 +1285,7 @@ class YtmCalculationServiceTest {
                 "TEST 9c START: Satin on the record date (cum-interest)");
 
         Bond bond = satinBond2031();
-        bond.setRecordDateDescription("15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         /*
          * 2026-09-08 is exactly the record date of the 2026-09-23 coupon,
@@ -1348,7 +1349,7 @@ class YtmCalculationServiceTest {
                 "TEST 9d START: only the coupon whose record date has passed is excluded");
 
         Bond bond = satinBond2031();
-        bond.setRecordDateDescription("15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         /*
          * 2026-10-09 is after the 2026-10-23 coupon's record date
@@ -1415,7 +1416,7 @@ class YtmCalculationServiceTest {
         /*
          * No record-date information, exactly like the historical data.
          */
-        bond.setRecordDateDescription("NA");
+        bond.setRecordDate(null);
 
         LocalDate calculationDate = LocalDate.of(2026, 9, 21);
         RealCalcContext ctx = buildRealCalcContext(bond);
@@ -2255,7 +2256,7 @@ class YtmCalculationServiceTest {
         System.out.println();
         System.out.println("Record date / entitlement per coupon payment");
         System.out.println("ISIN=" + bond.getIsin()
-                + " recordDateDescription=\"" + bond.getRecordDateDescription() + "\""
+                + " recordDate=" + bond.getRecordDate()
                 + " calculationDate=" + calculationDate);
         System.out.printf(
                 "%-12s | %-12s | %-10s | %-9s%n",
@@ -2267,8 +2268,8 @@ class YtmCalculationServiceTest {
 
         for (LocalDate paymentDate : couponDates) {
 
-            Optional<LocalDate> recordDate = recordDateParser.parse(
-                    bond.getRecordDateDescription(),
+            Optional<LocalDate> recordDate = recordDateParser.calculateRecordDate(
+                    bond,
                     paymentDate);
 
             boolean entitled = entitlementService.isCouponEntitled(
@@ -2329,16 +2330,14 @@ class YtmCalculationServiceTest {
 //                        "        bond.setPrice(\n" +
 //                        "                        new BigDecimal(\"96.5825\"));\n" +
 //                        "\n" +
-//                        "        bond.setRecordDateDescription(\n" +
-//                        "                        \"15 days prior to interest payment date\");\n" +
+//                        "        bond.setRecordDate(15);\n" +
 //                        "\n" +
 //                        "        return bond;\n" +
 //                        "}\n Fincorp Limited 2029 on the record date (cum-interest)");
 //
 //        Bond bond = regencyFincorp2029();
 //
-//        bond.setRecordDateDescription(
-//                "15 days prior to interest payment date");
+//        bond.setRecordDate(15);
 //
 //        /*
 //         * Regency Fincorp Limited
@@ -2506,16 +2505,14 @@ class YtmCalculationServiceTest {
                         "        bond.setPrice(\n" +
                         "                        new BigDecimal(\"96.5825\"));\n" +
                         "\n" +
-                        "        bond.setRecordDateDescription(\n" +
-                        "                        \"15 days prior to interest payment date\");\n" +
+                        "        bond.setRecordDate(15);\n" +
                         "\n" +
                         "        return bond;\n" +
                         "}\n Regency Fincorp Limited 2029 on 2026-09-22 (ex-interest)");
 
         Bond bond = regencyFincorp2029();
 
-        bond.setRecordDateDescription(
-                "15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         LocalDate calculationDate = LocalDate.of(2026, 9, 21);
 
@@ -2596,8 +2593,7 @@ class YtmCalculationServiceTest {
         bond.setPrice(
                 new BigDecimal("96.5825"));
 
-        bond.setRecordDateDescription(
-                "15 days prior to interest payment date");
+        bond.setRecordDate(15);
 
         return bond;
     }

@@ -184,14 +184,15 @@ public class BondResponse {
     // =========================
 
     /**
-     * The record-date rule as supplied by the source.
+     * Number of days before each interest payment date on which the record date
+     * falls; {@code null} when the bond has no record-date rule.
      *
      * <p>
-     * Record dates are derived from this text per coupon payment date and are
-     * not returned as a single value, because a bond with recurring coupons has
-     * a different record date for every payment.
+     * Record dates themselves are derived from this offset per coupon payment
+     * date and are not returned as a single value, because a bond with recurring
+     * coupons has a different record date for every payment.
      */
-    private String recordDateDescription;
+    private Integer recordDate;
 
     // =========================
     // MATURITY
