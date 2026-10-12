@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondIssuerBulkItem;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
@@ -91,7 +92,7 @@ public class AdminBondController {
         }
 
         @GetMapping("/bonds/{isin}")
-        public ResponseEntity<BondResponse> getBond(
+        public ResponseEntity<BondDetailResponse> getBond(
                         @PathVariable String isin,
                         @AuthenticationPrincipal Jwt jwt) {
 

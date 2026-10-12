@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
 import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
+import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
@@ -78,7 +79,7 @@ public class BondController {
 //    }
 
     @GetMapping("/{isin}")
-    public ResponseEntity<BondResponse> getBond(
+    public ResponseEntity<BondDetailResponse> getBond(
             @PathVariable String isin,
             @AuthenticationPrincipal Jwt jwt) {
 
