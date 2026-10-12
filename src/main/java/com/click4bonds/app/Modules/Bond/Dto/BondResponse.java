@@ -118,6 +118,7 @@ import java.time.LocalDate;
 import java.util.UUID;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.CalculationType;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.LotSizeType;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
@@ -235,6 +236,13 @@ public class BondResponse {
     // =========================
     // PRICE
     // =========================
+
+    /**
+     * Which of {@link #price} and {@link #annualYtm} was the input when this bond
+     * was created, and so which one the platform derived. Null when the create
+     * request declared neither, in which case both are as supplied.
+     */
+    private CalculationType calculationType;
 
     /**
      * Can be null when price is not available.

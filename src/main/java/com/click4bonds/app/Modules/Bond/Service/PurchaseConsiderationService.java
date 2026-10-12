@@ -44,4 +44,34 @@ public interface PurchaseConsiderationService {
             LocalDate calculationDate,
             BigDecimal accruedInterest,
             List<CouponPayment> couponPayments);
+
+    /**
+     * The accrued interest a purchase at {@code calculationDate} charges, on its
+     * own.
+     *
+     * <p>
+     * Derived from the same treatment decision as {@link #determine}: the accrual
+     * on a cum-interest purchase, zero on an ex-interest one. It is reachable
+     * separately because pricing a bond from a yield needs the treatment
+     * <em>without</em> a price. {@link #determine} reads the bond's stored price
+     * to report the clean price it was given, and that price is precisely what a
+     * price-from-yield calculation is solving for, so it cannot be an input.
+     *
+     * @param bond            the bond; must not be {@code null}
+     * @param calculationDate the purchase/settlement date; must not be
+     *                        {@code null}
+     * @param accruedInterest accrued interest from
+     *                        {@code AccruedInterestService}; charged only on a
+     *                        cum-interest purchase
+     * @param couponPayments  the projected coupon payments; may be {@code null}
+     * @return the accrued interest the buyer is charged, never {@code null}
+     * @throws IllegalArgumentException when {@code bond},
+     *                                  {@code calculationDate} or
+     *                                  {@code accruedInterest} is {@code null}
+     */
+    BigDecimal accruedInterestCharged(
+            Bond bond,
+            LocalDate calculationDate,
+            BigDecimal accruedInterest,
+            List<CouponPayment> couponPayments);
 }

@@ -51,7 +51,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class BondServiceCacheTest {
 
     private static final String ISIN = "IN1620170143";
-    private static final String CACHE_KEY = "bond:v1:get:" + ISIN;
+    private static final String CACHE_KEY = "bond:v2:get:" + ISIN;
 
     /** Ordinary key/value behaviour plus TTL, driven by a movable clock. */
     private final Map<String, Entry> keyspace = new ConcurrentHashMap<>();
@@ -97,6 +97,7 @@ class BondServiceCacheTest {
                 mock(UserService.class),
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
+                mock(BondValuationService.class),
                 new RedisServiceImpl(template, mapper));
     }
 
@@ -220,6 +221,7 @@ class BondServiceCacheTest {
                 mock(UserService.class),
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
+                mock(BondValuationService.class),
                 unavailable);
 
         BondResponse bond = service.getBond(ISIN, null, false);
@@ -243,6 +245,7 @@ class BondServiceCacheTest {
                 mock(UserService.class),
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
+                mock(BondValuationService.class),
                 unavailable);
 
         BondResponse bond = service.getBond(ISIN, null, false);
