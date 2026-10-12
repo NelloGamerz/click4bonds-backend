@@ -7,14 +7,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * What a cached bond read actually stores: the summary the API returns,
- * alongside the bond's identifier.
+ * What a cached bond read actually stores: the bond in full, alongside its
+ * identifier.
  *
- * <p>{@link BondResponse} is deliberately only the fields a client is shown, so
- * it carries no {@code id}. The id is still needed server-side — a
- * {@code BOND_VIEW} analytics event is filed against it — and the whole point
+ * <p>{@link BondDetailResponse} already carries the id as a field, but not in a
+ * place a reader can rely on — a bond row with no persisted id, or a cached entry
+ * written before that field existed, would leave a caller with nothing. The id is
+ * what a {@code BOND_VIEW} analytics event is filed against, and the whole point
  * of the read-through cache is that serving a bond needs no database access, so
- * the id travels in the cached entry rather than being looked up again.</p>
+ * it is stored explicitly rather than picked out of the payload.</p>
  *
  * <p>Internal to {@link com.click4bonds.app.Modules.Bond.Service.BondService};
  * it is never serialized into a response body.</p>
@@ -26,5 +27,5 @@ public class CachedBond {
 
     private UUID id;
 
-    private BondResponse bond;
+    private BondDetailResponse bond;
 }

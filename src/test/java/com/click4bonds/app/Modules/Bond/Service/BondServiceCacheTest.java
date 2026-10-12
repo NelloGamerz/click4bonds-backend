@@ -30,8 +30,10 @@ import org.springframework.data.redis.core.ValueOperations;
 
 import com.click4bonds.app.Config.RedisConfig;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
-import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
+import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
+import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.RedisOperationException;
@@ -52,7 +54,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class BondServiceCacheTest {
 
     private static final String ISIN = "IN1620170143";
-    private static final String CACHE_KEY = "bond:v3:get:" + ISIN;
+    private static final String CACHE_KEY = "bond:v4:get:" + ISIN;
 
     /** Ordinary key/value behaviour plus TTL, driven by a movable clock. */
     private final Map<String, Entry> keyspace = new ConcurrentHashMap<>();
@@ -118,16 +120,22 @@ class BondServiceCacheTest {
     @Test
     void shouldMatchACachedBondToTheOriginal() {
 
-        BondResponse first = bondService.getBond(ISIN, null, false);
-        BondResponse second = bondService.getBond(ISIN, null, false);
+        BondDetailResponse first = bondService.getBond(ISIN, null, false);
+        BondDetailResponse second = bondService.getBond(ISIN, null, false);
 
+        assertEquals(first.getId(), second.getId());
         assertEquals(first.getIsin(), second.getIsin());
         assertEquals(first.getName(), second.getName());
         assertEquals(first.getMaturityDate(), second.getMaturityDate());
         assertEquals(first.getRating(), second.getRating());
+        assertEquals(first.getRatingAgency(), second.getRatingAgency());
+        assertEquals(first.getCouponFrequency(), second.getCouponFrequency());
+        assertEquals(first.getMaturityType(), second.getMaturityType());
+        assertEquals(first.getStatus(), second.getStatus());
         assertEquals(0, first.getCouponRate().compareTo(second.getCouponRate()));
-        assertEquals(0, first.getMinimumInvestment()
-                .compareTo(second.getMinimumInvestment()));
+        assertEquals(0, first.getAnnualYtm().compareTo(second.getAnnualYtm()));
+        assertEquals(0, first.getPrice().compareTo(second.getPrice()));
+        assertEquals(0, first.getLotSize().compareTo(second.getLotSize()));
     }
 
     @Test
@@ -227,7 +235,7 @@ class BondServiceCacheTest {
                 mock(BondValuationService.class),
                 unavailable);
 
-        BondResponse bond = service.getBond(ISIN, null, false);
+        BondDetailResponse bond = service.getBond(ISIN, null, false);
 
         assertNotNull(bond, "An unreachable cache must not fail the read");
         assertEquals(ISIN, bond.getIsin());
@@ -251,7 +259,7 @@ class BondServiceCacheTest {
                 mock(BondValuationService.class),
                 unavailable);
 
-        BondResponse bond = service.getBond(ISIN, null, false);
+        BondDetailResponse bond = service.getBond(ISIN, null, false);
 
         assertNotNull(bond, "A failed cache write must not fail the read");
         assertEquals(ISIN, bond.getIsin());
@@ -269,6 +277,9 @@ class BondServiceCacheTest {
                 .name("8.45% HAR SDL 2028")
                 .isin(ISIN)
                 .couponRate(new BigDecimal("8.45"))
+                .couponFrequency(CouponFrequency.HALF_YEARLY)
+                .annualYtm(new BigDecimal("8.6521"))
+                .maturityType(MaturityType.FIXED)
                 .maturityDate(LocalDate.of(2028, 2, 9))
                 .ratingAgency("CRISIL")
                 .rating("AAA")

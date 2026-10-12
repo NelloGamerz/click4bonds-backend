@@ -20,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.CachedBond;
@@ -46,14 +47,15 @@ public class BondService {
     /**
      * Redis namespace for a single bond as served by {@link #getBond}.
      *
-     * <p>The {@code v3} segment is the serialization generation: it moves when
-     * what a cached {@link BondResponse} looks like changes, so entries written
-     * under the old shape expire unread instead of being bound to a type they
-     * no longer fit. It moved from {@code v2} when {@code BondResponse} was
-     * reduced to its summary fields, which dropped the {@code id} — a stale v2
-     * entry would fail to bind rather than merely carry extra keys.</p>
+     * <p>The {@code v4} segment is the serialization generation: it moves when
+     * what a cached {@link CachedBond} looks like changes, so entries written
+     * under the old shape expire unread instead of being bound to a type they no
+     * longer fit. It moved from {@code v3} when the cached value became the full
+     * {@link BondDetailResponse} rather than the summary, and from {@code v2}
+     * before that when the response was reduced to summary fields — either way a
+     * stale entry would fail to bind rather than merely carry extra keys.</p>
      */
-    private static final String BOND_CACHE_PREFIX = "bond:v3:get:";
+    private static final String BOND_CACHE_PREFIX = "bond:v4:get:";
 
     /**
      * How long a bond read by ISIN may be served from Redis.
@@ -183,7 +185,7 @@ public class BondService {
 //        return mapToResponse(bond);
 //    }
 
-        public BondResponse getBond(
+        public BondDetailResponse getBond(
                 String isin,
                 UUID userId,
                 boolean isCustomer) {
@@ -192,7 +194,7 @@ public class BondService {
 
             CachedBond cached = getCachedBond(isin);
 
-            BondResponse bond = cached.getBond();
+            BondDetailResponse bond = cached.getBond();
 
             log.info(
                     "Bond fetched successfully: isin={}, bondId={}",
@@ -266,9 +268,11 @@ public class BondService {
      * an unreachable cache cannot take bond detail down with it. Writes are the
      * other half of this — see {@link #evictCachedBond}.</p>
      *
-     * <p>The entry is a {@link CachedBond} rather than a bare
-     * {@link BondResponse} because the caller needs the bond's id for analytics
-     * while the response no longer carries one; see {@link CachedBond}.</p>
+     * <p>What is cached is the detail view, since this is the read that serves a
+     * bond's own page, wrapped in a {@link CachedBond} so the bond's id travels
+     * with it — analytics needs the id and the response no longer carries one.
+     * The list path maps straight from the repository and does not come through
+     * here; a summary is cheap to build and is never read one bond at a time.</p>
      */
     private CachedBond getCachedBond(String isin) {
 
@@ -307,7 +311,7 @@ public class BondService {
 
         return new CachedBond(
                 bond.getId(),
-                mapToResponse(bond));
+                mapToDetail(bond));
     }
 
     /**
@@ -641,6 +645,13 @@ public class BondService {
     // ENTITY -> RESPONSE
     // =========================================================
 
+    /**
+     * The summary a list is built from — see {@link BondResponse}.
+     *
+     * <p>Also what a write returns, because the caller that just created or
+     * patched a bond already knows what it sent, and a fresh copy of every field
+     * buys it nothing.</p>
+     */
     private BondResponse mapToResponse(Bond bond) {
 
         return BondResponse.builder()
@@ -654,6 +665,15 @@ public class BondService {
                 .couponRate(
                         bond.getCouponRate())
 
+                .couponFrequency(
+                        bond.getCouponFrequency())
+
+                .annualYtm(
+                        bond.getAnnualYtm())
+
+                .maturityType(
+                        bond.getMaturityType())
+
                 .maturityDate(
                         bond.getMaturityDate())
 
@@ -666,6 +686,127 @@ public class BondService {
                         minimumInvestment(
                                 bond.getPrice(),
                                 bond.getLotSize()))
+
+                .build();
+    }
+
+    /**
+     * The bond in full — see {@link BondDetailResponse}.
+     *
+     * <p>Everything the entity holds is copied across, with the raw text columns
+     * left as they were entered and the normalized values that were parsed from
+     * them alongside. Nothing is derived here: a detail view is the record, and a
+     * reader wanting a figure it can compute has the inputs for it.</p>
+     */
+    private BondDetailResponse mapToDetail(Bond bond) {
+
+        return BondDetailResponse.builder()
+
+                .id(
+                        bond.getId())
+
+                .serialNumber(
+                        bond.getSerialNumber())
+
+                .name(
+                        bond.getName())
+
+                .isin(
+                        bond.getIsin())
+
+                // Classification
+                .category(
+                        bond.getCategory())
+
+                .securityType(
+                        bond.getSecurityType())
+
+                .rating(
+                        bond.getRating())
+
+                .ratingAgency(
+                        bond.getRatingAgency())
+
+                // Coupon
+                .couponRate(
+                        bond.getCouponRate())
+
+                .couponFrequency(
+                        bond.getCouponFrequency())
+
+                .ipDateDescription(
+                        bond.getIpDateDescription())
+
+                // Record date rule (source of truth for coupon entitlement)
+                .recordDate(
+                        bond.getRecordDate())
+
+                // Maturity
+                .maturityType(
+                        bond.getMaturityType())
+
+                .maturityDate(
+                        bond.getMaturityDate())
+
+                .maturityDescription(
+                        bond.getMaturityDescription())
+
+                .putCallDescription(
+                        bond.getPutCallDescription())
+
+                // Market
+                .calculationType(
+                        bond.getCalculationType())
+
+                .price(
+                        bond.getPrice())
+
+                // Yield
+                .semiYtm(
+                        bond.getSemiYtm())
+
+                .annualYtm(
+                        bond.getAnnualYtm())
+
+                .ytc(
+                        bond.getYtc())
+
+                .ytmCalculatedAt(
+                        bond.getYtmCalculatedAt())
+
+                // Quantum
+                .quantumDescription(
+                        bond.getQuantumDescription())
+
+                .quantumInLacs(
+                        bond.getQuantumInLacs())
+
+                // Lot
+                .lotSizeDescription(
+                        bond.getLotSizeDescription())
+
+                .lotSize(
+                        bond.getLotSize())
+
+                .lotSizeType(
+                        bond.getLotSizeType())
+
+                .isFlashNews(
+                        bond.getIsFlashNews())
+
+                .remainingQuantity(
+                        bond.getRemainingQuantity())
+
+                // Status
+                .status(
+                        bond.getStatus())
+
+                // Audit
+                .createdAt(
+                        bond.getCreatedAt())
+
+                .updatedAt(
+                        bond.getUpdatedAt())
 
                 .build();
     }
