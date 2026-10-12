@@ -132,6 +132,26 @@ public class UpdateBondRequest {
     // =========================
 
     /**
+     * Which half of the price/yield pair this update is supplying, so the other
+     * half is worked out from it exactly as on create.
+     *
+     * <pre>
+     * BY_PRICE : price supplied -&gt; the yield is calculated from it
+     * BY_YTM   : yield supplied -&gt; the price is calculated from it
+     * </pre>
+     *
+     * <p>
+     * Only consulted when this same request moves the price or the yield. A
+     * null means "leave the stored value untouched", so a caller that does not
+     * declare one keeps the bond's existing choice.
+     *
+     * <p>
+     * Read case-insensitively; an unrecognized value fails the request with
+     * {@code 400}, naming the field.
+     */
+    private String calculationType;
+
+    /**
      * Raw price, e.g. {@code 102.08}. Blank in the sheet means null here.
      */
     private String price;
