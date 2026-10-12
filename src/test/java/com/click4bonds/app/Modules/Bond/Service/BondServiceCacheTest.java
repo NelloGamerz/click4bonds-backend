@@ -15,6 +15,7 @@ import static org.mockito.Mockito.when;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,7 +52,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class BondServiceCacheTest {
 
     private static final String ISIN = "IN1620170143";
-    private static final String CACHE_KEY = "bond:v2:get:" + ISIN;
+    private static final String CACHE_KEY = "bond:v3:get:" + ISIN;
 
     /** Ordinary key/value behaviour plus TTL, driven by a movable clock. */
     private final Map<String, Entry> keyspace = new ConcurrentHashMap<>();
@@ -120,11 +121,13 @@ class BondServiceCacheTest {
         BondResponse first = bondService.getBond(ISIN, null, false);
         BondResponse second = bondService.getBond(ISIN, null, false);
 
-        assertEquals(first.getId(), second.getId());
         assertEquals(first.getIsin(), second.getIsin());
         assertEquals(first.getName(), second.getName());
-        assertEquals(0, first.getPrice().compareTo(second.getPrice()));
-        assertEquals(BondStatus.ACTIVE, second.getStatus());
+        assertEquals(first.getMaturityDate(), second.getMaturityDate());
+        assertEquals(first.getRating(), second.getRating());
+        assertEquals(0, first.getCouponRate().compareTo(second.getCouponRate()));
+        assertEquals(0, first.getMinimumInvestment()
+                .compareTo(second.getMinimumInvestment()));
     }
 
     @Test
@@ -265,7 +268,12 @@ class BondServiceCacheTest {
                 .serialNumber(1)
                 .name("8.45% HAR SDL 2028")
                 .isin(ISIN)
+                .couponRate(new BigDecimal("8.45"))
+                .maturityDate(LocalDate.of(2028, 2, 9))
+                .ratingAgency("CRISIL")
+                .rating("AAA")
                 .price(new BigDecimal("102.08"))
+                .lotSize(new BigDecimal("1000"))
                 .status(BondStatus.ACTIVE)
                 .build();
     }
