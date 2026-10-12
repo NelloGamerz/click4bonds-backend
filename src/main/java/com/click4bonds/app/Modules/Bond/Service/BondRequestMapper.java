@@ -260,6 +260,20 @@ public class BondRequestMapper {
         }
 
         // -----------------------------------------------------
+        // Calculation type (which half of the price/yield pair is the input)
+        // -----------------------------------------------------
+
+        /*
+         * Recorded before the price and yield below, so that the derivation the
+         * caller runs afterwards reads this request's choice rather than whatever
+         * the bond was created with. A null leaves the stored value alone.
+         */
+        if (request.getCalculationType() != null) {
+            bond.setCalculationType(
+                    parseCalculationType(request.getCalculationType()));
+        }
+
+        // -----------------------------------------------------
         // Price
         // -----------------------------------------------------
 

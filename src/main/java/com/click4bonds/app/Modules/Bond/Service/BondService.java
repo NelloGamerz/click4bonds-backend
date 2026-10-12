@@ -441,6 +441,24 @@ public class BondService {
         bondRequestMapper.applyUpdate(bond, request);
 
         // -----------------------------------------------------
+        // Derive the other half of the price/yield pair
+        // -----------------------------------------------------
+        //
+        // The same derivation create performs, and on the same terms: the bond's
+        // calculationType says which of price and annualYtm is the input, and the
+        // other is worked out from it.
+        //
+        // Only run when this request actually moved the price or the yield. A
+        // patch that touches neither has nothing new to derive from, and deriving
+        // anyway would re-price the bond off figures the caller never sent —
+        // turning a rename into a revaluation. A bond whose calculationType was
+        // never declared is left untouched either way.
+
+        if (request.getPrice() != null || request.getAnnualYtm() != null) {
+            bondValuationService.applyCalculationType(bond, LocalDate.now());
+        }
+
+        // -----------------------------------------------------
         // Save
         // -----------------------------------------------------
 
