@@ -154,8 +154,14 @@ class AdminBondDetailTest {
     @Test
     void shouldSearchTheAdminListThroughTheSearchQuery() {
 
-        when(bondRepository.searchBonds(eq("SDL"), isNull(), any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(bond())));
+        when(bondRepository.searchBonds(
+                eq("SDL"),
+                isNull(),
+                isNull(),
+                isNull(),
+                isNull(),
+                any(Pageable.class)
+        )).thenReturn(new PageImpl<>(List.of(bond())));
 
         Page<AdminBondDetailResponse> page =
                 bondService.getBondsForAdmin("SDL", PageRequest.of(0, 20));
