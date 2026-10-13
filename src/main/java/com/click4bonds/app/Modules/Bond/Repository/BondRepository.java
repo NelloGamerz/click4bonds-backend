@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
 import jakarta.persistence.LockModeType;
@@ -69,10 +71,63 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                               AND (:isFlashNews IS NULL
                                    OR :isFlashNews = false
                                    OR b.isFlashNews = true)
+                              AND (:securityType IS NULL OR b.securityType = :securityType)
+                              AND (:maturityType IS NULL OR b.maturityType = :maturityType)
+                              AND (:rating IS NULL OR :rating = ''
+                                   OR LOWER(b.rating) = LOWER(:rating))
                         """)
         Page<Bond> searchBonds(
                         @Param("search") String search,
                         @Param("isFlashNews") Boolean isFlashNews,
+                        @Param("securityType") SecurityType securityType,
+                        @Param("maturityType") MaturityType maturityType,
+                        @Param("rating") String rating,
+                        Pageable pageable);
+
+        /**
+         * {@link #searchBonds} restricted to a single status.
+         *
+         * <p>Exists so the public listing can ask for {@code ACTIVE} bonds and
+         * have the count come back right: the status predicate is part of the
+         * query, so the {@code Page} the caller receives has a
+         * {@code totalElements} of matching active bonds rather than of every
+         * bond in the table. Filtering after the fact in Java could not fix the
+         * count, only the rows.</p>
+         *
+         * <p>The catalogue's narrowings — security type, maturity type and
+         * rating — are predicates here for the same reason: a {@code Page}
+         * carries its counts, so a filter applied after the fact would return
+         * the right rows with the wrong {@code totalElements}. Each is optional
+         * and short-circuits on null, so a caller that passes none gets exactly
+         * the query this method ran before they existed.</p>
+         *
+         * <p>{@code rating} matches the stored grade column exactly rather than
+         * the agency-and-grade string {@code BondResponse.rating} shows, which
+         * is why it is compared on its own and not against
+         * {@code ratingAgency}. The comparison is case-insensitive.</p>
+         */
+        @Query("""
+                            SELECT b
+                            FROM Bond b
+                            WHERE b.status = :status
+                              AND (:search IS NULL OR :search = ''
+                                   OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
+                                   OR LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%')))
+                              AND (:isFlashNews IS NULL
+                                   OR :isFlashNews = false
+                                   OR b.isFlashNews = true)
+                              AND (:securityType IS NULL OR b.securityType = :securityType)
+                              AND (:maturityType IS NULL OR b.maturityType = :maturityType)
+                              AND (:rating IS NULL OR :rating = ''
+                                   OR LOWER(b.rating) = LOWER(:rating))
+                        """)
+        Page<Bond> searchBondsByStatus(
+                        @Param("status") BondStatus status,
+                        @Param("search") String search,
+                        @Param("isFlashNews") Boolean isFlashNews,
+                        @Param("securityType") SecurityType securityType,
+                        @Param("maturityType") MaturityType maturityType,
+                        @Param("rating") String rating,
                         Pageable pageable);
 
         @Lock(LockModeType.PESSIMISTIC_WRITE)

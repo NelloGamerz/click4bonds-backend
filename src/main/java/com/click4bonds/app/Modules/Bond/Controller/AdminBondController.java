@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
+import com.click4bonds.app.Modules.Bond.Dto.AdminBondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondIssuerBulkItem;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
@@ -82,27 +82,40 @@ public class AdminBondController {
                                 bondService.updatePrices(requests));
         }
 
+        /**
+         * Lists bonds, each in full, for the admin's management screens.
+         *
+         * <p>Answers with {@link AdminBondDetailResponse} rows rather than the
+         * {@link BondResponse} summary the public catalogue uses — the same
+         * shape {@link #getBond} returns for one bond, so a row the admin
+         * clicks needs no second request to be shown in full. Every status is
+         * listed, as before: an admin has to see drafts and suspended bonds to
+         * be able to activate them.</p>
+         */
         @GetMapping("/bonds")
-        public ResponseEntity<Page<BondResponse>> getBonds(
+        public ResponseEntity<Page<AdminBondDetailResponse>> getBonds(
                         @RequestParam(required = false) String search,
                         @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
 
                 return ResponseEntity.ok(
-                                bondService.getBonds(search, null, pageable));
+                                bondService.getBondsForAdmin(search, pageable));
         }
 
+        /**
+         * One bond in full, for the admin's own edit screen.
+         *
+         * <p>Answers with {@link AdminBondDetailResponse} — every field the
+         * public detail view carries, plus the import provenance — and reads
+         * the committed row rather than the customer-facing cache. The public
+         * {@code GET /api/bonds/{isin}} is unchanged; the two differ only in
+         * what an admin is entitled to see.</p>
+         */
         @GetMapping("/bonds/{isin}")
-        public ResponseEntity<BondDetailResponse> getBond(
-                        @PathVariable String isin,
-                        @AuthenticationPrincipal Jwt jwt) {
+        public ResponseEntity<AdminBondDetailResponse> getBond(
+                        @PathVariable String isin) {
 
-                UUID userId = UUID.fromString(jwt.getSubject());
-
-                // The class-level @PreAuthorize admits ADMIN tokens only, so
-                // this caller is never a CUSTOMER and no view is ever tracked
-                // from here. The flag is passed rather than looked up.
                 return ResponseEntity.ok(
-                                bondService.getBond(isin, userId, false));
+                                bondService.getBondForAdmin(isin));
         }
 
         @PatchMapping("/bonds/{isin}")

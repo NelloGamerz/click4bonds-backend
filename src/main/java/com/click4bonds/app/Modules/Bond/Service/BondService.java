@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
@@ -20,6 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Bond.Dto.AdminBondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceUpdateRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
@@ -27,6 +29,8 @@ import com.click4bonds.app.Modules.Bond.Dto.CachedBond;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
+import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
@@ -256,6 +260,38 @@ public class BondService {
             return bond;
         }
 
+    /**
+     * One bond in full, with its import provenance, for an admin.
+     *
+     * <p>Read straight from the database rather than through {@link
+     * #getCachedBond}. That is not only a preference: the cache holds a
+     * {@link BondDetailResponse}, which by construction cannot carry the
+     * provenance fields an admin asked for. An edit screen also wants the
+     * committed row rather than a copy that may be minutes old, and the price
+     * this returns is the one the next PATCH will be applied to.</p>
+     *
+     * <p>No analytics, for the same reason the admin endpoint tracks none: a
+     * BOND_VIEW means a customer looked at a bond, and an admin opening a bond
+     * to edit it is a different event.</p>
+     */
+    @Transactional(readOnly = true)
+    @Observed(
+            name = "bond.get.admin",
+            contextualName = "bond-get-admin-by-isin"
+    )
+    public AdminBondDetailResponse getBondForAdmin(String isin) {
+
+        Bond bond = getbondByIs(isin);
+
+        log.info(
+                "Fetching bond for admin: isin={}, bondId={}",
+                bond.getIsin(),
+                bond.getId()
+        );
+
+        return mapToAdminDetail(bond);
+    }
+
     // =========================================================
     // CACHE
     // =========================================================
@@ -359,22 +395,185 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             Pageable pageable) {
-        return getBonds(search, isFlashNews, pageable, null, false);
+        return getBonds(
+                search,
+                isFlashNews,
+                null,
+                null,
+                null,
+                pageable,
+                null,
+                false);
     }
 
     public Page<BondResponse> getBonds(
             String search,
             Boolean isFlashNews,
+            SecurityType securityType,
+            MaturityType maturityType,
+            String rating,
             Pageable pageable,
             UUID userId,
             boolean isCustomer) {
-        if ((search == null || search.isBlank()) && isFlashNews == null) {
-            return getBonds(pageable);
+
+        return listBonds(
+                search,
+                isFlashNews,
+                securityType,
+                maturityType,
+                rating,
+                pageable,
+                userId,
+                isCustomer,
+                null,
+                this::mapToResponse);
+    }
+
+    /**
+     * The admin's listing: the same rows as {@link #getBonds}, each in full
+     * rather than as a {@link BondResponse} summary.
+     *
+     * <p>An admin list is not a catalogue. Every bond in it is one the caller
+     * may have to edit, re-price or trace back to an import, and the summary
+     * was picked for a customer's card — nine fields, no price or yield. So the
+     * rows here carry everything {@link AdminBondDetailResponse} does,
+     * provenance included, matching what {@link #getBondForAdmin} returns for a
+     * single bond. The public list is untouched and still gets the summary.</p>
+     *
+     * <p>Like the admin's single-bond read this tracks no analytics: an admin
+     * browsing to manage is not a customer browsing to buy. Nor does it narrow
+     * by the catalogue's facets — an admin manages every bond, so it passes the
+     * filter parameters of {@link #listBonds} as null and sees what it always
+     * saw.</p>
+     */
+    @Transactional(readOnly = true)
+    @Observed(
+            name = "bond.list.admin",
+            contextualName = "bond-list-admin"
+    )
+    public Page<AdminBondDetailResponse> getBondsForAdmin(
+            String search,
+            Pageable pageable) {
+
+        return listBonds(
+                search,
+                null,
+                null,
+                null,
+                null,
+                pageable,
+                null,
+                false,
+                null,
+                this::mapToAdminDetail);
+    }
+
+    /**
+     * The same listing restricted to {@link BondStatus#ACTIVE}.
+     *
+     * <p>This is what the public endpoint serves. Because the status predicate
+     * lives in the query, the {@code Page} carries the right numbers as well as
+     * the right rows: {@code totalElements} counts the active bonds, not every
+     * bond in the table, and paging walks the active set rather than skipping
+     * over inactive bonds on its way through. The catalogue's facet filters
+     * live there for the same reason.</p>
+     */
+    @Transactional(readOnly = true)
+    @Observed(
+            name = "bond.list.active",
+            contextualName = "bond-list-active"
+    )
+    public Page<BondResponse> getActiveBonds(
+            String search,
+            Boolean isFlashNews,
+            SecurityType securityType,
+            MaturityType maturityType,
+            String rating,
+            Pageable pageable,
+            UUID userId,
+            boolean isCustomer) {
+
+        return listBonds(
+                search,
+                isFlashNews,
+                securityType,
+                maturityType,
+                rating,
+                pageable,
+                userId,
+                isCustomer,
+                BondStatus.ACTIVE,
+                this::mapToResponse);
+    }
+
+    /**
+     * The listing every caller is built from.
+     *
+     * <p>Two things separate the callers, and both are parameters here. {@code
+     * status} decides which bonds are listed — null for every bond, a status
+     * for only that one — and {@code mapper} decides what each row looks like,
+     * the summary or the full detail. Keeping them parameters rather than
+     * writing near-identical methods means the query choice and the analytics
+     * below cannot drift apart between the public and admin paths.</p>
+     *
+     * <p>{@code securityType}, {@code maturityType} and {@code rating} are the
+     * catalogue's facets. All three are optional; a null one is not a filter,
+     * and the admin path passes null for all three so it lists what it always
+     * listed. They reach the repository rather than being applied to the
+     * finished page because {@code Page} carries its own counts — dropping rows
+     * in Java would leave {@code totalElements} describing the unfiltered set.</p>
+     */
+    private <T> Page<T> listBonds(
+            String search,
+            Boolean isFlashNews,
+            SecurityType securityType,
+            MaturityType maturityType,
+            String rating,
+            Pageable pageable,
+            UUID userId,
+            boolean isCustomer,
+            BondStatus status,
+            Function<Bond, T> mapper) {
+
+        // A blank rating is the client clearing the filter, not a grade to
+        // match. Normalising here keeps that '' out of the query and out of the
+        // analytics, so the empty string is never reported as a filter value.
+        String ratingFilter = (rating == null || rating.isBlank())
+                ? null
+                : rating.trim();
+
+        boolean noFilters = (search == null || search.isBlank())
+                && isFlashNews == null
+                && securityType == null
+                && maturityType == null
+                && ratingFilter == null;
+
+        Page<Bond> matching;
+
+        if (status == null) {
+            matching = noFilters
+                    ? bondRepository.findAll(pageable)
+                    : bondRepository.searchBonds(
+                            search,
+                            isFlashNews,
+                            securityType,
+                            maturityType,
+                            ratingFilter,
+                            pageable);
+        } else {
+            matching = noFilters
+                    ? bondRepository.findByStatus(status, pageable)
+                    : bondRepository.searchBondsByStatus(
+                            status,
+                            search,
+                            isFlashNews,
+                            securityType,
+                            maturityType,
+                            ratingFilter,
+                            pageable);
         }
 
-        Page<BondResponse> bonds = bondRepository
-                .searchBonds(search, isFlashNews, pageable)
-                .map(this::mapToResponse);
+        Page<T> bonds = matching.map(mapper);
 
         if (userId != null && isCustomer) {
             if (search != null && !search.isBlank()) {
@@ -390,6 +589,9 @@ public class BondService {
                                 "resultCount", bonds.getTotalElements()));
             }
 
+            // One event per facet the caller actually set, so a filter's
+            // popularity can be read off the event stream without parsing a
+            // combined value out of the metadata.
             if (isFlashNews != null) {
                 analyticsService.track(
                         AnalyticsEventType.BOND_FILTER,
@@ -399,6 +601,39 @@ public class BondService {
                         "WEB",
                         "BOND_LIST",
                         Map.of("filter", "flashNews", "value", isFlashNews));
+            }
+
+            if (securityType != null) {
+                analyticsService.track(
+                        AnalyticsEventType.BOND_FILTER,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of("filter", "securityType", "value", securityType));
+            }
+
+            if (maturityType != null) {
+                analyticsService.track(
+                        AnalyticsEventType.BOND_FILTER,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of("filter", "maturityType", "value", maturityType));
+            }
+
+            if (ratingFilter != null) {
+                analyticsService.track(
+                        AnalyticsEventType.BOND_FILTER,
+                        userId,
+                        null,
+                        null,
+                        "WEB",
+                        "BOND_LIST",
+                        Map.of("filter", "rating", "value", ratingFilter));
             }
 
             if (bonds.isEmpty()) {
@@ -411,25 +646,14 @@ public class BondService {
                         "BOND_LIST",
                         Map.of(
                                 "searchApplied", search != null && !search.isBlank(),
-                                "filterApplied", isFlashNews != null));
+                                "filterApplied", isFlashNews != null
+                                        || securityType != null
+                                        || maturityType != null
+                                        || ratingFilter != null));
             }
         }
 
         return bonds;
-    }
-
-    // =========================================================
-    // GET ACTIVE BONDS
-    // =========================================================
-
-    @Transactional(readOnly = true)
-    public Page<BondResponse> getActiveBonds(Pageable pageable) {
-
-        return bondRepository
-                .findByStatus(
-                        BondStatus.ACTIVE,
-                        pageable)
-                .map(this::mapToResponse);
     }
 
     // =========================================================
@@ -693,14 +917,57 @@ public class BondService {
     /**
      * The bond in full — see {@link BondDetailResponse}.
      *
-     * <p>Everything the entity holds is copied across, with the raw text columns
-     * left as they were entered and the normalized values that were parsed from
-     * them alongside. Nothing is derived here: a detail view is the record, and a
-     * reader wanting a figure it can compute has the inputs for it.</p>
+     * <p>Everything the entity holds that is about the bond is copied across,
+     * with the raw text columns left as they were entered and the normalized
+     * values that were parsed from them alongside. Nothing is derived here: a
+     * detail view is the record, and a reader wanting a figure it can compute
+     * has the inputs for it.</p>
      */
     private BondDetailResponse mapToDetail(Bond bond) {
 
-        return BondDetailResponse.builder()
+        BondDetailResponse.BondDetailResponseBuilder<?, ?> builder =
+                BondDetailResponse.builder();
+
+        applyDetail(builder, bond);
+
+        return builder.build();
+    }
+
+    /**
+     * The bond in full as an admin sees it — see {@link AdminBondDetailResponse}.
+     *
+     * <p>The public detail plus the provenance columns. Both views are built by
+     * {@link #applyDetail}, so the fields they share are listed once and cannot
+     * fall out of step; the three lines below are the entire difference between
+     * them.</p>
+     */
+    private AdminBondDetailResponse mapToAdminDetail(Bond bond) {
+
+        AdminBondDetailResponse.AdminBondDetailResponseBuilder<?, ?> builder =
+                AdminBondDetailResponse.builder();
+
+        applyDetail(builder, bond);
+
+        builder.sourceFileName(bond.getSourceFileName())
+                .sourceRowNumber(bond.getSourceRowNumber())
+                .importedAt(bond.getImportedAt());
+
+        return builder.build();
+    }
+
+    /**
+     * Copies the fields both detail views carry onto {@code builder}.
+     *
+     * <p>Takes the builder rather than returning a value so the one field list
+     * can feed either response type: the admin builder is a subtype of this
+     * one, so it is accepted here and keeps its own extra fields set by the
+     * caller.</p>
+     */
+    private static void applyDetail(
+            BondDetailResponse.BondDetailResponseBuilder<?, ?> builder,
+            Bond bond) {
+
+        builder
 
                 .id(
                         bond.getId())
@@ -806,9 +1073,7 @@ public class BondService {
                         bond.getCreatedAt())
 
                 .updatedAt(
-                        bond.getUpdatedAt())
-
-                .build();
+                        bond.getUpdatedAt());
     }
 
     /**
