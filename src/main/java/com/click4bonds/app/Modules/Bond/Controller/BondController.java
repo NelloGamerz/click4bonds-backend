@@ -23,7 +23,7 @@ import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
-import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondCashFlowService;
@@ -59,8 +59,9 @@ public class BondController {
      *
      * <ul>
      *   <li>{@code securityType} — {@code SECURED} or {@code UNSECURED}.</li>
-     *   <li>{@code maturityType} — one of {@code FIXED}, {@code PERPETUAL},
-     *       {@code AMORTIZING}, {@code RANGE} or {@code UNKNOWN}.</li>
+     *   <li>{@code couponFrequency} — one of {@code MONTHLY},
+     *       {@code QUARTERLY}, {@code HALF_YEARLY}, {@code YEARLY} or
+     *       {@code AT_MATURITY}.</li>
      *   <li>{@code rating} — the credit grade, e.g. {@code AAA}. This matches
      *       the stored grade column, not the agency-and-grade string
      *       {@link BondResponse#getRating()} shows, so a row that displays
@@ -78,7 +79,7 @@ public class BondController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean isFlashNews,
             @RequestParam(required = false) SecurityType securityType,
-            @RequestParam(required = false) MaturityType maturityType,
+            @RequestParam(required = false) CouponFrequency couponFrequency,
             @RequestParam(required = false) String rating,
             @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
             @AuthenticationPrincipal Jwt jwt) {
@@ -100,7 +101,7 @@ public class BondController {
                         search,
                         isFlashNews,
                         securityType,
-                        maturityType,
+                        couponFrequency,
                         rating,
                         pageable,
                         userId,

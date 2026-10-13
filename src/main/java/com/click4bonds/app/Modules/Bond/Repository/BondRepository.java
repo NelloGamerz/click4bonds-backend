@@ -12,7 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
-import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 
@@ -72,7 +72,8 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                                    OR :isFlashNews = false
                                    OR b.isFlashNews = true)
                               AND (:securityType IS NULL OR b.securityType = :securityType)
-                              AND (:maturityType IS NULL OR b.maturityType = :maturityType)
+                              AND (:couponFrequency IS NULL
+                                   OR b.couponFrequency = :couponFrequency)
                               AND (:rating IS NULL OR :rating = ''
                                    OR LOWER(b.rating) = LOWER(:rating))
                         """)
@@ -80,7 +81,7 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                         @Param("search") String search,
                         @Param("isFlashNews") Boolean isFlashNews,
                         @Param("securityType") SecurityType securityType,
-                        @Param("maturityType") MaturityType maturityType,
+                        @Param("couponFrequency") CouponFrequency couponFrequency,
                         @Param("rating") String rating,
                         Pageable pageable);
 
@@ -94,7 +95,7 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
          * bond in the table. Filtering after the fact in Java could not fix the
          * count, only the rows.</p>
          *
-         * <p>The catalogue's narrowings — security type, maturity type and
+         * <p>The catalogue's narrowings — security type, coupon frequency and
          * rating — are predicates here for the same reason: a {@code Page}
          * carries its counts, so a filter applied after the fact would return
          * the right rows with the wrong {@code totalElements}. Each is optional
@@ -117,7 +118,8 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                                    OR :isFlashNews = false
                                    OR b.isFlashNews = true)
                               AND (:securityType IS NULL OR b.securityType = :securityType)
-                              AND (:maturityType IS NULL OR b.maturityType = :maturityType)
+                              AND (:couponFrequency IS NULL
+                                   OR b.couponFrequency = :couponFrequency)
                               AND (:rating IS NULL OR :rating = ''
                                    OR LOWER(b.rating) = LOWER(:rating))
                         """)
@@ -126,7 +128,7 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                         @Param("search") String search,
                         @Param("isFlashNews") Boolean isFlashNews,
                         @Param("securityType") SecurityType securityType,
-                        @Param("maturityType") MaturityType maturityType,
+                        @Param("couponFrequency") CouponFrequency couponFrequency,
                         @Param("rating") String rating,
                         Pageable pageable);
 

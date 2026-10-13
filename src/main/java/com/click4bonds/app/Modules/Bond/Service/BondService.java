@@ -29,7 +29,7 @@ import com.click4bonds.app.Modules.Bond.Dto.CachedBond;
 import com.click4bonds.app.Modules.Bond.Dto.CreateBondRequest;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateBondRequest;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
-import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
@@ -410,7 +410,7 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             SecurityType securityType,
-            MaturityType maturityType,
+            CouponFrequency couponFrequency,
             String rating,
             Pageable pageable,
             UUID userId,
@@ -420,7 +420,7 @@ public class BondService {
                 search,
                 isFlashNews,
                 securityType,
-                maturityType,
+                couponFrequency,
                 rating,
                 pageable,
                 userId,
@@ -487,7 +487,7 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             SecurityType securityType,
-            MaturityType maturityType,
+            CouponFrequency couponFrequency,
             String rating,
             Pageable pageable,
             UUID userId,
@@ -497,7 +497,7 @@ public class BondService {
                 search,
                 isFlashNews,
                 securityType,
-                maturityType,
+                couponFrequency,
                 rating,
                 pageable,
                 userId,
@@ -516,10 +516,10 @@ public class BondService {
      * writing near-identical methods means the query choice and the analytics
      * below cannot drift apart between the public and admin paths.</p>
      *
-     * <p>{@code securityType}, {@code maturityType} and {@code rating} are the
-     * catalogue's facets. All three are optional; a null one is not a filter,
-     * and the admin path passes null for all three so it lists what it always
-     * listed. They reach the repository rather than being applied to the
+     * <p>{@code securityType}, {@code couponFrequency} and {@code rating} are
+     * the catalogue's facets. All three are optional; a null one is not a
+     * filter, and the admin path passes null for all three so it lists what it
+     * always listed. They reach the repository rather than being applied to the
      * finished page because {@code Page} carries its own counts — dropping rows
      * in Java would leave {@code totalElements} describing the unfiltered set.</p>
      */
@@ -527,7 +527,7 @@ public class BondService {
             String search,
             Boolean isFlashNews,
             SecurityType securityType,
-            MaturityType maturityType,
+            CouponFrequency couponFrequency,
             String rating,
             Pageable pageable,
             UUID userId,
@@ -545,7 +545,7 @@ public class BondService {
         boolean noFilters = (search == null || search.isBlank())
                 && isFlashNews == null
                 && securityType == null
-                && maturityType == null
+                && couponFrequency == null
                 && ratingFilter == null;
 
         Page<Bond> matching;
@@ -557,7 +557,7 @@ public class BondService {
                             search,
                             isFlashNews,
                             securityType,
-                            maturityType,
+                            couponFrequency,
                             ratingFilter,
                             pageable);
         } else {
@@ -568,7 +568,7 @@ public class BondService {
                             search,
                             isFlashNews,
                             securityType,
-                            maturityType,
+                            couponFrequency,
                             ratingFilter,
                             pageable);
         }
@@ -614,7 +614,7 @@ public class BondService {
                         Map.of("filter", "securityType", "value", securityType));
             }
 
-            if (maturityType != null) {
+            if (couponFrequency != null) {
                 analyticsService.track(
                         AnalyticsEventType.BOND_FILTER,
                         userId,
@@ -622,7 +622,7 @@ public class BondService {
                         null,
                         "WEB",
                         "BOND_LIST",
-                        Map.of("filter", "maturityType", "value", maturityType));
+                        Map.of("filter", "couponFrequency", "value", couponFrequency));
             }
 
             if (ratingFilter != null) {
@@ -648,7 +648,7 @@ public class BondService {
                                 "searchApplied", search != null && !search.isBlank(),
                                 "filterApplied", isFlashNews != null
                                         || securityType != null
-                                        || maturityType != null
+                                        || couponFrequency != null
                                         || ratingFilter != null));
             }
         }
