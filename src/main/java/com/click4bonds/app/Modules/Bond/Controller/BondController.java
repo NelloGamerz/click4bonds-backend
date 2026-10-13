@@ -23,6 +23,8 @@ import com.click4bonds.app.Modules.Bond.Dto.BondCashFlowResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondDetailResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondResponse;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
+import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondCashFlowService;
 import com.click4bonds.app.Modules.Bond.Service.BondCashFlowPdfService;
@@ -48,35 +50,62 @@ public class BondController {
     private final BondCashFlowPdfService bondCashFlowPdfService;
     private final AuthJwtService authJwtService;
 
+    /**
+     * The public bond catalogue.
+     *
+     * <p>Beyond the free-text {@code search} and the {@code isFlashNews} flag,
+     * the listing can be narrowed by facet. Each is optional and absent means
+     * "no opinion", not "match nothing":</p>
+     *
+     * <ul>
+     *   <li>{@code securityType} — {@code SECURED} or {@code UNSECURED}.</li>
+     *   <li>{@code maturityType} — one of {@code FIXED}, {@code PERPETUAL},
+     *       {@code AMORTIZING}, {@code RANGE} or {@code UNKNOWN}.</li>
+     *   <li>{@code rating} — the credit grade, e.g. {@code AAA}. This matches
+     *       the stored grade column, not the agency-and-grade string
+     *       {@link BondResponse#getRating()} shows, so a row that displays
+     *       {@code "CRISIL AAA"} is selected with {@code ?rating=AAA}. The
+     *       comparison is case-insensitive; blank is treated as absent.</li>
+     * </ul>
+     *
+     * <p>A value outside an enum's constants is a 400, not a silent no-match,
+     * because the parameter is bound to the enum type directly. Facets combine
+     * with AND, and each is applied inside the query so the returned
+     * {@code Page} counts the filtered set.</p>
+     */
     @GetMapping
     public ResponseEntity<Page<BondResponse>> getBonds(
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Boolean isFlashNews,
+            @RequestParam(required = false) SecurityType securityType,
+            @RequestParam(required = false) MaturityType maturityType,
+            @RequestParam(required = false) String rating,
             @ParameterObject @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
             @AuthenticationPrincipal Jwt jwt) {
 
         UUID userId = jwt == null ? null : UUID.fromString(jwt.getSubject());
 
+        /*
+         * The public catalogue lists ACTIVE bonds only — an inactive bond is
+         * one the admin has not released, or has pulled, so it is not the
+         * public's to see. The filter is applied inside the query rather than
+         * to the finished page, so totalElements and the page count describe
+         * the active set too; the admin listing at /api/admin/bonds keeps
+         * showing every bond, which is what an admin needs to manage them. The
+         * facet filters ride along the same way, and the admin listing does not
+         * offer them at all.
+         */
         return ResponseEntity.ok(
-                bondService.getBonds(
+                bondService.getActiveBonds(
                         search,
                         isFlashNews,
+                        securityType,
+                        maturityType,
+                        rating,
                         pageable,
                         userId,
                         authJwtService.hasRole(jwt, UserRole.CUSTOMER)));
     }
-
-//    @GetMapping("/{isin}")
-//    public ResponseEntity<BondResponse> getBond(
-//            @PathVariable String isin,
-//            @AuthenticationPrincipal Jwt jwt) {
-//
-//        UUID userId = jwt != null
-//                    ? UUID.fromString(jwt.getSubject()): null;
-//
-//        return ResponseEntity.ok(
-//                bondService.getBond(isin, userId));
-//    }
 
     @GetMapping("/{isin}")
     public ResponseEntity<BondDetailResponse> getBond(

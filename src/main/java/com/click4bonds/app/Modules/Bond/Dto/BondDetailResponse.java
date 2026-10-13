@@ -13,9 +13,9 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 /**
  * A single bond in full: every field the platform stores about it, plus the
@@ -34,9 +34,16 @@ import lombok.NoArgsConstructor;
  * forms — {@code ipDateDescription} beside the schedule it parses to,
  * {@code lotSizeDescription} beside {@code lotSize} — so a caller can show what
  * was entered and use what it means.</p>
+ *
+ * <p>Everything the entity holds that is <em>about the bond</em>: the columns
+ * recording which import the row arrived in, and the relationships to the
+ * creating user and the issuer, are deliberately not here. The import columns
+ * are internal provenance a customer has no use for, and the two relationships
+ * are separate reads. {@link AdminBondDetailResponse} extends this with the
+ * provenance, which is what an admin gets.</p>
  */
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BondDetailResponse {
