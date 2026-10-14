@@ -9,10 +9,11 @@ import java.time.LocalDate;
  *
  * <p>
  * Both representations of the yield are returned because the two audiences
- * differ: the percentage is what the persisted bond and the UI show, while the
- * decimal is what a caller doing its own arithmetic works in. Both are read from
- * the one value stored on the bond, so they are the same number written two
- * ways rather than two readings that could drift apart.
+ * differ: the percentage is what the platform and the UI quote, while the decimal
+ * is what a caller doing its own arithmetic works in. Both are read from the one
+ * figure — whether that figure was stored on the bond or calculated for the
+ * requested date — so they are the same number written two ways rather than two
+ * readings that could drift apart.
  *
  * <p>
  * The accrued interest and the days it accrued for are returned alongside,
@@ -25,15 +26,18 @@ import java.time.LocalDate;
  * showing one beside the other is not mixing two readings of the bond.
  *
  * <p>
- * A bond whose yield has never been calculated reports null for both yield
- * figures.
+ * A yield is only ever null for a bond whose yield has never been calculated and
+ * whose calculation was not asked for — a yield requested for a date other than
+ * today is always worked out, so the two figures come back populated.
  *
  * @param isin            the bond's ISIN
  * @param bondName        the bond's name
  * @param calculationDate the date the projection started from
- * @param ytmPercentage   annual YTM as a percentage, to 4 decimals — the value
- *                        stored on the bond (e.g. 10.6947), or {@code null} when
- *                        it has never been calculated
+ * @param ytmPercentage   annual YTM as a percentage, to 4 decimals
+ *                        (e.g. 10.6947): the value stored on the bond when the
+ *                        date is today, otherwise the value calculated for the
+ *                        date asked for. {@code null} only when the bond has
+ *                        never had a yield calculated
  * @param ytmDecimal      the same annual YTM as a decimal (e.g. 0.106947), or
  *                        {@code null} wherever {@code ytmPercentage} is
  * @param price           the clean price stored on the bond, or {@code null}
@@ -42,7 +46,10 @@ import java.time.LocalDate;
  *                        coupon date — zero when none has accrued
  * @param accruedInterest accrued interest per 100 face value, at the platform's
  *                        full working precision, or zero when none has accrued
- * @param calculatedAt    when the bond's YTM was last computed and persisted
+ * @param calculatedAt    when the bond's YTM was last computed and persisted, or
+ *                        {@code null} when this yield was not persisted at all —
+ *                        which is the case for every date other than today, since
+ *                        a yield for another date is only ever reported
  */
 public record BondYtmResponse(
         String isin,
