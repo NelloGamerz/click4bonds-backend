@@ -664,13 +664,32 @@ public class BondService {
             String isin,
             UpdateBondRequest request) {
 
+        log.info(
+                "Updating bond: isin={}, price={}, annualYtm={}, calculationType={}",
+                isin,
+                request.getPrice(),
+                request.getAnnualYtm(),
+                request.getCalculationType());
+
         Bond bond = getbondByIs(isin);
+
+        log.info(
+                "Bond loaded for update: isin={}, bondId={}, status={}, calculationType={}",
+                bond.getIsin(),
+                bond.getId(),
+                bond.getStatus(),
+                bond.getCalculationType());
 
         // -----------------------------------------------------
         // Matured bond cannot be modified
         // -----------------------------------------------------
 
         if (bond.getStatus() == BondStatus.MATURED) {
+
+            log.warn(
+                    "Rejecting update for matured bond: isin={}, bondId={}",
+                    bond.getIsin(),
+                    bond.getId());
 
             throw new BadRequestException(
                     "Matured bond cannot be updated");
@@ -684,6 +703,16 @@ public class BondService {
         // way as on create, so an update can carry raw sheet values too.
 
         bondRequestMapper.applyUpdate(bond, request);
+
+        log.info(
+                "Bond fields applied: isin={}, bondId={}, name={}, couponRate={}, "
+                        + "maturityDate={}, remainingQuantity={}",
+                bond.getIsin(),
+                bond.getId(),
+                bond.getName(),
+                bond.getCouponRate(),
+                bond.getMaturityDate(),
+                bond.getRemainingQuantity());
 
         // -----------------------------------------------------
         // Derive the other half of the price/yield pair
@@ -700,16 +729,51 @@ public class BondService {
         // never declared is left untouched either way.
 
         if (request.getPrice() != null || request.getAnnualYtm() != null) {
+
+            log.info(
+                    "Re-deriving price/yield pair: isin={}, bondId={}, "
+                            + "calculationType={}",
+                    bond.getIsin(),
+                    bond.getId(),
+                    bond.getCalculationType());
+
             bondValuationService.applyCalculationType(bond, LocalDate.now());
+
+            log.info(
+                    "Price/yield pair derived: isin={}, bondId={}, price={}, "
+                            + "semiYtm={}, annualYtm={}, ytc={}, ytmCalculatedAt={}",
+                    bond.getIsin(),
+                    bond.getId(),
+                    bond.getPrice(),
+                    bond.getSemiYtm(),
+                    bond.getAnnualYtm(),
+                    bond.getYtc(),
+                    bond.getYtmCalculatedAt());
+
+        } else {
+
+            log.info(
+                    "Skipping price/yield derivation, request moved neither: "
+                            + "isin={}, bondId={}",
+                    bond.getIsin(),
+                    bond.getId());
         }
 
         // -----------------------------------------------------
         // Save
         // -----------------------------------------------------
 
+        log.info("Evicting cached bond before save: isin={}", isin);
+
         evictCachedBond(isin);
 
         Bond savedBond = bondRepository.save(bond);
+
+        log.info(
+                "Bond updated successfully: isin={}, bondId={}, status={}",
+                savedBond.getIsin(),
+                savedBond.getId(),
+                savedBond.getStatus());
 
         return mapToResponse(savedBond);
     }
