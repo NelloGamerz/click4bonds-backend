@@ -36,7 +36,9 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class BondValuationService {
 
-    /** Yields are stored as percentages; the engines work in decimals. */
+    /**
+     * Yields are stored as percentages; the engines work in decimals.
+     */
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
     private final YtmCalculationService ytmCalculationService;
@@ -58,7 +60,13 @@ public class BondValuationService {
         CalculationType calculationType = bond.getCalculationType();
 
         if (calculationType == null) {
-            return;
+            if (bond.getPrice() != null) {
+                calculationType = CalculationType.BY_PRICE;
+            } else if (bond.getAnnualYtm() != null) {
+                calculationType = CalculationType.BY_YTM;
+            } else {
+                return;
+            }
         }
 
         switch (calculationType) {
