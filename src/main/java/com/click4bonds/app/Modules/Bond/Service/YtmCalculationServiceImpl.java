@@ -32,6 +32,47 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
     @Override
     @Transactional
     public BigDecimal calculateYtm(Bond bond, LocalDate calculationDate) {
+
+        BigDecimal annualYtmDecimal = annualYtmDecimal(bond, calculationDate);
+
+        // Step 1: Update Bond with the calculated YTM
+        bond.setAnnualYtm(toAnnualYtmPercentage(annualYtmDecimal));
+        bond.setYtmCalculatedAt(Instant.now());
+
+        // Step 2: Persist the Bond
+        bondRepository.save(bond);
+
+        // Step 3: Return the YTM in decimal format (as per service contract)
+        return annualYtmDecimal;
+    }
+
+    @Override
+    public BigDecimal previewAnnualYtm(Bond bond, LocalDate calculationDate) {
+
+        /*
+         * Everything the storing path computes, minus the write: the cash flows
+         * are generated, the XIRR is solved and the rate is rounded exactly as
+         * above, so a yield quoted for an arbitrary date is the same number the
+         * platform would have stored had that date been today.
+         */
+        return toAnnualYtmPercentage(annualYtmDecimal(bond, calculationDate));
+    }
+
+    /**
+     * The bond's annualised rate as of a date, in decimal form — the one
+     * computation both entry points share.
+     *
+     * <p>
+     * Reads nothing the bond stores and writes nothing to it, so it can serve a
+     * calculation that must not be persisted as readily as one that must.
+     *
+     * @return the XIRR as a decimal, e.g. {@code 0.106947}
+     * @throws IllegalArgumentException if the bond or the date is null, or the
+     *                                  cash flows cannot be built
+     * @throws IllegalStateException    if XIRR cannot be solved
+     */
+    private BigDecimal annualYtmDecimal(Bond bond, LocalDate calculationDate) {
+
         validateBond(bond);
 
         if (calculationDate == null) {
@@ -45,38 +86,30 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
         // A Sovereign is quoted on a 30/360 year; every other bond keeps the
         // platform's actual/365 basis exactly as before. The basis is shared with
         // PriceCalculationService so the two directions cannot disagree.
-        BigDecimal annualYtmDecimal = xirrCalculator.calculate(
+        return xirrCalculator.calculate(
                 cashFlows,
                 BondDayCountBasis.of(bond));
+    }
 
-        // Step 3: Convert from decimal to percentage and round to 4 decimal places
-        // Example: 0.106947 -> 10.6947
-        //
-        // The rate itself already carries six decimals, so multiplying by 100
-        // lands exactly on four: this step arranges the decimal point rather than
-        // discarding anything. Four is where the precision stops being meaningful
-        // — a basis point is the fourth place — and the two-decimal figure this
-        // used to store was throwing away real differences between bonds that
-        // quote to a hundredth of a percent.
-        BigDecimal annualYtmPercentage = annualYtmDecimal
-        .multiply(new BigDecimal("100"))
-        .setScale(4, RoundingMode.HALF_UP);
+    /**
+     * The rate as the platform quotes it: a percentage, to 4 decimals.
+     *
+     * <p>
+     * Example: {@code 0.106947 -> 10.6947}.
+     *
+     * <p>
+     * The rate itself already carries six decimals, so multiplying by 100 lands
+     * exactly on four: this step arranges the decimal point rather than
+     * discarding anything. Four is where the precision stops being meaningful —
+     * a basis point is the fourth place — and the two-decimal figure this used to
+     * store was throwing away real differences between bonds that quote to a
+     * hundredth of a percent.
+     */
+    private static BigDecimal toAnnualYtmPercentage(BigDecimal annualYtmDecimal) {
 
-        // BigDecimal annualYtmPercentage = annualYtmDecimal
-        //         .multiply(new BigDecimal("100"))
-        //         .divide(new BigDecimal("0.10"), 0, RoundingMode.HALF_UP)
-        //         .multiply(new BigDecimal("0.10"))
-        //         .setScale(2, RoundingMode.HALF_UP);
-
-        // Step 4: Update Bond with calculated YTM
-        bond.setAnnualYtm(annualYtmPercentage);
-        bond.setYtmCalculatedAt(Instant.now());
-
-        // Step 5: Persist the Bond
-        bondRepository.save(bond);
-
-        // Step 6: Return the YTM in decimal format (as per service contract)
-        return annualYtmDecimal;
+        return annualYtmDecimal
+                .multiply(new BigDecimal("100"))
+                .setScale(4, RoundingMode.HALF_UP);
     }
 
     /**

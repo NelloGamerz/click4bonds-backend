@@ -11,13 +11,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
 import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Dto.BondPriceResponse;
 import com.click4bonds.app.Modules.Bond.Dto.BondYtmResponse;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.BondYtmService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 
@@ -32,7 +31,8 @@ import lombok.extern.slf4j.Slf4j;
  * bond's price/yield pair rather than its descriptive fields.
  *
  * <p>
- * The yield endpoint reports the figure already stored on the bond; the price
+ * The yield endpoint reports the bond's quoted yield — the figure stored on the
+ * bond for today, or one calculated for a date the caller names; the price
  * endpoint solves the opposite direction, for a yield the caller supplies. Both
  * rest on the same cash-flow schedule, so the two agree.
  */
@@ -47,20 +47,22 @@ public class YtmController {
 
     private final BondService bondService;
     private final PriceCalculationService priceCalculationService;
-    private final AccruedInterestService accruedInterestService;
+    private final BondYtmService bondYtmService;
 
     /**
-     * Reports the annual yield to maturity stored for the bond with this ISIN.
+     * Reports the bond's annual yield to maturity as of a date.
      *
      * <p>
-     * Read-only: the yield is not solved for here. {@code annualYtm} is
-     * calculated when a bond is created or updated — see
-     * {@link com.click4bonds.app.Modules.Bond.Service.BondValuationService} — and
-     * this endpoint returns that stored figure, so reading a yield can never move
-     * the value it reports.
+     * Today's yield — the default, and the platform's quoted figure — is the one
+     * stored on the bond, calculated on demand if the bond has never had one. A
+     * yield for any other date is worked out for that date alone and is
+     * deliberately not stored, so asking what a bond would have yielded cannot
+     * move the figure it yields today. Which of the two a request is, and whether
+     * anything is written, is {@link BondYtmService}'s to decide; this method
+     * only routes and returns.
      *
      * @param isin            the bond's ISIN, case-insensitive.
-     * @param calculationDate ISO date the accrued interest is measured to;
+     * @param calculationDate ISO date the yield and the accrual are measured to;
      *                        defaults to today, which is the usual settlement
      *                        horizon.
      * @return 404 when no bond carries that ISIN.
@@ -70,53 +72,8 @@ public class YtmController {
             @PathVariable String isin,
             @RequestParam(required = false) LocalDate calculationDate) {
 
-        LocalDate asOf = calculationDate != null
-                ? calculationDate
-                : LocalDate.now();
-
-        log.info(
-                "GET /bonds/{}/ytm - calculationDate={}",
-                isin,
-                asOf
-        );
-
-        Bond bond = bondService.findBond(isin);
-
-        /*
-         * Both representations are read off the one stored percentage. Moving the
-         * decimal point is a change of representation, not a second calculation,
-         * so the two can never disagree. A bond whose yield has never been
-         * calculated has neither: null is the honest answer, where a zero would
-         * read as a bond that yields nothing.
-         */
-        BigDecimal ytmPercentage = bond.getAnnualYtm();
-
-        BigDecimal ytmDecimal = ytmPercentage == null
-                ? null
-                : ytmPercentage.divide(HUNDRED);
-
-        /*
-         * The accrual is the one figure here with no column behind it: it is a
-         * function of the settlement date, which this call chooses rather than
-         * reads. Computing it writes nothing, so the endpoint stays a read.
-         */
-        AccruedInterest accruedInterest = accruedInterestService.accrue(
-                bond,
-                asOf);
-
         return ResponseEntity.ok(
-                new BondYtmResponse(
-                        bond.getIsin(),
-                        bond.getName(),
-                        asOf,
-                        ytmPercentage,
-                        ytmDecimal,
-                        bond.getPrice(),
-                        accruedInterest.days(),
-                        accruedInterest.amount(),
-                        bond.getYtmCalculatedAt()
-                )
-        );
+                bondYtmService.getYtm(isin, calculationDate));
     }
 
     /**

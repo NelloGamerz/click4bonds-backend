@@ -49,4 +49,30 @@ public interface YtmCalculationService {
      * @throws IllegalStateException if XIRR calculation fails
      */
     BigDecimal calculateYtm(Bond bond, LocalDate calculationDate);
+
+    /**
+     * The annual YTM as of an arbitrary date, calculated but not stored.
+     *
+     * <p>
+     * The same cash flows, the same XIRR and the same rounding as
+     * {@link #calculateYtm(Bond, LocalDate)} — the only difference is what it
+     * leaves behind: nothing. The bond is not modified, {@code ytmCalculatedAt}
+     * is not touched and no save is issued, so a caller asking what a bond would
+     * have yielded on some past or future date cannot overwrite the figure the
+     * platform quotes today.
+     *
+     * <p>
+     * It exists for that question. A yield belongs to a date, and only the
+     * current date's is worth keeping: the stored {@code annualYtm} is the
+     * platform's answer today, and a hypothetical date is an answer to a
+     * one-off question.
+     *
+     * @param bond            the bond to calculate YTM for
+     * @param calculationDate the settlement/calculation date to use
+     * @return the annual YTM as a percentage to 4 decimals, exactly as
+     *         {@link #calculateYtm(Bond, LocalDate)} would have stored it
+     * @throws IllegalArgumentException if bond is null or missing required fields
+     * @throws IllegalStateException    if XIRR calculation fails
+     */
+    BigDecimal previewAnnualYtm(Bond bond, LocalDate calculationDate);
 }

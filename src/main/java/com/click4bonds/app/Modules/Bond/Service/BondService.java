@@ -358,8 +358,13 @@ public class BondService {
      * back, leaving the database and the cache in agreement. Evicting after the
      * write instead would let a failed eviction pair a committed new price with
      * a stale cached one.</p>
+     *
+     * <p>Public because a write does not have to originate here to invalidate
+     * the cache: {@link BondYtmService} calculates and stores a yield on a read
+     * path, and it needs the same guarantee even though the write it precedes is
+     * someone else's.</p>
      */
-    private void evictCachedBond(String isin) {
+    public void evictCachedBond(String isin) {
 
         String normalizedIsin = normalizeIsin(isin);
 
