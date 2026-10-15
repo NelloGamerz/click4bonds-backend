@@ -57,22 +57,64 @@ public class BondValuationService {
      */
     public void applyCalculationType(Bond bond, LocalDate calculationDate) {
 
-        CalculationType calculationType = bond.getCalculationType();
+        CalculationType calculationType = resolveCalculationType(bond);
 
         if (calculationType == null) {
-            if (bond.getPrice() != null) {
-                calculationType = CalculationType.BY_PRICE;
-            } else if (bond.getAnnualYtm() != null) {
-                calculationType = CalculationType.BY_YTM;
-            } else {
-                return;
-            }
+            return;
         }
 
         switch (calculationType) {
             case BY_PRICE -> deriveYield(bond, calculationDate);
             case BY_YTM -> derivePrice(bond, calculationDate);
         }
+    }
+
+    /**
+     * Which half of the price/yield pair is the source for this bond.
+     *
+     * <p>
+     * Normally the bond says so outright. A bond that declares nothing — every
+     * bond created before {@code calculation_type} existed, and any create that
+     * sent neither — is read off the figures it does hold: a price means the price
+     * was supplied, and failing that a yield means the yield was. The guess is
+     * only ever made where the alternative is refusing to work on the bond at all,
+     * and it is the guess the platform has always made.
+     *
+     * <p>
+     * A bond holding neither figure has no recoverable source, which is what
+     * {@code null} reports. Both callers treat that as "leave it alone".
+     *
+     * <p>
+     * Shared rather than duplicated: {@link BondCalculationService} reads the same
+     * question on its read path, and two answers to it would let an endpoint
+     * derive one half from the other half's source.
+     *
+     * @param bond the bond, already populated; must not be {@code null}
+     * @return the type to derive from, or {@code null} when the bond holds neither
+     *         figure
+     * @throws IllegalArgumentException when the bond is {@code null}
+     */
+    public static CalculationType resolveCalculationType(Bond bond) {
+
+        if (bond == null) {
+            throw new IllegalArgumentException("Bond cannot be null");
+        }
+
+        CalculationType declared = bond.getCalculationType();
+
+        if (declared != null) {
+            return declared;
+        }
+
+        if (bond.getPrice() != null) {
+            return CalculationType.BY_PRICE;
+        }
+
+        if (bond.getAnnualYtm() != null) {
+            return CalculationType.BY_YTM;
+        }
+
+        return null;
     }
 
     /**
