@@ -18,7 +18,7 @@ public class CorsConfig {
         @Value("${frontend.www-url}")
         private String frontendWwwUrl;
 
-        @Value("${frontend.admin   }")
+        @Value("${frontend.admin}")
         private String adminFrontendUrl;
 
         @Bean
