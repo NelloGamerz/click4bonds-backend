@@ -8,6 +8,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsEventResponse;
+import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsEventSearchItem;
+import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsEventSearchResponse;
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsUserEventsResponse;
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsUserEventsSummary;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventRow;
@@ -17,12 +19,18 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Serves the admin reporting endpoint: one user's analytics events, paged.
+ * Serves the admin reporting endpoints: one user's analytics events, and a
+ * search for events across every user.
  *
  * <p>Sits between the controller and {@link ClickHouseService}. The controller
  * deals in HTTP, {@code ClickHouseService} deals in SQL, and this class owns
  * what neither should: turning a raw row into the response shape, deciding
  * where a page ends, and rejecting a request that cannot be answered.</p>
+ *
+ * <p>The two endpoints differ only in their filter and their envelope. Both
+ * page by cursor over the same ordering, so the arithmetic that decides where a
+ * page ends lives once, in {@link EventPage}, and both responses are built from
+ * it.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -76,40 +84,116 @@ public class AdminAnalyticsQueryService {
 
         int pageSize = resolvePageSize(size);
 
-        if (from != null && to != null && from.isAfter(to)) {
-            throw new BadRequestException("The 'from' time must not be after the 'to' time.");
-        }
+        validateRange(from, to);
 
-        AnalyticsCursor position = (cursor != null && !cursor.isBlank())
-                ? AnalyticsCursor.decode(cursor)
-                : null;
+        AnalyticsCursor position = decodeCursor(cursor);
 
         // One row past the page: its presence is what proves another page
         // exists, without a second query and without a COUNT of the offset
         // we are not using. The extra row is dropped before returning.
-        List<AnalyticsEventRow> rows = clickHouseService.findUserEvents(
-                userId,
-                eventType,
-                from,
-                to,
-                position,
-                pageSize + 1);
-
-        boolean hasNext = rows.size() > pageSize;
-
-        List<AnalyticsEventRow> page = hasNext
-                ? rows.subList(0, pageSize)
-                : rows;
+        EventPage page = EventPage.of(
+                clickHouseService.findUserEvents(
+                        userId,
+                        eventType,
+                        from,
+                        to,
+                        position,
+                        pageSize + 1),
+                pageSize);
 
         return new AnalyticsUserEventsResponse(
                 userId,
-                page.stream()
+                page.rows()
+                        .stream()
                         .map(AdminAnalyticsQueryService::toResponse)
                         .toList(),
-                page.size(),
-                hasNext,
-                hasNext ? cursorFor(page) : null,
+                page.rows().size(),
+                page.hasNext(),
+                page.nextCursor(),
                 summary(userId, eventType, from, to));
+    }
+
+    /**
+     * Searches every user's events, newest first, with totals left out.
+     *
+     * <p>The same page of the same table as {@link #getUserEvents}, minus the
+     * user filter. Neither endpoint is a subset of the other: a search cannot be
+     * answered by the per-user read, because the caller does not know whose
+     * events to ask for.</p>
+     *
+     * <p>Reads are not run in one transaction, and do not need to be — see
+     * {@link #getUserEvents}. A row inserted mid-search shifts the newest page
+     * and nothing else, because the cursor names a position in the ordering
+     * rather than an offset into it.</p>
+     *
+     * @param eventType optional event name to narrow to, {@code null} for all;
+     *                  naming one reads a range of the sorting key rather than
+     *                  the whole partition
+     * @param from      optional inclusive lower bound on {@code event_time}
+     * @param to        optional inclusive upper bound on {@code event_time}
+     * @param cursor    the previous page's {@code nextCursor}, or {@code null}
+     *                  to start from the newest event
+     * @param size      requested page size; {@code 0} or less takes
+     *                  {@link #DEFAULT_PAGE_SIZE}
+     * @return the page of matching events, across all users
+     * @throws BadRequestException if {@code size} is out of range, {@code from}
+     *                             is after {@code to}, or {@code cursor} is not
+     *                             a cursor this service issued
+     */
+    public AnalyticsEventSearchResponse searchEvents(
+            AnalyticsEventType eventType,
+            Instant from,
+            Instant to,
+            String cursor,
+            int size) {
+
+        int pageSize = resolvePageSize(size);
+
+        validateRange(from, to);
+
+        AnalyticsCursor position = decodeCursor(cursor);
+
+        EventPage page = EventPage.of(
+                clickHouseService.findAllEvents(
+                        eventType,
+                        from,
+                        to,
+                        position,
+                        pageSize + 1),
+                pageSize);
+
+        return new AnalyticsEventSearchResponse(
+                page.rows()
+                        .stream()
+                        .map(AdminAnalyticsQueryService::toSearchItem)
+                        .toList(),
+                page.rows().size(),
+                page.hasNext(),
+                page.nextCursor());
+    }
+
+    /**
+     * @throws BadRequestException if {@code from} is set and falls after
+     *                             {@code to}
+     */
+    private static void validateRange(Instant from, Instant to) {
+
+        if (from != null && to != null && from.isAfter(to)) {
+            throw new BadRequestException("The 'from' time must not be after the 'to' time.");
+        }
+    }
+
+    /**
+     * @param cursor the raw {@code cursor} query parameter
+     * @return the decoded position, or {@code null} for the first page — a
+     *         cursor that was sent but blank counts as omitted
+     * @throws BadRequestException if the token is not a cursor this service issued
+     */
+    private static AnalyticsCursor decodeCursor(String cursor) {
+
+        return (cursor != null && !cursor.isBlank())
+                ? AnalyticsCursor.decode(cursor)
+                : null;
     }
 
     /**
@@ -138,6 +222,39 @@ public class AdminAnalyticsQueryService {
                 .sum();
 
         return new AnalyticsUserEventsSummary(totalEvents, eventsByType);
+    }
+
+    /**
+     * One page of rows, cut from the rows a read returned.
+     *
+     * <p>Both endpoints read one row more than the page they intend to return,
+     * so the presence of that row is what answers "is there another page" —
+     * without a second query and without a {@code COUNT} of an offset nobody
+     * uses. Cutting the look-ahead row off, and naming the last row that
+     * survives, is the whole of the paging arithmetic; it lives here so the two
+     * endpoints cannot disagree about where a page ends.</p>
+     *
+     * @param rows       this page's rows, the look-ahead row already dropped
+     * @param hasNext    whether the look-ahead row arrived
+     * @param nextCursor the cursor to resume at, or {@code null} on the last page
+     */
+    private record EventPage(List<AnalyticsEventRow> rows, boolean hasNext, String nextCursor) {
+
+        /**
+         * @param fetched  the rows ClickHouse returned, at most one more than
+         *                 the page size
+         * @param pageSize how many rows the page should hold
+         */
+        private static EventPage of(List<AnalyticsEventRow> fetched, int pageSize) {
+
+            boolean hasNext = fetched.size() > pageSize;
+
+            List<AnalyticsEventRow> page = hasNext
+                    ? fetched.subList(0, pageSize)
+                    : fetched;
+
+            return new EventPage(page, hasNext, hasNext ? cursorFor(page) : null);
+        }
     }
 
     /**
@@ -179,6 +296,27 @@ public class AdminAnalyticsQueryService {
         return new AnalyticsEventResponse(
                 row.eventId(),
                 row.eventType(),
+                row.sessionId(),
+                row.bondId(),
+                row.eventTime(),
+                row.source(),
+                row.page(),
+                row.metadata());
+    }
+
+    /**
+     * Maps a stored row onto the search item shape.
+     *
+     * <p>Carries {@code userId}, which the per-user response leaves to its
+     * envelope — a page here is not scoped to one person, so each row has to say
+     * whose it is.</p>
+     */
+    private static AnalyticsEventSearchItem toSearchItem(AnalyticsEventRow row) {
+
+        return new AnalyticsEventSearchItem(
+                row.eventId(),
+                row.eventType(),
+                row.userId(),
                 row.sessionId(),
                 row.bondId(),
                 row.eventTime(),

@@ -27,6 +27,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsEventSearchResponse;
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsUserEventsResponse;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventRow;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
@@ -298,6 +299,163 @@ class AdminAnalyticsQueryServiceTest {
                 USER_ID, null, null, null, null, 20);
 
         assertEquals(USER_ID, response.userId());
+    }
+
+    @Test
+    void shouldSearchAcrossEveryUserWithoutNamingOne() {
+
+        stubSearch(rows(1));
+
+        service.searchEvents(AnalyticsEventType.BOND_VIEW, null, null, null, 20);
+
+        // No user id reaches ClickHouse: the filter is the event name, not a
+        // person, and the whole point of the endpoint is that it is not scoped.
+        verify(clickHouseService).findAllEvents(
+                eq(AnalyticsEventType.BOND_VIEW), isNull(), isNull(), isNull(), eq(21));
+    }
+
+    @Test
+    void shouldAskClickHouseForOneRowMoreThanTheSearchPageSize() {
+
+        stubSearch(rows(3));
+
+        service.searchEvents(null, null, null, null, 2);
+
+        verify(clickHouseService).findAllEvents(isNull(), isNull(), isNull(), isNull(), eq(3));
+    }
+
+    @Test
+    void shouldNotLeakTheSearchLookAheadRowToTheCaller() {
+
+        stubSearch(rows(3));
+
+        AnalyticsEventSearchResponse response = service.searchEvents(null, null, null, null, 2);
+
+        assertEquals(2, response.items().size());
+        assertEquals(2, response.size());
+        assertTrue(response.hasNext());
+        assertNotNull(response.nextCursor());
+    }
+
+    @Test
+    void shouldPointTheSearchCursorAtTheLastRowOfThePage() {
+
+        List<AnalyticsEventRow> rows = rows(3);
+        stubSearch(rows);
+
+        AnalyticsEventSearchResponse response = service.searchEvents(null, null, null, null, 2);
+
+        AnalyticsCursor cursor = AnalyticsCursor.decode(response.nextCursor());
+
+        assertEquals(rows.get(1).eventTime(), cursor.eventTime());
+        assertEquals(rows.get(1).eventId(), cursor.eventId());
+    }
+
+    @Test
+    void shouldReportTheLastSearchPageWhenNoLookAheadRowArrived() {
+
+        stubSearch(rows(2));
+
+        AnalyticsEventSearchResponse response = service.searchEvents(null, null, null, null, 2);
+
+        assertFalse(response.hasNext());
+        assertNull(response.nextCursor());
+    }
+
+    @Test
+    void shouldPassTheSearchCursorAndFiltersThroughToClickHouse() {
+
+        stubSearch(rows(1));
+
+        AnalyticsCursor position = new AnalyticsCursor(
+                Instant.parse("2026-10-05T09:31:22.104Z"),
+                UUID.randomUUID());
+
+        Instant from = Instant.parse("2026-10-01T00:00:00Z");
+        Instant to = Instant.parse("2026-10-06T00:00:00Z");
+
+        service.searchEvents(AnalyticsEventType.LOGIN, from, to, position.encode(), 20);
+
+        verify(clickHouseService).findAllEvents(
+                eq(AnalyticsEventType.LOGIN), eq(from), eq(to), eq(position), eq(21));
+    }
+
+    @Test
+    void shouldCarryTheUserIdOnEachSearchedEvent() {
+
+        AnalyticsEventRow row = row(0);
+        stubSearch(List.of(row));
+
+        AnalyticsEventSearchResponse response = service.searchEvents(null, null, null, null, 20);
+
+        var item = response.items().get(0);
+
+        // The per-user envelope carries the id; a search has no such envelope,
+        // so each row must.
+        assertEquals(row.userId(), item.userId());
+        assertEquals(row.eventId(), item.eventId());
+        assertEquals(row.eventType(), item.eventType());
+        assertEquals(row.sessionId(), item.sessionId());
+        assertEquals(row.bondId(), item.bondId());
+        assertEquals(row.eventTime(), item.eventTime());
+        assertEquals(row.source(), item.source());
+        assertEquals(row.page(), item.page());
+        assertEquals(row.metadata(), item.metadata());
+    }
+
+    @Test
+    void shouldReportAnEmptySearchRatherThanFailWhenNothingMatches() {
+
+        stubSearch(List.of());
+
+        AnalyticsEventSearchResponse response = service.searchEvents(null, null, null, null, 20);
+
+        assertTrue(response.items().isEmpty());
+        assertEquals(0, response.size());
+        assertFalse(response.hasNext());
+        assertNull(response.nextCursor());
+    }
+
+    @Test
+    void shouldApplyTheSamePageSizeBoundsToASearch() {
+
+        assertThrows(
+                BadRequestException.class,
+                () -> service.searchEvents(
+                        null, null, null, null,
+                        AdminAnalyticsQueryService.MAX_PAGE_SIZE + 1));
+
+        stubSearch(rows(1));
+
+        service.searchEvents(null, null, null, null, 0);
+
+        verify(clickHouseService).findAllEvents(
+                isNull(), isNull(), isNull(), isNull(),
+                eq(AdminAnalyticsQueryService.DEFAULT_PAGE_SIZE + 1));
+    }
+
+    @Test
+    void shouldRejectASearchWithTheSameRangeAndCursorFaults() {
+
+        assertThrows(
+                BadRequestException.class,
+                () -> service.searchEvents(
+                        null,
+                        Instant.parse("2026-10-06T00:00:00Z"),
+                        Instant.parse("2026-10-01T00:00:00Z"),
+                        null,
+                        20));
+
+        assertThrows(
+                BadRequestException.class,
+                () -> service.searchEvents(null, null, null, "garbage", 20));
+    }
+
+    /** Stubs the cross-user read, so only the search paging is under test. */
+    private void stubSearch(List<AnalyticsEventRow> rows) {
+
+        when(clickHouseService.findAllEvents(any(), any(), any(), any(), anyInt()))
+                .thenReturn(rows);
     }
 
     /** Stubs both ClickHouse reads, so only the paging is under test. */

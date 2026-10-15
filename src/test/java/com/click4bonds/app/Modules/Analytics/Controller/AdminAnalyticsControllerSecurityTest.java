@@ -22,6 +22,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsEventSearchResponse;
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsUserEventsResponse;
 import com.click4bonds.app.Modules.Analytics.Dto.AnalyticsUserEventsSummary;
 import com.click4bonds.app.Modules.Analytics.Service.AdminAnalyticsQueryService;
@@ -247,6 +248,57 @@ class AdminAnalyticsControllerSecurityTest {
         mockMvc.perform(get("/api/admin/users")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(UserRole.CUSTOMER)))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anAdminMaySearchEveryUsersAnalytics() throws Exception {
+
+        when(adminAnalyticsQueryService.searchEvents(any(), any(), any(), any(), anyInt()))
+                .thenReturn(new AnalyticsEventSearchResponse(
+                        List.of(),
+                        0,
+                        false,
+                        null));
+
+        mockMvc.perform(get(searchPath())
+                .param("eventType", "BOND_VIEW")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(UserRole.ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    void aCustomerMayNotSearchEveryUsersAnalytics() throws Exception {
+
+        // The search reaches further than the per-user endpoint — it is not
+        // narrowed by a path variable — so the role gate has to hold here too.
+        mockMvc.perform(get(searchPath())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(UserRole.CUSTOMER)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anEmployeeMayNotSearchEveryUsersAnalytics() throws Exception {
+
+        mockMvc.perform(get(searchPath())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(UserRole.EMPLOYEE)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anAnonymousSearchCallerIsToldToAuthenticate() throws Exception {
+
+        mockMvc.perform(get(searchPath()))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void anUnrecognisedEventTypeIsRejectedByTheSearchToo() throws Exception {
+
+        mockMvc.perform(get(searchPath())
+                .param("eventType", "NOT_A_REAL_EVENT")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(UserRole.ADMIN)))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
