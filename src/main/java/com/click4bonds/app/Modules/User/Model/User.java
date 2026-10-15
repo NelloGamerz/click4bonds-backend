@@ -34,6 +34,23 @@ import lombok.Setter;
  * given. There is deliberately no second identifier column: a parallel
  * external-provider key is exactly what used to live here, and its removal is
  * the point of this class's current shape.</p>
+ *
+ * <p>What this class holds is the part of an account that is true regardless of
+ * what the account is for: who they are, how they sign in, and what they are
+ * allowed to be. What is true only of a customer — KYC progress, the consents
+ * the sign-up form collects, the verification record — lives on
+ * {@link CustomerProfile}, and what is true only of a member of staff lives on
+ * {@link AdminProfile}. A given account has exactly one of those two and never
+ * both; which one is decided by {@link #role} and enforced where accounts are
+ * created and where roles change, in
+ * {@link com.click4bonds.app.Modules.User.Service.UserService}.</p>
+ *
+ * <p>The profiles are separate tables rather than columns here on purpose. With
+ * the fields inline, every consumer of an account read a record that was mostly
+ * null for the role it was looking at, and there was nowhere to put a field
+ * that only one role has without making it null for every other. Splitting them
+ * makes "a customer has no employee code" a fact about the type rather than a
+ * convention about nulls.</p>
  */
 @Entity
 @Table(name = "users", indexes = {@Index(name = "idx_user_email", columnList = "email", unique = true), @Index(name = "idx_user_mobile_number", columnList = "mobileNumber", unique = true), @Index(name = "idx_user_role", columnList = "role")})
@@ -72,19 +89,32 @@ public class User {
 
     private String lastName;
 
-    private String profileImage;
-
-    // @Column(nullable = false)
-    // @Builder.Default
-    // private Boolean onboardingCompleted = false;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Builder.Default
-    private OnboardingStep onboardingStep = OnboardingStep.PHONE_VERIFICATION;
-
+    /**
+     * The customer record, for an account that has one.
+     *
+     * <p>Null for an admin or back-office account, which is not an error state
+     * but the point of the split. Cascade and orphan removal are both set, so
+     * the profile is written and removed with its account rather than needing a
+     * second call that a caller could forget.</p>
+     *
+     * <p>The inverse side of the association — {@link CustomerProfile#user}
+     * owns the foreign key — so assigning this alone persists nothing. Creation
+     * goes through
+     * {@link com.click4bonds.app.Modules.User.Service.UserService#createUser},
+     * which sets both sides.</p>
+     */
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
-    private UserVerification verification;
+    private CustomerProfile customerProfile;
+
+    /**
+     * The staff record, for an account that has one.
+     *
+     * <p>Null for a customer, for the same reason
+     * {@link #customerProfile} is null for staff. Holds the module permissions
+     * an {@code EMPLOYEE} is constrained by.</p>
+     */
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
+    private AdminProfile adminProfile;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -95,44 +125,6 @@ public class User {
     @Column(nullable = false)
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
-
-    /**
-     * Whether the account has cleared every verification step — PAN and bank
-     * account included — and is therefore fully known to the platform.
-     *
-     * <p>Separate from {@link #onboardingStep}, which records how far the user
-     * has <em>got</em>; this records whether they are <em>done</em>. The step
-     * can sit at its final value while a re-verification is outstanding, so the
-     * two are not interchangeable.</p>
-     *
-     * <p>Typed as a wrapper, matching {@code Bond.isFlashNews}, so the getter
-     * Lombok generates is {@code getIsKycCompleted} and the JSON property is
-     * {@code isKycCompleted} rather than {@code kycCompleted} — which is what a
-     * primitive {@code isKycCompleted} field would produce.</p>
-     */
-    @Column(name = "is_kyc_completed", nullable = false)
-    @Builder.Default
-    private Boolean isKycCompleted = false;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "age_range")
-    private AgeRange ageRange;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "user_type")
-    private UserType userType;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "preferred_communication_language")
-    private CommunicationLanguage preferredCommunicationLanguage;
-
-    @Column(name = "whatsapp_communication_consent", nullable = false)
-    @Builder.Default
-    private Boolean whatsappCommunicationConsent = false;
-
-    @Column(name = "terms_accepted", nullable = false)
-    @Builder.Default
-    private Boolean termsAccepted = false;
 
     @CreationTimestamp
     @Column(updatable = false)

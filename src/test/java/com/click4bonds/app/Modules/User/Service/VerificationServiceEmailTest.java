@@ -123,7 +123,7 @@
 //
 //        assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus(),
 //                "Issuing a code is not evidence of anything");
-//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
 //    }
 //
 //    @Test
@@ -218,13 +218,13 @@
 //                VerificationTestSupport.EMAIL,
 //                VerificationTestSupport.OTP);
 //
-//        assertEquals(OnboardingStep.PHONE_VERIFICATION, user.getOnboardingStep());
+//        assertEquals(OnboardingStep.PHONE_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
 //    }
 //
 //    @Test
 //    void shouldNotSkipOverAStepTheUserAlreadyPassed() {
 //
-//        user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
+//        user.getCustomerProfile().setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
 //
 //        service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
 //        service.verifyEmailOtp(
@@ -233,7 +233,7 @@
 //                VerificationTestSupport.OTP);
 //
 //        assertEquals(VerificationStatus.VERIFIED, verification.getEmailStatus());
-//        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep(),
+//        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getCustomerProfile().getOnboardingStep(),
 //                "Onboarding must never move backwards");
 //    }
 //
@@ -249,7 +249,7 @@
 //                        "999999"));
 //
 //        assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus());
-//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
 //    }
 //
 //    @Test
@@ -266,7 +266,7 @@
 //                        VerificationTestSupport.OTP));
 //
 //        assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus());
-//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+//        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
 //    }
 //
 //    @Test
@@ -483,7 +483,7 @@ class VerificationServiceEmailTest {
 
         assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus(),
                 "Issuing a code is not evidence of anything");
-        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
     }
 
     @Test
@@ -578,13 +578,13 @@ class VerificationServiceEmailTest {
                 VerificationTestSupport.EMAIL,
                 VerificationTestSupport.OTP);
 
-        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
     }
 
     @Test
     void shouldNotSkipOverAStepTheUserAlreadyPassed() {
 
-        user.setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
+        user.getCustomerProfile().setOnboardingStep(OnboardingStep.PAN_VERIFICATION);
 
         service.sendEmailOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.EMAIL);
         service.verifyEmailOtp(
@@ -593,7 +593,7 @@ class VerificationServiceEmailTest {
                 VerificationTestSupport.OTP);
 
         assertEquals(VerificationStatus.VERIFIED, verification.getEmailStatus());
-        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep(),
+        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getCustomerProfile().getOnboardingStep(),
                 "Onboarding must never move backwards");
     }
 
@@ -609,7 +609,7 @@ class VerificationServiceEmailTest {
                         "999999"));
 
         assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus());
-        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
     }
 
     @Test
@@ -626,7 +626,7 @@ class VerificationServiceEmailTest {
                         VerificationTestSupport.OTP));
 
         assertEquals(VerificationStatus.NOT_STARTED, verification.getEmailStatus());
-        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
     }
 
     @Test

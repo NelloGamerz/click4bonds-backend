@@ -69,6 +69,13 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * {@code function lower(bytea) does not exist}. The role is typed by
      * {@code u.role = :role}; the search term needs saying out loud.</p>
      *
+     * <p>The {@code LEFT JOIN FETCH} on the customer profile is not an
+     * optimisation that can be dropped. The KYC flag the listing shows a row at a
+     * time now lives on that profile, so without the fetch each row of the page
+     * would load its own — one query per row, on the endpoint most likely to be
+     * paged through. A left join because a staff account has no profile at all
+     * and must still appear in the listing.</p>
+     *
      * @param role     restrict to this role, or null for every role
      * @param search   term matched against name and address, or null for no
      *                 search. A blank string is not the same as null here: it
@@ -80,6 +87,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     @Query("""
             SELECT u
             FROM User u
+            LEFT JOIN FETCH u.customerProfile
             WHERE (:role IS NULL OR u.role = :role)
             AND (
                 :search IS NULL

@@ -13,6 +13,8 @@ import com.click4bonds.app.Modules.OTP.Service.OtpService;
 import com.click4bonds.app.Modules.User.Dto.VerificationResponse;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.VerificationStatus;
+import com.click4bonds.app.Modules.User.Model.AdminProfile;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
 
@@ -82,11 +84,12 @@ public class VerificationService {
     public VerificationResponse sendEmailOtp(String userId, String email) {
 
         User user = userService.getUserById(userId);
+        CustomerProfile profile = requireCustomerProfile(user);
         String normalizedEmail = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
 
         assertEmailCanBeVerified(user, normalizedEmail);
 
-        UserVerification verification = userVerificationService.getVerification(user);
+        UserVerification verification = userVerificationService.getVerification(profile);
 
         if (verification.getEmailStatus() == VerificationStatus.VERIFIED) {
             return new VerificationResponse(EMAIL_ALREADY_VERIFIED);
@@ -118,6 +121,7 @@ public class VerificationService {
     public VerificationResponse verifyEmailOtp(String userId, String email, String otp) {
 
         User user = userService.getUserById(userId);
+        CustomerProfile profile = requireCustomerProfile(user);
         String normalizedEmail = IdentifierNormalizer.normalize(OtpType.EMAIL, email);
 
         assertEmailCanBeVerified(user, normalizedEmail);
@@ -133,8 +137,8 @@ public class VerificationService {
             userService.updateEmail(user, normalizedEmail);
         }
 
-        userVerificationService.updateEmailStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
+        userVerificationService.updateEmailStatus(profile, VerificationStatus.VERIFIED);
+        advanceOnboarding(profile, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PAN_VERIFICATION);
 
         log.info("Email verified for user {}", user.getId());
 
@@ -155,11 +159,12 @@ public class VerificationService {
     public VerificationResponse sendPhoneOtp(String userId, String phone) {
 
         User user = userService.getUserById(userId);
+        CustomerProfile profile = requireCustomerProfile(user);
         String normalizedPhone = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
         assertPhoneCanBeVerified(user, normalizedPhone);
 
-        UserVerification verification = userVerificationService.getVerification(user);
+        UserVerification verification = userVerificationService.getVerification(profile);
 
         if (verification.getPhoneStatus() == VerificationStatus.VERIFIED) {
             return new VerificationResponse(PHONE_ALREADY_VERIFIED);
@@ -189,6 +194,7 @@ public class VerificationService {
     public VerificationResponse verifyPhoneOtp(String userId, String phone, String otp) {
 
         User user = userService.getUserById(userId);
+        CustomerProfile profile = requireCustomerProfile(user);
         String normalizedPhone = IdentifierNormalizer.normalize(OtpType.SMS, phone);
 
         assertPhoneCanBeVerified(user, normalizedPhone);
@@ -201,8 +207,8 @@ public class VerificationService {
             userService.updateMobileNumber(user, normalizedPhone);
         }
 
-        userVerificationService.updatePhoneStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
+        userVerificationService.updatePhoneStatus(profile, VerificationStatus.VERIFIED);
+        advanceOnboarding(profile, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
 
         log.info("Phone verified for user {}", user.getId());
 
@@ -219,6 +225,12 @@ public class VerificationService {
      * so an account that signs in has a verified phone, and saying otherwise
      * would leave the flag contradicting what just happened.</p>
      *
+     * <p>A staff account has no channels to record against: phone verification
+     * is part of the customer KYC sequence, and an {@code ADMIN} or
+     * {@code EMPLOYEE} is not asked for it. Signing in still proves the number,
+     * but there is nothing here that tracks it, so this does nothing rather than
+     * refusing a sign-in that is otherwise perfectly valid.</p>
+     *
      * <p>The caller is responsible for having verified the code already.</p>
      *
      * @param user account whose number was just proven
@@ -226,8 +238,18 @@ public class VerificationService {
     @Transactional
     public void markPhoneVerified(User user) {
 
-        userVerificationService.updatePhoneStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
+        CustomerProfile profile = user.getCustomerProfile();
+
+        if (profile == null) {
+
+            log.debug("Phone proven for non-customer account {}; nothing to record",
+                    user.getId());
+
+            return;
+        }
+
+        userVerificationService.updatePhoneStatus(profile, VerificationStatus.VERIFIED);
+        advanceOnboarding(profile, OnboardingStep.PHONE_VERIFICATION, OnboardingStep.EMAIL_VERIFICATION);
 
         log.info("Phone verified for user {}", user.getId());
     }
@@ -242,6 +264,13 @@ public class VerificationService {
      * itself is not touched — signing in only ever looks an account up by an
      * address it already owns.</p>
      *
+     * <p>What "in line" means depends on the kind of account. A customer has a
+     * channel-by-channel record, so the email channel is marked there and
+     * onboarding advances. A staff account was created by an administrator
+     * naming an address nobody had proven, so this is the moment that address is
+     * confirmed — and the only thing a staff account tracks, because it is the
+     * only address it has and the only channel it uses.</p>
+     *
      * <p>The caller is responsible for having verified the code already.</p>
      *
      * @param user account whose address was just proven
@@ -249,10 +278,62 @@ public class VerificationService {
     @Transactional
     public void markEmailVerified(User user) {
 
-        userVerificationService.updateEmailStatus(user, VerificationStatus.VERIFIED);
-        advanceOnboarding(user, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PHONE_VERIFICATION);
+        CustomerProfile profile = user.getCustomerProfile();
 
-        log.info("Email verified for user {}", user.getId());
+        if (profile != null) {
+
+            userVerificationService.updateEmailStatus(profile, VerificationStatus.VERIFIED);
+            advanceOnboarding(profile, OnboardingStep.EMAIL_VERIFICATION, OnboardingStep.PHONE_VERIFICATION);
+
+            log.info("Email verified for user {}", user.getId());
+
+            return;
+        }
+
+        AdminProfile adminProfile = user.getAdminProfile();
+
+        if (adminProfile != null) {
+
+            adminProfile.setEmailVerified(true);
+
+            log.info("Email confirmed for staff account {}", user.getId());
+
+            return;
+        }
+
+        // Neither profile: an account shape the application does not create.
+        // Nothing is claimed about an address that no record can hold.
+        log.warn("Email proven for account {} which has no profile to record it on",
+                user.getId());
+    }
+
+    /**
+     * Resolves the customer record verification is recorded against.
+     *
+     * <p>Every flow in this service is a customer flow, so reaching one without
+     * a customer profile means the caller is not who these endpoints are for.
+     * That is refused rather than answered with an empty record: a member of
+     * staff has nothing to verify, and reporting a status they do not have would
+     * be inventing one.</p>
+     *
+     * <p>Public entry points keep their {@link User} signatures and resolve the
+     * profile through here, once, rather than each of them — and each of the
+     * callers of those — learning where the record now hangs.</p>
+     *
+     * @param user authenticated account
+     * @return the customer profile its verification record belongs to
+     * @throws ForbiddenException when the account is not a customer
+     */
+    private CustomerProfile requireCustomerProfile(User user) {
+
+        CustomerProfile profile = user.getCustomerProfile();
+
+        if (profile == null) {
+            throw new ForbiddenException(
+                    "Verification is only available to customer accounts");
+        }
+
+        return profile;
     }
 
     /**
@@ -332,24 +413,24 @@ public class VerificationService {
      * whose only endpoint answers "already verified" and never moves on, so
      * satisfied steps are walked past instead.</p>
      */
-    private void advanceOnboarding(User user, OnboardingStep completed, OnboardingStep next) {
+    private void advanceOnboarding(CustomerProfile profile, OnboardingStep completed, OnboardingStep next) {
 
-        if (user.getOnboardingStep() != completed) {
+        if (profile.getOnboardingStep() != completed) {
             return;
         }
 
-        userService.updateOnboardingStep(user, nextOutstanding(user, next));
+        userService.updateOnboardingStep(profile.getUser(), nextOutstanding(profile, next));
     }
 
     /**
      * Walks forward from {@code candidate} to the first step this account has
      * not yet satisfied.
      */
-    private OnboardingStep nextOutstanding(User user, OnboardingStep candidate) {
+    private OnboardingStep nextOutstanding(CustomerProfile profile, OnboardingStep candidate) {
 
         OnboardingStep step = candidate;
 
-        while (step != OnboardingStep.COMPLETED && isSatisfied(user, step)) {
+        while (step != OnboardingStep.COMPLETED && isSatisfied(profile, step)) {
             step = successor(step);
         }
 
@@ -359,9 +440,9 @@ public class VerificationService {
     /**
      * @return {@code true} when the account has already completed {@code step}
      */
-    private boolean isSatisfied(User user, OnboardingStep step) {
+    private boolean isSatisfied(CustomerProfile profile, OnboardingStep step) {
 
-        UserVerification verification = userVerificationService.getVerification(user);
+        UserVerification verification = userVerificationService.getVerification(profile);
 
         return switch (step) {
             case PHONE_VERIFICATION -> verification.getPhoneStatus() == VerificationStatus.VERIFIED;

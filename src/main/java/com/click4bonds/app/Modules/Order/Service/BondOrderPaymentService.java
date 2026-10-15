@@ -5,10 +5,13 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Producer.DealConfirmationDocumentProducer;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Order.Dto.BondOrderPaymentResponse;
+import com.click4bonds.app.Modules.Order.Model.BondOrder;
+import com.click4bonds.app.Modules.Order.Repository.BondOrderRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +40,35 @@ public class BondOrderPaymentService {
     private final BondOrderCheckoutService checkoutService;
     private final DealConfirmationDocumentProducer documentProducer;
     private final DocumentProperties documentProperties;
+    private final BondOrderRepository orderRepository;
+
+    /**
+     * Pays for an order on behalf of the account that placed it.
+     *
+     * <p>For the admin testing path, where the caller is a member of staff
+     * rather than the buyer. The account paying is read from the order rather
+     * than taken from the caller, so {@link #payOrder}'s ownership check is left
+     * meaning what it always did — the order does belong to that customer — and
+     * the authority to invoke this comes from the module gate on the endpoint,
+     * not from owning the order.</p>
+     *
+     * <p>Passing the admin's own id here instead would be refused by that check,
+     * which is the behaviour that made this method necessary: an order placed
+     * for a customer cannot be paid by a staff account pretending to be them.</p>
+     *
+     * @param orderId the order to pay
+     * @return the order's new state, the deal it produced and the holding it
+     *         landed in
+     * @throws ResourceNotFoundException when no such order exists
+     */
+    public BondOrderPaymentResponse payOrderAsAdmin(UUID orderId) {
+
+        BondOrder order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order not found: " + orderId));
+
+        return payOrder(order.getCustomer().getId(), orderId);
+    }
 
     /**
      * Pays for an order, or replays a payment already made against it.

@@ -38,9 +38,19 @@ public class UserVerification {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /**
+     * The customer profile this record verifies.
+     *
+     * <p>Points at the profile rather than at the account. Verifications are
+     * only ever collected from customers, so an association to the account would
+     * allow a row for a member of staff — a state that cannot mean anything and
+     * that nothing would have prevented. Hanging it off the profile makes that
+     * state unrepresentable, and the profile is created with its verification in
+     * any case.</p>
+     */
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
-    private User user;
+    @JoinColumn(name = "customer_profile_id", nullable = false, unique = true)
+    private CustomerProfile customerProfile;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

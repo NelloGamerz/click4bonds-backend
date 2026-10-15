@@ -192,7 +192,7 @@
 //    @Test
 //    void shouldAdvanceOnboardingToThePanStep() {
 //
-//        user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
+//        user.getCustomerProfile().setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
 //
 //        service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
 //        service.verifyPhoneOtp(
@@ -200,7 +200,7 @@
 //                VerificationTestSupport.PHONE,
 //                VerificationTestSupport.OTP);
 //
-//        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getOnboardingStep());
+//        assertEquals(OnboardingStep.PAN_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
 //    }
 //
 //    @Test
@@ -543,7 +543,7 @@ class VerificationServicePhoneTest {
     @Test
     void shouldAdvanceOnboardingToTheEmailStep() {
 
-        user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
+        user.getCustomerProfile().setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
 
         service.sendPhoneOtp(VerificationTestSupport.USER_ID, VerificationTestSupport.PHONE);
         service.verifyPhoneOtp(
@@ -551,7 +551,7 @@ class VerificationServicePhoneTest {
                 VerificationTestSupport.PHONE,
                 VerificationTestSupport.OTP);
 
-        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, user.getCustomerProfile().getOnboardingStep());
     }
 
     @Test

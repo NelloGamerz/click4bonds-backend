@@ -27,6 +27,7 @@ import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Mapper.UserMapper;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import com.click4bonds.app.Modules.User.Service.VerificationService;
@@ -126,18 +127,28 @@ public class AuthService {
         // sign-in. Nothing else here is defaulted: the profile comes from the
         // form, and the account opens as an active customer with no email
         // address, because no address was asked for.
-        User user = userService.createUser(User.builder()
-                .mobileNumber(normalized)
-                .firstName(request.firstName().trim())
-                .lastName(request.lastName().trim())
+        //
+        // The answers the form collects belong to the customer profile, not to
+        // the account: they describe someone buying bonds, and a staff account
+        // would have no values for any of them. UserService.createUser adopts
+        // this profile rather than building its own, and sets the back-reference
+        // that makes it persist.
+        CustomerProfile profile = CustomerProfile.builder()
                 .ageRange(request.ageRange())
                 .userType(request.userType())
                 .preferredCommunicationLanguage(request.preferredCommunicationLanguage())
                 .whatsappCommunicationConsent(request.whatsappCommunicationConsent())
                 .termsAccepted(request.termsAccepted())
                 .onboardingStep(OnboardingStep.PHONE_VERIFICATION)
+                .build();
+
+        User user = userService.createUser(User.builder()
+                .mobileNumber(normalized)
+                .firstName(request.firstName().trim())
+                .lastName(request.lastName().trim())
                 .role(UserRole.CUSTOMER)
                 .status(UserStatus.ACTIVE)
+                .customerProfile(profile)
                 .build());
 
         log.info("Sign-up opened the account for user {}", user.getId());

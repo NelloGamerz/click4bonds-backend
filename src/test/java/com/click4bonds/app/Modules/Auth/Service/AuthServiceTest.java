@@ -44,6 +44,7 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Enums.UserType;
 import com.click4bonds.app.Modules.User.Enums.VerificationStatus;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
 
@@ -163,20 +164,28 @@ class AuthServiceTest {
         // Everything the form asked for is on the account.
         assertEquals("Karan", created.getFirstName());
         assertEquals("Pareek", created.getLastName());
-        assertEquals(AgeRange.AGE_31_40, created.getAgeRange());
-        assertEquals(UserType.INDIVIDUAL_RESIDENT, created.getUserType());
+
+        /*
+         * The answers the form collects are on the customer profile, not on the
+         * account: they describe someone buying bonds, so that is where they
+         * live now. The profile is created with the account.
+         */
+        CustomerProfile profile = created.getCustomerProfile();
+        assertNotNull(profile);
+        assertEquals(AgeRange.AGE_31_40, profile.getAgeRange());
+        assertEquals(UserType.INDIVIDUAL_RESIDENT, profile.getUserType());
         assertEquals(
                 CommunicationLanguage.ENGLISH,
-                created.getPreferredCommunicationLanguage());
-        assertEquals(Boolean.TRUE, created.getWhatsappCommunicationConsent());
-        assertEquals(Boolean.TRUE, created.getTermsAccepted());
+                profile.getPreferredCommunicationLanguage());
+        assertEquals(Boolean.TRUE, profile.getWhatsappCommunicationConsent());
+        assertEquals(Boolean.TRUE, profile.getTermsAccepted());
 
         assertEquals(UserRole.CUSTOMER, created.getRole());
         assertEquals(UserStatus.ACTIVE, created.getStatus());
 
         // Signing up establishes the number, and proving it is the next thing
         // the account is asked to do.
-        assertEquals(OnboardingStep.PHONE_VERIFICATION, created.getOnboardingStep());
+        assertEquals(OnboardingStep.PHONE_VERIFICATION, profile.getOnboardingStep());
 
         assertEquals(OTP, sms.lastOtpFor(PHONE));
 
@@ -220,7 +229,7 @@ class AuthServiceTest {
 
         // Onboarding began at the phone step, so proving the number moves the
         // account on rather than leaving it where it was.
-        assertEquals(OnboardingStep.EMAIL_VERIFICATION, created.getOnboardingStep());
+        assertEquals(OnboardingStep.EMAIL_VERIFICATION, created.getCustomerProfile().getOnboardingStep());
     }
 
     // ------------------------------------------------------------------
@@ -622,9 +631,13 @@ class AuthServiceTest {
 
         User user = AuthTestSupport.activeCustomer(AuthTestSupport.USER_ID, PHONE);
 
-        user.setVerification(UserVerification.builder()
+        CustomerProfile profile = user.getCustomerProfile();
+
+        // Attached in both directions: the verification record owns the foreign
+        // key to the profile, and the mapper reads it back through the profile.
+        profile.setVerification(UserVerification.builder()
                 .id(UUID.randomUUID())
-                .user(user)
+                .customerProfile(profile)
                 .emailStatus(VerificationStatus.VERIFIED)
                 .phoneStatus(VerificationStatus.VERIFIED)
                 .panStatus(VerificationStatus.NOT_STARTED)
@@ -669,7 +682,7 @@ class AuthServiceTest {
     void theProfileDropsVerificationOnceKycIsComplete() {
 
         User user = registeredUserWithVerification();
-        user.setIsKycCompleted(true);
+        user.getCustomerProfile().setIsKycCompleted(true);
 
         UserResponse profile = auth.getProfile(AuthTestSupport.USER_ID);
 
@@ -691,7 +704,7 @@ class AuthServiceTest {
 
         User user = registeredUserWithVerification();
         user.setFirstName("Renamed");
-        user.setIsKycCompleted(true);
+        user.getCustomerProfile().setIsKycCompleted(true);
 
         // A name changed a moment ago is visible without waiting for the token
         // to expire.

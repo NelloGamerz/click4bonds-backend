@@ -12,9 +12,12 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
+import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Model.AdminProfile;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.UserRepository;
 
@@ -88,25 +91,72 @@ public class UserService {
     }
 
     /**
-     * Persists a newly described account.
+     * Persists a newly described account, with the profile its role implies.
      *
-     * <p>Used by sign-up, which is the only flow that collects a profile before
-     * ownership of the number has been proven. The caller supplies the entity,
-     * which keeps this module free of the sign-up request type; what this
-     * method adds is everything every new account needs regardless of where it
-     * came from — the row itself, and the verification record that tracks each
-     * channel separately.</p>
+     * <p>This is the single point where the profile invariant is established:
+     * a {@code CUSTOMER} gets a {@link CustomerProfile} and nothing else, an
+     * {@code ADMIN} or {@code EMPLOYEE} gets an {@link AdminProfile} and nothing
+     * else. Enforcing it here rather than at each caller means the rule cannot
+     * be forgotten by a new sign-up path, an import or a test fixture — there is
+     * one way to create an account and it decides this for every account.</p>
+     *
+     * <p>Both sides of the association are set, and that is not belt and
+     * braces: the profile owns the foreign key, so setting only
+     * {@code user.setCustomerProfile(profile)} would insert a profile with a
+     * null {@code user_id} and fail against the not-null constraint. A caller
+     * that supplies its own profile — sign-up does, because the form collects
+     * the answers — has it adopted rather than replaced, so nothing the caller
+     * built is discarded.</p>
      *
      * @param user account to persist, not yet saved
      * @return the saved account
+     * @throws IllegalStateException when the account carries the profile for the
+     *         other kind of account
      */
     public User createUser(User user) {
 
+        UserRole role = user.getRole();
+
+        if (role == UserRole.CUSTOMER) {
+
+            if (user.getAdminProfile() != null) {
+                throw new IllegalStateException(
+                        "A CUSTOMER may not have an AdminProfile");
+            }
+
+            CustomerProfile profile = user.getCustomerProfile() != null
+                    ? user.getCustomerProfile()
+                    : CustomerProfile.builder().build();
+
+            profile.setUser(user);
+            user.setCustomerProfile(profile);
+
+        } else {
+
+            if (user.getCustomerProfile() != null) {
+                throw new IllegalStateException(
+                        "A " + role + " may not have a CustomerProfile");
+            }
+
+            AdminProfile profile = user.getAdminProfile() != null
+                    ? user.getAdminProfile()
+                    : AdminProfile.builder().build();
+
+            profile.setUser(user);
+            user.setAdminProfile(profile);
+        }
+
         User saved = userRepository.save(user);
-        userVerificationService.createVerification(saved);
+
+        // Only a customer has channels to verify. A staff account is not asked
+        // to prove an email, a phone, a PAN, a bank account or a demat account
+        // through this flow, so no record is created for one.
+        if (role == UserRole.CUSTOMER) {
+            userVerificationService.createVerification(saved.getCustomerProfile());
+        }
 
         // The identifier is logged; the number is personal data and is not.
-        log.info("Created user {} from a sign-up", saved.getId());
+        log.info("Created user {} with a {} profile", saved.getId(), role);
 
         return saved;
     }
@@ -207,21 +257,56 @@ public class UserService {
      * {@code role} claim — so the change takes effect at the user's next token
      * refresh.</p>
      *
+     * <p><strong>A change that crosses the customer/staff line is refused.</strong>
+     * An account holds either a {@link CustomerProfile} or an
+     * {@link AdminProfile}, never both, and the two carry data the other cannot
+     * represent: making a customer into an employee would have to discard their
+     * KYC state, the consents they gave and their entire per-channel
+     * verification record; making an employee into a customer would have to
+     * discard their module permissions. Neither is a role change — each is a
+     * role change <em>plus</em> an irreversible deletion that the caller did not
+     * ask for and cannot see from the request. Refusing is the only answer that
+     * does not destroy data on the strength of a single parameter, and it makes
+     * the move something an operator has to do deliberately.</p>
+     *
+     * <p>Moving between the two staff roles is allowed and keeps the same
+     * profile, so an employee promoted to administrator keeps their employment
+     * record and grants — and, being an {@code ADMIN}, stops being constrained
+     * by them.</p>
+     *
      * @param userId account identifier
      * @param role   role the account should hold
      * @return the updated account
      * @throws ResponseStatusException 404 when no such account exists
+     * @throws ConflictException when the change would cross the customer/staff
+     *         line and so need to delete the account's profile
      */
     public User updateRole(UUID userId, UserRole role) {
 
         User user = getUser(userId);
 
-        if (user.getRole() != role) {
-            user.setRole(role);
-            user = userRepository.save(user);
-
-            log.info("Updated role for user {} to {}", user.getId(), role);
+        if (user.getRole() == role) {
+            return user;
         }
+
+        boolean wasCustomer = user.getRole() == UserRole.CUSTOMER;
+        boolean becomesCustomer = role == UserRole.CUSTOMER;
+
+        if (wasCustomer != becomesCustomer) {
+
+            String held = wasCustomer ? "CustomerProfile" : "AdminProfile";
+
+            throw new ConflictException(
+                    "Cannot change role from " + user.getRole() + " to " + role
+                            + ": the account holds a " + held
+                            + " and the other kind of account carries different data"
+                            + " that would be lost. Create a new account instead.");
+        }
+
+        user.setRole(role);
+        user = userRepository.save(user);
+
+        log.info("Updated role for user {} to {}", user.getId(), role);
 
         return user;
     }
@@ -232,12 +317,25 @@ public class UserService {
      * <p>The given user is expected to be a managed entity inside the caller's
      * transaction, so the change is flushed together with it.</p>
      *
+     * <p>Onboarding is a customer lifecycle — every step it defines is a
+     * verification channel — so the step is recorded on the customer profile.
+     * The signature still takes the account because that is what the verification
+     * flows hold, and they should not have to know where the step is kept.</p>
+     *
      * @param user           user whose progress is being recorded
      * @param onboardingStep step the user has reached
+     * @throws IllegalStateException when the account is not a customer
      */
     public void updateOnboardingStep(User user, OnboardingStep onboardingStep) {
 
-        user.setOnboardingStep(onboardingStep);
+        CustomerProfile profile = user.getCustomerProfile();
+
+        if (profile == null) {
+            throw new IllegalStateException(
+                    "Onboarding is only tracked for customer accounts");
+        }
+
+        profile.setOnboardingStep(onboardingStep);
 
         log.info("Updated onboarding step for user {} to {}", user.getId(), onboardingStep);
         if (onboardingStep == OnboardingStep.COMPLETED) {
@@ -307,34 +405,6 @@ public class UserService {
      */
     public boolean isEmailClaimed(String email) {
         return userRepository.existsByEmail(email);
-    }
-
-    /**
-     * Creates the account a phone number signs in with.
-     *
-     * <p>No welcome email is sent here, and that is not an oversight: there is
-     * no address to send it to yet. The account has one only once the email
-     * verification step completes.</p>
-     */
-    private User createPhoneUser(String mobileNumber) {
-
-        User user = User.builder().mobileNumber(mobileNumber).onboardingStep(OnboardingStep.EMAIL_VERIFICATION).role(UserRole.CUSTOMER).status(UserStatus.ACTIVE).build();
-
-        User saved = userRepository.save(user);
-        userVerificationService.createVerification(saved);
-
-        // The identifier is logged; the number is personal data and is not.
-        log.info("Created user {} from a verified phone number", saved.getId());
-        analyticsService.track(
-                AnalyticsEventType.SIGNUP,
-                saved.getId(),
-                null,
-                null,
-                "WEB",
-                "AUTHENTICATION",
-                java.util.Map.of("method", "PHONE_OTP"));
-
-        return saved;
     }
 
     /**
