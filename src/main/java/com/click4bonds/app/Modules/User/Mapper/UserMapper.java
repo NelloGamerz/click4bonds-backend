@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.User.Mapper;
 
 import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
 
@@ -13,6 +14,13 @@ import com.click4bonds.app.Modules.User.Model.UserVerification;
  * {@code AuthService} and {@code AdminUserService}, from the same eight fields —
  * so a change to {@link UserVerification}, such as the demat channel that was
  * added recently, meant finding every builder and remembering to update it.</p>
+ *
+ * <p>Reads the customer-facing half of an account through
+ * {@link CustomerProfile}, which is where it now lives. An admin or back-office
+ * account has no profile, and that is answered with nulls rather than with an
+ * error: {@code GET /auth/me} has to work for every signed-in account, and a
+ * staff account genuinely has no onboarding step and no KYC state. Reporting
+ * them as absent is accurate; inventing defaults would not be.</p>
  *
  * <p>Static and stateless: there is nothing to configure and nothing to inject,
  * and a mapper that has to be a bean is a mapper that has to be mocked in every
@@ -37,8 +45,9 @@ public final class UserMapper {
      * {@link UserResponse#getVerification()} — rather than sending an object
      * full of identical values.</p>
      *
-     * <p>Reads the id, name, contact details and role from an account. The
-     * verification association is lazy, so a caller outside a transaction gets a
+     * <p>Reads the id, name, contact details and role from an account, and
+     * everything customer-specific from its profile. Both associations are lazy,
+     * so a caller outside a transaction gets a
      * {@code LazyInitializationException} rather than a profile with the record
      * quietly missing; call this inside one.</p>
      *
@@ -48,9 +57,13 @@ public final class UserMapper {
      */
     public static UserResponse toUserResponse(User user) {
 
-        boolean kycCompleted = Boolean.TRUE.equals(user.getIsKycCompleted());
+        CustomerProfile profile = user.getCustomerProfile();
 
-        UserVerification verification = kycCompleted ? null : user.getVerification();
+        boolean kycCompleted =
+                profile != null && Boolean.TRUE.equals(profile.getIsKycCompleted());
+
+        UserVerification verification =
+                (profile == null || kycCompleted) ? null : profile.getVerification();
 
         return UserResponse.builder()
                 .id(user.getId())
@@ -58,13 +71,12 @@ public final class UserMapper {
                 .mobileNumber(user.getMobileNumber())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
-                .profileImage(user.getProfileImage())
-                .onboardingStep(user.getOnboardingStep())
+                .onboardingStep(profile == null ? null : profile.getOnboardingStep())
                 .role(user.getRole())
                 .status(user.getStatus())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
-                .isKycCompleted(user.getIsKycCompleted())
+                .isKycCompleted(profile == null ? null : profile.getIsKycCompleted())
                 .verification(toVerificationResponse(verification))
                 .build();
     }

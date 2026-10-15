@@ -19,6 +19,7 @@ import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import com.click4bonds.app.Modules.User.Service.VerificationService;
@@ -76,15 +77,49 @@ public final class AuthTestSupport {
         return new SecurityConfig().jwtAuthenticationConverter();
     }
 
+    /**
+     * An account, with the customer profile a customer account would have.
+     *
+     * <p>The profile is attached only for a {@code CUSTOMER}, because that is the
+     * rule the application enforces: onboarding progress is a customer
+     * lifecycle, and a staff account has no profile to carry it. Attaching one
+     * to every fixture would let a test pass against an account shape the real
+     * system would never produce.</p>
+     */
     public static User user(String userId, String mobileNumber, UserRole role, UserStatus status) {
 
-        return User.builder()
+        User user = User.builder()
                 .id(UUID.fromString(userId))
                 .mobileNumber(mobileNumber)
                 .role(role)
                 .status(status)
-                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
                 .build();
+
+        if (role == UserRole.CUSTOMER) {
+            user.setCustomerProfile(profile(user, OnboardingStep.EMAIL_VERIFICATION));
+        }
+
+        return user;
+    }
+
+    /**
+     * Attaches a customer profile to an account, and returns it.
+     *
+     * @param user account the profile describes
+     * @param step the onboarding step to open the profile at
+     * @return the attached profile
+     */
+    public static CustomerProfile profile(User user, OnboardingStep step) {
+
+        CustomerProfile profile = CustomerProfile.builder()
+                .id(UUID.randomUUID())
+                .onboardingStep(step)
+                .build();
+
+        profile.setUser(user);
+        user.setCustomerProfile(profile);
+
+        return profile;
     }
 
     public static User activeCustomer(String userId, String mobileNumber) {
@@ -237,6 +272,16 @@ public final class AuthTestSupport {
                 user.setId(UUID.randomUUID());
             }
 
+            /*
+             * And it sets both directions of the profile association, because
+             * the profile owns the foreign key — sign-up supplies a profile with
+             * only the answers on it, and the real createUser is what binds it to
+             * the account.
+             */
+            if (user.getCustomerProfile() != null) {
+                user.getCustomerProfile().setUser(user);
+            }
+
             register(user);
 
             return user;
@@ -311,7 +356,10 @@ public final class AuthTestSupport {
 
         @Override
         public void updateOnboardingStep(User user, OnboardingStep onboardingStep) {
-            user.setOnboardingStep(onboardingStep);
+
+            if (user.getCustomerProfile() != null) {
+                user.getCustomerProfile().setOnboardingStep(onboardingStep);
+            }
         }
     }
 
@@ -333,10 +381,16 @@ public final class AuthTestSupport {
 
             phoneVerified.add(user.getId());
 
-            // Mirrors the real rule: proving the number moves an account that
-            // was waiting on it to the next step, which is the email step.
-            if (user.getOnboardingStep() == OnboardingStep.PHONE_VERIFICATION) {
-                user.setOnboardingStep(OnboardingStep.EMAIL_VERIFICATION);
+            /*
+             * Mirrors the real rule: proving the number moves an account that
+             * was waiting on it to the next step, which is the email step. The
+             * step is on the customer profile, and is skipped rather than
+             * faulted for an account that has none — this double records a call,
+             * and a staff fixture has no onboarding to advance.
+             */
+            if (user.getCustomerProfile() != null
+                    && user.getCustomerProfile().getOnboardingStep() == OnboardingStep.PHONE_VERIFICATION) {
+                user.getCustomerProfile().setOnboardingStep(OnboardingStep.EMAIL_VERIFICATION);
             }
         }
 
@@ -347,8 +401,9 @@ public final class AuthTestSupport {
 
             // Mirrors the real rule: only the email step advances, and only to
             // the next step the account has not already satisfied.
-            if (user.getOnboardingStep() == OnboardingStep.EMAIL_VERIFICATION) {
-                user.setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
+            if (user.getCustomerProfile() != null
+                    && user.getCustomerProfile().getOnboardingStep() == OnboardingStep.EMAIL_VERIFICATION) {
+                user.getCustomerProfile().setOnboardingStep(OnboardingStep.PHONE_VERIFICATION);
             }
         }
 

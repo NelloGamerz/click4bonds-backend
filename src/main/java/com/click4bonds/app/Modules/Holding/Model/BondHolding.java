@@ -9,6 +9,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Model.UserRoleAssertions;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -31,6 +32,22 @@ public class BondHolding {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false)
     private User customer;
+
+    /**
+     * Refuses a holding recorded for anything but a customer account.
+     *
+     * <p>A holding is what a purchase settles into, so it belongs to the same
+     * account the order did, and the same rule applies for the same reason: the
+     * owner is taken from the order rather than from the request, so a holding
+     * for a staff account would mean the order it came from was placed for one
+     * too.</p>
+     */
+    @PrePersist
+    @PreUpdate
+    private void assertCustomerRole() {
+
+        UserRoleAssertions.requireCustomer(customer, "BondHolding");
+    }
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bond_id", nullable = false)

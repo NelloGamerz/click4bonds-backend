@@ -10,6 +10,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import com.click4bonds.app.Modules.Bond.Enums.BondOrderStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Model.UserRoleAssertions;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -48,6 +49,22 @@ public class BondOrder {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false)
     private User customer;
+
+    /**
+     * Refuses an order placed for anything but a customer account.
+     *
+     * <p>An order is a purchase, and only a customer purchases. Checked on the
+     * way in rather than left to the caller because the buyer is not a field the
+     * client controls — it is resolved from the authenticated subject — so a
+     * reference of the wrong kind means the flow that built this order picked
+     * the wrong account, and no later stage of the purchase would notice.</p>
+     */
+    @PrePersist
+    @PreUpdate
+    private void assertCustomerRole() {
+
+        UserRoleAssertions.requireCustomer(customer, "BondOrder");
+    }
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bond_id", nullable = false)

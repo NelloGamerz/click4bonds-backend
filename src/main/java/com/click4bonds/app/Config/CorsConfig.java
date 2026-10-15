@@ -18,6 +18,9 @@ public class CorsConfig {
         @Value("${frontend.www-url}")
         private String frontendWwwUrl;
 
+        @Value("${frontend.admin   }")
+        private String adminFrontendUrl;
+
         @Bean
         public CorsConfigurationSource corsConfigurationSource() {
                 CorsConfiguration configuration = new CorsConfiguration();
@@ -25,6 +28,7 @@ public class CorsConfig {
                 configuration.setAllowedOrigins(List.of(
                                 frontendUrl,
                                 frontendWwwUrl,
+                                adminFrontendUrl,
                                 "http://localhost:3000",
                                 "http://localhost:8081"));
 

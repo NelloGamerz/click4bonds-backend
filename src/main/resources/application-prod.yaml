@@ -106,6 +106,7 @@ auth:
 frontend:
   url: ${FRONTEND_URL}
   www-url: ${FRONTEND_WWW_URL}
+  admin : ${ADMIN_FRONTEND_URL}
 
 logging:
   level:

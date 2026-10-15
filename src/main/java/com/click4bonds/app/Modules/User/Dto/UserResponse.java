@@ -34,15 +34,32 @@ public class UserResponse {
     private String mobileNumber;
     private String firstName;
     private String lastName;
-    private String profileImage;
 
+    /**
+     * How far through KYC the account has got, or null for a staff account.
+     *
+     * <p>Onboarding is a customer lifecycle, so this now comes from
+     * {@link com.click4bonds.app.Modules.User.Model.CustomerProfile}. An
+     * {@code ADMIN} or {@code EMPLOYEE} does not onboard and has no profile to
+     * read a step from, so the honest answer for one is null.</p>
+     */
     private OnboardingStep onboardingStep;
+
     private UserRole role;
     private UserStatus status;
 
     private Instant createdAt;
     private Instant updatedAt;
 
+    /**
+     * Whether the account has cleared KYC, or null for a staff account.
+     *
+     * <p>Null rather than {@code false} for staff, because {@code false} would
+     * assert that a member of staff has an outstanding KYC process — something
+     * they do not have at all. The distinction a client needs is between "still
+     * going through KYC" and "this account is not a customer", and only null can
+     * express the second.</p>
+     */
     private Boolean isKycCompleted;
 
     /**

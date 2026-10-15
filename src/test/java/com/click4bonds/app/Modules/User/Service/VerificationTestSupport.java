@@ -26,6 +26,7 @@ import com.click4bonds.app.Modules.OTP.Service.OtpKeyFactory;
 import com.click4bonds.app.Modules.OTP.Service.OtpService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.VerificationStatus;
+import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
 
@@ -88,18 +89,52 @@ final class VerificationTestSupport {
     }
 
     /**
+     * A customer account, with the customer profile the verification flows read.
+     *
+     * <p>The profile is attached, and both directions of the association are
+     * set, because that is the state a real account is in: onboarding progress
+     * and the verification record both hang off the profile now, so an account
+     * without one cannot take part in any of these flows.</p>
+     *
+     * <p>The step starts at {@code EMAIL_VERIFICATION}, which is where an
+     * account sits after its number has been proven — the point these tests pick
+     * up from.</p>
+     *
      * @param userId identifier string, which is also what the account's
      *               {@code id} becomes — the two are the same thing, which is
      *               what makes the token subject resolvable
      */
     static User user(String userId, String email, String mobileNumber) {
 
-        return User.builder()
+        User user = User.builder()
                 .id(UUID.fromString(userId))
                 .email(email)
                 .mobileNumber(mobileNumber)
-                .onboardingStep(OnboardingStep.EMAIL_VERIFICATION)
                 .build();
+
+        user.setCustomerProfile(profile(user, OnboardingStep.EMAIL_VERIFICATION));
+
+        return user;
+    }
+
+    /**
+     * Attaches a customer profile to an account, and returns it.
+     *
+     * @param user account the profile describes
+     * @param step the onboarding step to open the profile at
+     * @return the attached profile
+     */
+    static CustomerProfile profile(User user, OnboardingStep step) {
+
+        CustomerProfile profile = CustomerProfile.builder()
+                .id(UUID.randomUUID())
+                .onboardingStep(step)
+                .build();
+
+        profile.setUser(user);
+        user.setCustomerProfile(profile);
+
+        return profile;
     }
 
     /** Records every email the application asks to have delivered. */
@@ -202,7 +237,7 @@ final class VerificationTestSupport {
 
         @Override
         public void updateOnboardingStep(User user, OnboardingStep onboardingStep) {
-            user.setOnboardingStep(onboardingStep);
+            user.getCustomerProfile().setOnboardingStep(onboardingStep);
         }
 
         @Override
@@ -220,11 +255,11 @@ final class VerificationTestSupport {
 
     /**
      * In-memory stand-in for {@link UserVerificationService} holding a single
-     * verification record per user.
+     * verification record per customer profile.
      */
     static final class FakeUserVerificationService extends UserVerificationService {
 
-        private final Map<UUID, UserVerification> byUserId = new HashMap<>();
+        private final Map<UUID, UserVerification> byProfileId = new HashMap<>();
 
         FakeUserVerificationService() {
             super(null);
@@ -232,9 +267,11 @@ final class VerificationTestSupport {
 
         UserVerification register(User user) {
 
+            CustomerProfile profile = user.getCustomerProfile();
+
             UserVerification verification = UserVerification.builder()
                     .id(UUID.randomUUID())
-                    .user(user)
+                    .customerProfile(profile)
                     .emailStatus(VerificationStatus.NOT_STARTED)
                     .phoneStatus(VerificationStatus.NOT_STARTED)
                     .panStatus(VerificationStatus.NOT_STARTED)
@@ -242,32 +279,33 @@ final class VerificationTestSupport {
                     .dematStatus(VerificationStatus.NOT_STARTED)
                     .build();
 
-            byUserId.put(user.getId(), verification);
+            byProfileId.put(profile.getId(), verification);
 
             return verification;
         }
 
         @Override
-        public UserVerification getVerification(User user) {
+        public UserVerification getVerification(CustomerProfile customerProfile) {
 
-            UserVerification verification = byUserId.get(user.getId());
+            UserVerification verification = byProfileId.get(customerProfile.getId());
 
             if (verification == null) {
                 throw new IllegalStateException(
-                        "Verification record not found for user " + user.getId());
+                        "Verification record not found for user "
+                                + customerProfile.getUser().getId());
             }
 
             return verification;
         }
 
         @Override
-        public void updateEmailStatus(User user, VerificationStatus status) {
-            getVerification(user).setEmailStatus(status);
+        public void updateEmailStatus(CustomerProfile customerProfile, VerificationStatus status) {
+            getVerification(customerProfile).setEmailStatus(status);
         }
 
         @Override
-        public void updatePhoneStatus(User user, VerificationStatus status) {
-            getVerification(user).setPhoneStatus(status);
+        public void updatePhoneStatus(CustomerProfile customerProfile, VerificationStatus status) {
+            getVerification(customerProfile).setPhoneStatus(status);
         }
     }
 }
