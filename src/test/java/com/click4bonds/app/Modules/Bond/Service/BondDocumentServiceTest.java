@@ -64,8 +64,22 @@ class BondDocumentServiceTest {
     private static final String PDF = "application/pdf";
     private static final UUID ADMIN_ID = UUID.randomUUID();
 
-    private static final String DOCUMENT_KEY = "bonds/" + LOWER_ISIN + "/documents/2026/10/doc.pdf";
-    private static final String LOGO_KEY = "bonds/" + LOWER_ISIN + "/logo/2026/10/logo.png";
+    /** Random part of a derived key, as {@code UploadService} builds one. */
+    private static final String UUID_PART = "3f2a1c44-5b6e-4d7a-9c1f-0a2b3c4d5e6f";
+
+    /** Where an upload waits, and what the presign hands to the client. */
+    private static final String PENDING_DOCUMENT_KEY =
+            "pending/bonds/" + LOWER_ISIN + "/documents/2026/10/" + UUID_PART + ".pdf";
+
+    private static final String PENDING_LOGO_KEY =
+            "pending/bonds/" + LOWER_ISIN + "/logo/2026/10/" + UUID_PART + ".png";
+
+    /** Where those objects live once confirmed: what a row records. */
+    private static final String DOCUMENT_KEY =
+            "bonds/" + LOWER_ISIN + "/documents/2026/10/" + UUID_PART + ".pdf";
+
+    private static final String LOGO_KEY =
+            "bonds/" + LOWER_ISIN + "/logo/2026/10/" + UUID_PART + ".png";
 
     @Mock
     private BondDocumentRepository bondDocumentRepository;
@@ -122,7 +136,7 @@ class BondDocumentServiceTest {
 
         when(uploadService.presignUpload(anyString(), anyString())).thenReturn(
                 new UploadService.PresignedUpload(
-                        DOCUMENT_KEY, URI.create("https://signed"), PDF, Instant.now(), 1024L));
+                        PENDING_DOCUMENT_KEY, URI.create("https://signed"), PDF, Instant.now(), 1024L));
 
         PresignBondUploadRequest request = new PresignBondUploadRequest();
         request.setDocumentType(BondDocumentType.INFORMATION_MEMORANDUM);
@@ -142,7 +156,7 @@ class BondDocumentServiceTest {
          */
         assertThat(prefix.getValue()).isEqualTo("bonds/" + LOWER_ISIN + "/documents");
 
-        assertThat(response.storageKey()).isEqualTo(DOCUMENT_KEY);
+        assertThat(response.storageKey()).isEqualTo(PENDING_DOCUMENT_KEY);
         assertThat(response.contentType()).isEqualTo(PDF);
     }
 
@@ -151,7 +165,7 @@ class BondDocumentServiceTest {
 
         when(uploadService.presignUpload(anyString(), anyString())).thenReturn(
                 new UploadService.PresignedUpload(
-                        LOGO_KEY, URI.create("https://signed"), "image/png", Instant.now(), 1024L));
+                        PENDING_LOGO_KEY, URI.create("https://signed"), "image/png", Instant.now(), 1024L));
 
         PresignBondUploadRequest request = new PresignBondUploadRequest();
         request.setDocumentType(BondDocumentType.LOGO);
@@ -200,7 +214,7 @@ class BondDocumentServiceTest {
          * that bond's public image.
          */
         ConfirmBondUploadRequest request = confirmRequest(
-                "bonds/otherisin/documents/2026/10/theirs.pdf",
+                "pending/bonds/otherisin/documents/2026/10/" + UUID_PART + ".pdf",
                 BondDocumentType.INFORMATION_MEMORANDUM);
 
         assertThatThrownBy(() -> bondDocumentService.confirm(ISIN, request, ADMIN_ID))
@@ -208,11 +222,33 @@ class BondDocumentServiceTest {
                 .hasMessageContaining("does not belong to this bond");
 
         /*
-         * Nothing is read from the store either. The key is rejected before any
-         * object is looked at, so an unknown key cannot be used to probe which
-         * objects exist.
+         * Nothing is confirmed, so nothing is read from the store and no object
+         * is promoted: the key is rejected before any object is looked at, so an
+         * unknown key cannot be used to probe which objects exist. Asked of the
+         * upload module rather than composed here, which is why the check itself
+         * is a call — and every other call to it is what this rules out.
          */
-        verifyNoInteractions(uploadService);
+        verify(uploadService, never()).confirmUpload(anyString(), anyString());
+    }
+
+    @Test
+    void refusesAKeyThisBondAlreadyHas() {
+
+        /*
+         * A key that has been confirmed before, reported back a second time.
+         * It is this bond's own folder and it names a real object — which is
+         * exactly why it must not be accepted: the object at it is live and
+         * recorded, and a confirmation is also what files an upload. What makes
+         * a key claimable is that it is still waiting, not merely that it is in
+         * the right folder.
+         */
+        ConfirmBondUploadRequest request = confirmRequest(
+                DOCUMENT_KEY, BondDocumentType.INFORMATION_MEMORANDUM);
+
+        assertThatThrownBy(() -> bondDocumentService.confirm(ISIN, request, ADMIN_ID))
+                .isInstanceOf(BadRequestException.class);
+
+        verify(uploadService, never()).confirmUpload(anyString(), anyString());
     }
 
     @Test
@@ -223,12 +259,13 @@ class BondDocumentServiceTest {
          * LOGO would otherwise let one file be both, and would set the bond's
          * mirror to a key in the wrong folder.
          */
-        ConfirmBondUploadRequest request = confirmRequest(DOCUMENT_KEY, BondDocumentType.LOGO);
+        ConfirmBondUploadRequest request =
+                confirmRequest(PENDING_DOCUMENT_KEY, BondDocumentType.LOGO);
 
         assertThatThrownBy(() -> bondDocumentService.confirm(ISIN, request, ADMIN_ID))
                 .isInstanceOf(BadRequestException.class);
 
-        verifyNoInteractions(uploadService);
+        verify(uploadService, never()).confirmUpload(anyString(), anyString());
     }
 
     @Test
@@ -240,13 +277,13 @@ class BondDocumentServiceTest {
          * folder it was authorised for.
          */
         ConfirmBondUploadRequest request = confirmRequest(
-                "bonds/" + LOWER_ISIN + "/documents-old/2026/10/doc.pdf",
+                "pending/bonds/" + LOWER_ISIN + "/documents-old/2026/10/" + UUID_PART + ".pdf",
                 BondDocumentType.INFORMATION_MEMORANDUM);
 
         assertThatThrownBy(() -> bondDocumentService.confirm(ISIN, request, ADMIN_ID))
                 .isInstanceOf(BadRequestException.class);
 
-        verifyNoInteractions(uploadService);
+        verify(uploadService, never()).confirmUpload(anyString(), anyString());
     }
 
     /* ------------------------------------------------------------------ *
@@ -256,7 +293,15 @@ class BondDocumentServiceTest {
     @Test
     void recordsADocumentAfterCheckingIt() {
 
-        when(uploadService.confirmUpload(DOCUMENT_KEY, PDF)).thenReturn(
+        when(uploadService.isPendingKeyFor("bonds/" + LOWER_ISIN + "/documents", PENDING_DOCUMENT_KEY))
+                .thenReturn(true);
+
+        /*
+         * The confirmation answers with the key the object now has, which is not
+         * the one it was sent to: the upload was filed under its pending key and
+         * the confirmation is what moved it.
+         */
+        when(uploadService.confirmUpload(PENDING_DOCUMENT_KEY, PDF)).thenReturn(
                 new ObjectMetadata(DOCUMENT_KEY, PDF, 4096L, "etag", Instant.now()));
 
         when(userService.getUser(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
@@ -273,7 +318,7 @@ class BondDocumentServiceTest {
 
         BondDocumentResponse response = bondDocumentService.confirm(
                 ISIN,
-                confirmRequest(DOCUMENT_KEY, BondDocumentType.INFORMATION_MEMORANDUM),
+                confirmRequest(PENDING_DOCUMENT_KEY, BondDocumentType.INFORMATION_MEMORANDUM),
                 ADMIN_ID);
 
         assertThat(response.documentType()).isEqualTo(BondDocumentType.INFORMATION_MEMORANDUM);
@@ -291,8 +336,15 @@ class BondDocumentServiceTest {
         verify(bondDocumentRepository).save(saved.capture());
 
         assertThat(saved.getValue().getSizeBytes()).isEqualTo(4096L);
-        assertThat(saved.getValue().getStorageKey()).isEqualTo(DOCUMENT_KEY);
         assertThat(saved.getValue().getBond()).isEqualTo(bond);
+
+        /*
+         * And the key recorded is the one the object ended up at. Storing the
+         * pending key — the one the request reported — would point the row at an
+         * object the confirmation has just removed, so the download would 404
+         * and the delete would find nothing.
+         */
+        assertThat(saved.getValue().getStorageKey()).isEqualTo(DOCUMENT_KEY);
 
         /* A document is not a logo, so the mirror is untouched. */
         assertThat(bond.getLogoKey()).isNull();
@@ -316,7 +368,10 @@ class BondDocumentServiceTest {
                 .sizeBytes(10L)
                 .build();
 
-        when(uploadService.confirmUpload(LOGO_KEY, "image/png")).thenReturn(
+        when(uploadService.isPendingKeyFor("bonds/" + LOWER_ISIN + "/logo", PENDING_LOGO_KEY))
+                .thenReturn(true);
+
+        when(uploadService.confirmUpload(PENDING_LOGO_KEY, "image/png")).thenReturn(
                 new ObjectMetadata(LOGO_KEY, "image/png", 2048L, "etag", Instant.now()));
 
         when(userService.getUser(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
@@ -337,14 +392,15 @@ class BondDocumentServiceTest {
 
         bondDocumentService.confirm(
                 ISIN,
-                confirmRequest(LOGO_KEY, BondDocumentType.LOGO, "image/png"),
+                confirmRequest(PENDING_LOGO_KEY, BondDocumentType.LOGO, "image/png"),
                 ADMIN_ID);
 
         /* The old object goes before its row, so nothing is left unreferenced. */
         verify(objectStore).delete("bonds/" + LOWER_ISIN + "/logo/2025/01/old.png");
         verify(bondDocumentRepository).delete(previous);
 
-        /* And the bond now points at the new one. */
+        /* And the bond now points at the new one — the promoted key, not the
+         * pending one the upload was sent to. */
         assertThat(bond.getLogoKey()).isEqualTo(LOGO_KEY);
         verify(bondRepository).save(bond);
     }
@@ -353,9 +409,10 @@ class BondDocumentServiceTest {
     void doesNotDeleteTheObjectAConfirmationIsAbout() {
 
         /*
-         * Confirming the same key twice — a retried request — must not delete
-         * the object the confirmation is about to describe, which would leave a
-         * row pointing at nothing.
+         * The bond's existing logo is the very object being confirmed — it was
+         * already filed under the key the confirmation promotes to. Taking the
+         * previous logo out of the way must not take that one, or the row about
+         * to be written would describe an object that has just been deleted.
          */
         BondDocument previous = BondDocument.builder()
                 .id(UUID.randomUUID())
@@ -367,7 +424,10 @@ class BondDocumentServiceTest {
                 .sizeBytes(10L)
                 .build();
 
-        when(uploadService.confirmUpload(LOGO_KEY, "image/png")).thenReturn(
+        when(uploadService.isPendingKeyFor("bonds/" + LOWER_ISIN + "/logo", PENDING_LOGO_KEY))
+                .thenReturn(true);
+
+        when(uploadService.confirmUpload(PENDING_LOGO_KEY, "image/png")).thenReturn(
                 new ObjectMetadata(LOGO_KEY, "image/png", 2048L, "etag", Instant.now()));
 
         when(userService.getUser(ADMIN_ID)).thenReturn(User.builder().id(ADMIN_ID).build());
@@ -388,7 +448,7 @@ class BondDocumentServiceTest {
 
         bondDocumentService.confirm(
                 ISIN,
-                confirmRequest(LOGO_KEY, BondDocumentType.LOGO, "image/png"),
+                confirmRequest(PENDING_LOGO_KEY, BondDocumentType.LOGO, "image/png"),
                 ADMIN_ID);
 
         verify(objectStore, never()).delete(anyString());

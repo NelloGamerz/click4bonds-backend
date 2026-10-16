@@ -47,8 +47,9 @@ import lombok.RequiredArgsConstructor;
  * </ol>
  *
  * <p>Nothing is listed or downloadable until step three. A file that was
- * authorised but never confirmed exists in the bucket and nowhere else, which is
- * why an abandoned upload leaves no trace in the catalogue.</p>
+ * authorised but never confirmed waits under its pending key and appears
+ * nowhere else — it is not a document, and confirming is what turns it into
+ * one — which is why an abandoned upload leaves no trace in the catalogue.</p>
  */
 @RestController
 @RequestMapping("/api/admin/bonds/{isin}/documents")

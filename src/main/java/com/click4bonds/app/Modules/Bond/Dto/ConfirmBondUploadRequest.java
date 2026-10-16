@@ -13,9 +13,9 @@ import lombok.Data;
  * <p>The step that turns a signed URL into a document. The {@code storageKey}
  * and {@code contentType} come back from
  * {@link PresignBondUploadResponse} unchanged; the key is not trusted on its
- * own — it is checked to be one this application would have issued for this
- * bond and this kind of file — and the content type is compared against what
- * the object store actually stored rather than assumed.</p>
+ * own — it is checked to be an unconfirmed upload this application issued for
+ * this bond and this kind of file — and the content type is compared against
+ * what the object store actually stored rather than assumed.</p>
  *
  * <p>This call is also what applies the size limit, because a signed upload
  * cannot be given one. A file over
