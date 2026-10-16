@@ -71,7 +71,7 @@ class AdminUserServiceStaffTest {
 
     private static CreateStaffUserRequest request(UserRole role) {
         return new CreateStaffUserRequest(
-                "New.Staff@Example.com", "Nisha", "Rao", role, null, null, null, null);
+                "New.Staff@Example.com", "Nisha", "Rao", role, null);
     }
 
     @Test
@@ -140,16 +140,13 @@ class AdminUserServiceStaffTest {
     }
 
     @Test
-    void theEmploymentDetailsAndGrantsComeWithTheCreateRequest() {
+    void theGrantsComeWithTheCreateRequest() {
 
         service.createStaffUser(new CreateStaffUserRequest(
                 "new.staff@example.com",
                 "Nisha",
                 "Rao",
                 UserRole.EMPLOYEE,
-                "EMP-1042",
-                "Operations",
-                "Analyst",
                 java.util.Set.of(AdminModule.ANALYTICS, AdminModule.BOND_MANAGEMENT)));
 
         org.mockito.ArgumentCaptor<User> captured =
@@ -160,37 +157,22 @@ class AdminUserServiceStaffTest {
         var profile = captured.getValue().getAdminProfile();
 
         // Everything the request carried is on the profile, so an account is
-        // opened complete rather than created bare and corrected twice after.
-        assertEquals("EMP-1042", profile.getEmployeeCode());
-        assertEquals("Operations", profile.getDepartment());
-        assertEquals("Analyst", profile.getDesignation());
+        // opened complete rather than created bare and corrected after.
         assertEquals(
                 java.util.Set.of(AdminModule.ANALYTICS, AdminModule.BOND_MANAGEMENT),
                 profile.getAccessConfig());
     }
 
     @Test
-    void aBlankEmploymentFieldIsStoredAsAbsentRatherThanAsWhitespace() {
+    void anAccountOpenedWithoutGrantsIsGrantedNothing() {
 
-        service.createStaffUser(new CreateStaffUserRequest(
-                "new.staff@example.com",
-                "Nisha",
-                "Rao",
-                UserRole.EMPLOYEE,
-                "   ",
-                "",
-                null,
-                null));
+        service.createStaffUser(request(UserRole.EMPLOYEE));
 
         org.mockito.ArgumentCaptor<User> captured =
                 org.mockito.ArgumentCaptor.forClass(User.class);
 
         verify(userService).createUser(captured.capture());
 
-        var profile = captured.getValue().getAdminProfile();
-
-        assertNull(profile.getEmployeeCode());
-        assertNull(profile.getDepartment());
-        assertNull(profile.getDesignation());
+        assertTrue(captured.getValue().getAdminProfile().getAccessConfig().isEmpty());
     }
 }

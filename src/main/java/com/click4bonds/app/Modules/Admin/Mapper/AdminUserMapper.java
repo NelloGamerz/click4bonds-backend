@@ -72,7 +72,7 @@ public final class AdminUserMapper {
      *
      * <p>Exactly one of the two profiles is populated, so exactly one half of
      * the response is: a customer's onboarding step and verification record, or
-     * a staff account's employment details and grants. The other half comes back
+     * a staff account's confirmation state and grants. The other half comes back
      * null, which is what tells the caller which kind of account this is beyond
      * the role alone.</p>
      *
@@ -97,9 +97,6 @@ public final class AdminUserMapper {
                 .updatedAt(user.getUpdatedAt())
                 .verification(UserMapper.toVerificationResponse(
                         profile == null ? null : profile.getVerification()))
-                .employeeCode(staffProfile == null ? null : staffProfile.getEmployeeCode())
-                .department(staffProfile == null ? null : staffProfile.getDepartment())
-                .designation(staffProfile == null ? null : staffProfile.getDesignation())
                 .emailVerified(staffProfile == null ? null : staffProfile.getEmailVerified())
                 .accessConfig(staffProfile == null ? null : staffProfile.getAccessConfig())
                 .build();

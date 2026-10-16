@@ -24,9 +24,9 @@ import jakarta.validation.constraints.Size;
  * same claim about the same kind of value and two spellings of "a name" would
  * eventually disagree about a name.</p>
  *
- * <p>The employment details and the grants are optional and part of the same
- * request, so an account can be opened with everything it needs in one call
- * rather than being created bare and corrected twice afterwards.</p>
+ * <p>The grants are optional and part of the same request, so an account can be
+ * opened with everything it needs in one call rather than being created bare and
+ * corrected afterwards.</p>
  */
 public record CreateStaffUserRequest(
 
@@ -60,15 +60,6 @@ public record CreateStaffUserRequest(
          */
         @NotNull(message = "Role is required")
         UserRole role,
-
-        @Size(max = 255, message = "Employee code must not exceed 255 characters")
-        String employeeCode,
-
-        @Size(max = 255, message = "Department must not exceed 255 characters")
-        String department,
-
-        @Size(max = 255, message = "Designation must not exceed 255 characters")
-        String designation,
 
         /**
          * The modules the account may use, or null for none.

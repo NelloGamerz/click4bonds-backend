@@ -16,6 +16,4 @@ public interface AdminProfileRepository
     Optional<AdminProfile> findByUserId(UUID userId);
 
     boolean existsByUserId(UUID userId);
-
-    boolean existsByEmployeeCode(String employeeCode);
 }

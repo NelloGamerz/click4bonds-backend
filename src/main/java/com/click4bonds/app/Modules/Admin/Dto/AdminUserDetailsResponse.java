@@ -24,7 +24,6 @@ import lombok.Setter;
  * screen shows both and which half is populated follows from
  * {@link #role}. A customer has {@link #onboardingStep} and
  * {@link #verification} and no staff fields; a member of staff has
- * {@link #employeeCode}, {@link #department}, {@link #designation},
  * {@link #emailVerified} and {@link #accessConfig}, and no customer ones.</p>
  *
  * <p>This is what the update endpoint returns as well as what the details
@@ -61,15 +60,6 @@ public class AdminUserDetailsResponse {
     private Instant updatedAt;
 
     private UserVerificationResponse verification;
-
-    /**
-     * The staff number the employer knows this person by, or null for a customer.
-     */
-    private String employeeCode;
-
-    private String department;
-
-    private String designation;
 
     /**
      * Whether the staff member has confirmed their address by signing in with

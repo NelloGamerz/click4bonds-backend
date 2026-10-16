@@ -127,15 +127,11 @@ public class AdminUserService {
                 .status(UserStatus.ACTIVE)
                 .build());
 
-        // The employment details and the grants come with the request rather
-        // than needing calls after it, so an account can be opened complete.
+        // The grants come with the request rather than needing a call after it,
+        // so an account can be opened complete.
         applyStaffProfile(
                 saved.getAdminProfile(),
-                request.employeeCode(),
-                request.department(),
-                request.designation(),
-                request.accessConfig(),
-                true);
+                request.accessConfig());
 
         log.info("Created staff account {} with role {}", saved.getId(), request.role());
 
@@ -152,13 +148,13 @@ public class AdminUserService {
      * requests could have produced.</p>
      *
      * <p>The role is applied first, so that a change between the two staff roles
-     * is in place before the staff fields are written — they belong to the same
+     * is in place before the grants are written — they belong to the same
      * {@code AdminProfile}, which such a change keeps.</p>
      *
      * <p>Staff fields on a customer are refused rather than ignored. An
-     * {@code accessConfig} or a department against a customer account is a
-     * caller that has mistaken what it is editing, and silently discarding it
-     * would let the mistake stand as a success.</p>
+     * {@code accessConfig} against a customer account is a caller that has
+     * mistaken what it is editing, and silently discarding it would let the
+     * mistake stand as a success.</p>
      *
      * @param userId  account identifier
      * @param request the fields to change; null fields are left as they are
@@ -183,95 +179,51 @@ public class AdminUserService {
             user = userService.updateStatus(userId, request.status());
         }
 
-        boolean staffFieldsGiven =
-                request.employeeCode() != null
-                        || request.department() != null
-                        || request.designation() != null
-                        || request.accessConfig() != null;
-
-        if (staffFieldsGiven) {
+        if (request.accessConfig() != null) {
 
             AdminProfile profile = user.getAdminProfile();
 
             if (profile == null) {
                 throw new BadRequestException(
-                        "Employment details and module access apply only to ADMIN and "
+                        "Module access applies only to ADMIN and "
                                 + "EMPLOYEE accounts, but user " + userId + " is " + user.getRole());
             }
 
             applyStaffProfile(
                     profile,
-                    request.employeeCode(),
-                    request.department(),
-                    request.designation(),
-                    request.accessConfig(),
-                    false);
+                    request.accessConfig());
 
-            log.info("Updated staff details for user {}", userId);
+            log.info("Updated module access for user {}", userId);
         }
 
         return AdminUserMapper.toDetails(user);
     }
 
     /**
-     * Writes a staff profile's employment details and grants.
-     *
-     * <p>A null value means different things on the two paths, which is why the
-     * behaviour is a parameter rather than assumed: on a create there is nothing
-     * to leave alone, so null is written through as an empty value; on an update
-     * null means "unchanged" and is skipped.</p>
+     * Writes a staff profile's grants.
      *
      * <p>The grants are always a <strong>fresh set</strong>, never a mutation of
      * the existing one. The field is one JSONB value, so Hibernate compares the
      * object to decide whether the row is dirty — adding to the set in place
      * would be a change that is never written.</p>
      *
-     * @param profile     staff profile to write to; never null when called
-     * @param isCreate    true when creating, so null fields are written through
+     * @param profile      staff profile to write to; never null when called
+     * @param accessConfig the complete set of modules to grant, or null to leave
+     *                     the grants alone
      */
     private void applyStaffProfile(
             AdminProfile profile,
-            String employeeCode,
-            String department,
-            String designation,
-            Set<AdminModule> accessConfig,
-            boolean isCreate) {
+            Set<AdminModule> accessConfig) {
 
-        if (employeeCode != null || isCreate) {
-            profile.setEmployeeCode(trimToNull(employeeCode));
-        }
-
-        if (department != null || isCreate) {
-            profile.setDepartment(trimToNull(department));
-        }
-
-        if (designation != null || isCreate) {
-            profile.setDesignation(trimToNull(designation));
-        }
-
-        // Null on a create is an account granted nothing; null on an update is
-        // "leave the grants alone".
+        // Null on a create is an account granted nothing — nothing to grant is
+        // what was asked for — and null on an update is "leave the grants
+        // alone". Both are the caller's decision, so this writes only what it is
+        // given.
         if (accessConfig != null) {
             profile.setAccessConfig(new LinkedHashSet<>(accessConfig));
         }
 
         adminProfileRepository.save(profile);
-    }
-
-    /**
-     * @param value a caller-supplied string
-     * @return the trimmed value, or null when it carries nothing — so a field
-     *         submitted as whitespace is stored as absent rather than as a blank
-     */
-    private static String trimToNull(String value) {
-
-        if (value == null) {
-            return null;
-        }
-
-        String trimmed = value.trim();
-
-        return trimmed.isEmpty() ? null : trimmed;
     }
 
 }

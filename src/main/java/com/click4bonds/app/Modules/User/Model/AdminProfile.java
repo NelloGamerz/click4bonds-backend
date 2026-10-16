@@ -33,8 +33,8 @@ import lombok.Setter;
  * about no one else.
  *
  * <p>Covers both internal roles — {@code ADMIN} and {@code EMPLOYEE} — because
- * the two are the same kind of thing: a member of staff with an employment
- * record and a set of module permissions. They differ in how much those
+ * the two are the same kind of thing: a member of staff with a set of module
+ * permissions. They differ in how much those
  * permissions constrain them, not in what is stored, and
  * {@link #accessConfig} is read only for an {@code EMPLOYEE}; an {@code ADMIN}
  * is unrestricted by design, which keeps a misconfigured grant from locking an
@@ -71,24 +71,6 @@ public class AdminProfile {
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
     private User user;
-
-    /**
-     * The staff number the employer knows this person by.
-     *
-     * <p>Nullable, and unique when present. Nullable because no employee record
-     * exists in this database yet and account creation does not collect one;
-     * unique because a staff number that identifies two people identifies
-     * neither, and PostgreSQL treats nulls as distinct so any number of accounts
-     * may be waiting on one.</p>
-     */
-    @Column(name = "employee_code", unique = true)
-    private String employeeCode;
-
-    @Column(name = "department")
-    private String department;
-
-    @Column(name = "designation")
-    private String designation;
 
     /**
      * Whether the staff member has confirmed the address their account was
