@@ -142,6 +142,38 @@ storage:
     # R2 is region-agnostic and expects "auto".
     region: ${R2_REGION:auto}
 
+    # How long a presigned URL stays valid. These are handed to a browser, and
+    # anyone holding one has the access it grants until it expires, so both are
+    # short. Uploads get the longer window because the person on the other end
+    # has to find a file and send it over whatever connection they have.
+    presigned-upload-ttl: ${R2_PRESIGNED_UPLOAD_TTL:15m}
+    presigned-download-ttl: ${R2_PRESIGNED_DOWNLOAD_TTL:5m}
+
+    # Largest file a client may upload directly.
+    #
+    # Enforced after the upload, not during it: a signed PUT cannot bind the
+    # length of its body, so R2 accepts an oversized file and UploadService
+    # deletes it when the client confirms. Nothing is left behind, but the
+    # bytes do cross the network first — this bounds what is kept, not what is
+    # sent.
+    max-upload-size: ${R2_MAX_UPLOAD_SIZE:25MB}
+
+    # What a client is allowed to upload directly. An allow-list, checked before
+    # a URL is signed, so a type absent from here never reaches the bucket.
+    #
+    # Empty means nothing is uploadable, not everything: this is a control whose
+    # job is to keep things out, so an absent list fails closed.
+    #
+    # This applies only to uploads that arrive from outside the application.
+    # Files this application generates — the deal confirmation spreadsheet and
+    # its PDF — are written through the store directly and are not subject to
+    # it, so removing a type here does not affect document generation.
+    allowed-content-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - image/png
+      - image/jpeg
+
 # Authentication with a phone number and an OTP.
 #
 # Tokens are signed by this application and verified by it; there is no

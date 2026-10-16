@@ -141,6 +141,24 @@ public class SecurityConfig {
                                                 // .requestMatchers(HttpMethod.POST, "/api/analytics/test")
                                                 // .permitAll()
 
+                                                // Documents attached to a bond
+                                                // require a signed-in caller, and this
+                                                // rule must come before the public bond
+                                                // rule below: matchers are evaluated in
+                                                // order and the first match wins, so
+                                                // leaving it out would make every
+                                                // uploaded memorandum public the moment
+                                                // an admin attached it. The bond's logo
+                                                // is deliberately not covered — it is
+                                                // shown on the public catalogue card and
+                                                // fetched by an <img> element, which
+                                                // cannot carry a token.
+                                                .requestMatchers(
+                                                                HttpMethod.GET,
+                                                                "/api/bonds/*/documents",
+                                                                "/api/bonds/*/documents/**")
+                                                .authenticated()
+
                                                 // Public bond endpoints
                                                 .requestMatchers(HttpMethod.GET, "/api/bonds", "/api/bonds/**")
                                                 .permitAll()

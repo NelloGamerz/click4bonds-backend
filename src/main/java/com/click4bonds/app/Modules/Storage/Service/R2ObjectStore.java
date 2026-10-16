@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.time.Duration;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -11,6 +12,7 @@ import org.springframework.util.StringUtils;
 
 import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
 import com.click4bonds.app.Modules.Storage.Exception.StorageException;
+import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
 import com.click4bonds.app.Modules.Storage.Model.StoredObject;
 
 import jakarta.annotation.PreDestroy;
@@ -32,10 +34,12 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
+import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 /**
  * Cloudflare R2, through its S3-compatible API.
@@ -224,6 +228,57 @@ public class R2ObjectStore implements ObjectStore {
     }
 
     @Override
+    public Optional<ObjectMetadata> stat(String key) {
+
+        String bucket = requireEndpointAndBucket();
+
+        requireKey(key);
+
+        try {
+
+            HeadObjectResponse head = client.headObject(
+                    HeadObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .build());
+
+            /*
+             * The provider's reply is the only place a size can be had for an
+             * object this application did not write — a client upload goes
+             * straight to the bucket — so it is read here and carried back
+             * rather than checked against anything.
+             */
+            return Optional.of(
+                    new ObjectMetadata(
+                            key,
+                            head.contentType(),
+                            head.contentLength() == null ? 0L : head.contentLength(),
+                            head.eTag(),
+                            head.lastModified()));
+
+        } catch (S3Exception failure) {
+
+            /*
+             * Same reasoning as exists: a missing object is an answer, and empty
+             * is how it is given. Anything else is a failure to answer.
+             */
+            if (failure.statusCode() == 404) {
+                return Optional.empty();
+            }
+
+            throw new StorageException(
+                    "Failed to read metadata for object at key " + key + " in bucket " + bucket,
+                    failure);
+
+        } catch (SdkException failure) {
+
+            throw new StorageException(
+                    "Failed to read metadata for object at key " + key + " in bucket " + bucket,
+                    failure);
+        }
+    }
+
+    @Override
     public void delete(String key) {
 
         String bucket = requireEndpointAndBucket();
@@ -336,9 +391,7 @@ public class R2ObjectStore implements ObjectStore {
 
         requireKey(key);
 
-        if (ttl == null || ttl.isZero() || ttl.isNegative()) {
-            throw new StorageException("A presigned URL needs a positive lifetime");
-        }
+        requirePositiveLifetime(ttl, "A presigned URL needs a positive lifetime");
 
         try {
 
@@ -360,6 +413,66 @@ public class R2ObjectStore implements ObjectStore {
             throw new StorageException(
                     "Failed to sign a URL for key " + key + " in bucket " + bucket,
                     failure);
+        }
+    }
+
+    @Override
+    public URI presignedPutUrl(String key, String contentType, Duration ttl) {
+
+        String bucket = requireEndpointAndBucket();
+
+        requireKey(key);
+
+        if (!StringUtils.hasText(contentType)) {
+            throw new StorageException(
+                    "A presigned upload URL needs a content type: the provider signs it "
+                            + "into the URL and rejects an upload that sends a different one");
+        }
+
+        requirePositiveLifetime(ttl, "A presigned upload URL needs a positive lifetime");
+
+        try {
+
+            /*
+             * The content type is set on the request rather than left to the
+             * client, because setting it is what makes the provider sign it.
+             * That turns it into a constraint the bucket enforces: a client
+             * cannot use the URL to store anything but the type that was
+             * authorised.
+             */
+            return URI.create(
+                    presigner.presignPutObject(
+                                    PutObjectPresignRequest.builder()
+                                            .signatureDuration(ttl)
+                                            .putObjectRequest(
+                                                    PutObjectRequest.builder()
+                                                            .bucket(bucket)
+                                                            .key(key)
+                                                            .contentType(contentType)
+                                                            .build())
+                                            .build())
+                            .url()
+                            .toString());
+
+        } catch (SdkException failure) {
+
+            throw new StorageException(
+                    "Failed to sign an upload URL for key " + key + " in bucket " + bucket,
+                    failure);
+        }
+    }
+
+    /**
+     * @throws StorageException with this message when the lifetime is absent or
+     *         not positive. Rejected here rather than left to the presigner,
+     *         which would otherwise sign a URL that expired before it was
+     *         returned — a failure that looks like the client being refused
+     *         rather than the lifetime being wrong
+     */
+    private void requirePositiveLifetime(Duration ttl, String message) {
+
+        if (ttl == null || ttl.isZero() || ttl.isNegative()) {
+            throw new StorageException(message);
         }
     }
 

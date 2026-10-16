@@ -1,9 +1,13 @@
 package com.click4bonds.app.Modules.Storage.Config;
 
 import java.time.Duration;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.util.unit.DataSize;
 
 import lombok.Data;
 
@@ -17,6 +21,12 @@ import lombok.Data;
  *     access-key-id: ...
  *     secret-access-key: ...
  *     bucket: click4bonds-documents
+ *     presigned-upload-ttl: 15m
+ *     presigned-download-ttl: 5m
+ *     max-upload-size: 25MB
+ *     allowed-content-types:
+ *       - application/pdf
+ *       - image/png
  * </pre>
  *
  * <p>Top-level rather than nested under a feature, because the store is shared:
@@ -101,5 +111,62 @@ public class StorageProperties {
          * exhausting it on one attempt.</p>
          */
         private Duration apiCallAttemptTimeout = Duration.ofSeconds(10);
+
+        /**
+         * How long a presigned upload URL stays valid.
+         *
+         * <p>Short by default, because it is handed to a browser and anyone
+         * holding it can write to the bucket until it expires. Long enough to
+         * cover choosing a file and sending it; not long enough to be worth
+         * stealing.</p>
+         */
+        private Duration presignedUploadTtl = Duration.ofMinutes(15);
+
+        /**
+         * How long a presigned download URL stays valid.
+         *
+         * <p>Shorter than the upload lifetime on purpose. An upload has to
+         * survive a person finding a file and a slow connection; a download
+         * starts the moment the URL is returned, and the URL is the only thing
+         * standing between the public and the object.</p>
+         */
+        private Duration presignedDownloadTtl = Duration.ofMinutes(5);
+
+        /**
+         * Largest object a client may upload directly.
+         *
+         * <p><strong>Enforced after the fact, not during.</strong> A signed
+         * {@code PUT} cannot bind the length of the body, so the provider
+         * accepts an oversized upload and this application refuses it
+         * afterwards, removing it. That ordering is unavoidable with presigned
+         * uploads and is why confirming an upload is part of the flow rather
+         * than optional.</p>
+         */
+        private DataSize maxUploadSize = DataSize.ofMegabytes(25);
+
+        /**
+         * MIME types a client may upload directly, lower case and without
+         * parameters.
+         *
+         * <p>An allow-list rather than a deny-list, because the set of things
+         * that should be storable is small and known while the set that should
+         * not is not. A type absent from here is refused before a URL is
+         * signed, so the bucket never accepts one.</p>
+         *
+         * <p><strong>Empty means nothing is uploadable</strong>, not everything.
+         * Failing closed is the only safe reading of an absent list for a
+         * control whose job is to keep things out.</p>
+         *
+         * <p>A replacement list, not an extension of the defaults: this is the
+         * whole policy. Server-side writes are not subject to it — the letters
+         * this application generates are its own bytes, and are stored whatever
+         * format they are in.</p>
+         */
+        private Set<String> allowedContentTypes = new LinkedHashSet<>(
+                List.of(
+                        "application/pdf",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        "image/png",
+                        "image/jpeg"));
     }
 }

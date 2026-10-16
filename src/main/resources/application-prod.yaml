@@ -270,3 +270,24 @@ storage:
     secret-access-key: ${R2_SECRET_ACCESS_KEY}
     bucket: ${R2_BUCKET}
     region: ${R2_REGION:auto}
+
+    # Upload policy. Every one of these has a working default and none has to be
+    # supplied, which is why this file does not require them the way it requires
+    # the credentials above: the defaults are a usable policy, and a deployment
+    # that wants a longer window or a larger ceiling changes them here.
+    #
+    # Tightening matters more in production than anywhere else — a presigned
+    # upload URL is handed to the public, so its lifetime and the size it can
+    # write are the two bounds on what a stolen URL is worth.
+    presigned-upload-ttl: ${R2_PRESIGNED_UPLOAD_TTL:15m}
+    presigned-download-ttl: ${R2_PRESIGNED_DOWNLOAD_TTL:5m}
+    max-upload-size: ${R2_MAX_UPLOAD_SIZE:25MB}
+
+    # Overriding this replaces the default list outright rather than extending
+    # it. An empty value permits nothing to be uploaded, which is the safe
+    # reading of an absent allow-list.
+    allowed-content-types:
+      - application/pdf
+      - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+      - image/png
+      - image/jpeg

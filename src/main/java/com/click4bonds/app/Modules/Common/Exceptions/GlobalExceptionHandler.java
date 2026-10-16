@@ -23,6 +23,8 @@ import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
 import com.click4bonds.app.Modules.OTP.Exception.InvalidOtpException;
 import com.click4bonds.app.Modules.OTP.Exception.OtpMaxAttemptsExceededException;
 import com.click4bonds.app.Modules.OTP.Exception.OtpResendCooldownException;
+import com.click4bonds.app.Modules.Storage.Exception.StorageException;
+import com.click4bonds.app.Modules.Storage.Exception.UploadRejectedException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -373,6 +375,65 @@ public class GlobalExceptionHandler {
                                                                 ex.getReason() == null
                                                                                 ? "Request could not be completed"
                                                                                 : ex.getReason()));
+        }
+
+        /**
+         * Handles an upload the storage policy refused.
+         *
+         * <p>Declared separately from — and therefore ahead of — the
+         * {@link BadRequestException} handler above, even though
+         * {@link UploadRejectedException} extends it. Spring picks the most
+         * specific handler, so this one answers an upload rejection with a code
+         * of its own while the exception still inherits the {@code 400} its
+         * parent carries, for any caller that catches the parent type.</p>
+         *
+         * <p>The message is passed through, unlike the storage failures below.
+         * It names a type that is not allowed or a size that is too large —
+         * facts about the caller's own request, which are what they need in
+         * order to change it, and which disclose nothing about the bucket.</p>
+         */
+        @ExceptionHandler(UploadRejectedException.class)
+        public ResponseEntity<ApiError> handleUploadRejected(
+                        UploadRejectedException ex) {
+
+                log.warn("Upload rejected: {}", ex.getMessage());
+
+                return ResponseEntity
+                                .badRequest()
+                                .body(
+                                                new ApiError(
+                                                                "UPLOAD_REJECTED",
+                                                                ex.getMessage()));
+        }
+
+        /**
+         * Handles a request that the object store could not serve.
+         *
+         * <p>Answered {@code 503} on the same reasoning as the analytics
+         * handler below: the request was well-formed and the application is
+         * healthy, but a dependency is not, and the same call is worth
+         * retrying.</p>
+         *
+         * <p>The cause is logged in full and kept out of the response. These
+         * messages name the configuration that is missing and the bucket that
+         * could not be reached — detail an operator needs in the log and a
+         * caller has no business seeing.</p>
+         */
+        @ExceptionHandler(StorageException.class)
+        public ResponseEntity<ApiError> handleStorageFailure(
+                        StorageException ex) {
+
+                log.error(
+                                "Object storage could not serve a request: {}",
+                                ex.getMessage(),
+                                ex);
+
+                return ResponseEntity
+                                .status(HttpStatus.SERVICE_UNAVAILABLE)
+                                .body(
+                                                new ApiError(
+                                                                "STORAGE_UNAVAILABLE",
+                                                                "File storage is unavailable right now. Please try again later."));
         }
 
         /**

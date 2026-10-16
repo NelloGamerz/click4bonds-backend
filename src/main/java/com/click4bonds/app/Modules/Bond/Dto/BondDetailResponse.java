@@ -229,6 +229,16 @@ public class BondDetailResponse {
 
     private Boolean isFlashNews;
 
+    /**
+     * Where to fetch the bond's logo, relative to the API root. Null when the
+     * bond has no logo.
+     *
+     * <p>See {@link BondResponse#getLogoUrl()} — the same value, described
+     * there. Present on the detail view as well as the summary because a bond's
+     * own page leads with it.</p>
+     */
+    private String logoUrl;
+
     // =========================
     // INVENTORY
     // =========================
