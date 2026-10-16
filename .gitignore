@@ -33,5 +33,13 @@ build/
 .vscode/
 src/main/resources/application-dev.yaml
 .env
+
+# Local output directory for generated documents, left over from the removed
+# filesystem-backed ObjectStore. Root-anchored and slash-terminated on purpose:
+# an unanchored "storage" (or "/storage") also matches the Java package
+# src/main/java/com/click4bonds/app/Modules/Storage/ on a case-insensitive
+# checkout, which silently hides new source files from git status.
+# Do not drop the leading slash.
+/storage/
 .github/workflows/qodana_code_quality.yml
 .github/workflows/qodana_code_quality.yml
