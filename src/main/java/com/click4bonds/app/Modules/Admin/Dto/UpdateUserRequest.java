@@ -6,8 +6,6 @@ import com.click4bonds.app.Modules.User.Enums.AdminModule;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 
-import jakarta.validation.constraints.Size;
-
 /**
  * Everything an administrator may change about an account, in one request.
  *
@@ -24,10 +22,10 @@ import jakarta.validation.constraints.Size;
  * leaves the grants as they are.</p>
  *
  * <p>The cost of that rule is that a field cannot be <em>cleared</em> by sending
- * null — not a department, say. Nothing needs to unset one today, and inventing
- * a sentinel to express it would make every request harder to read. If clearing
- * a field ever becomes necessary, it wants its own explicit signal rather than a
- * second meaning for null.</p>
+ * null — nothing needs to unset one today, and inventing a sentinel to express
+ * it would make every request harder to read. If clearing a field ever becomes
+ * necessary, it wants its own explicit signal rather than a second meaning for
+ * null.</p>
  */
 public record UpdateUserRequest(
 
@@ -48,15 +46,6 @@ public record UpdateUserRequest(
          * {@code UserService#updateRole}.</p>
          */
         UserRole role,
-
-        @Size(max = 255, message = "Employee code must not exceed 255 characters")
-        String employeeCode,
-
-        @Size(max = 255, message = "Department must not exceed 255 characters")
-        String department,
-
-        @Size(max = 255, message = "Designation must not exceed 255 characters")
-        String designation,
 
         /**
          * The complete set of modules the account should be granted, or null to

@@ -60,8 +60,6 @@ class AdminUserServiceUpdateTest {
         user.setAdminProfile(AdminProfile.builder()
                 .id(UUID.randomUUID())
                 .user(user)
-                .employeeCode("EMP-1")
-                .department("Operations")
                 .accessConfig(new LinkedHashSet<>(Set.of(AdminModule.ANALYTICS)))
                 .build());
 
@@ -110,29 +108,12 @@ class AdminUserServiceUpdateTest {
         // Every field null.
         AdminUserDetailsResponse response = service.updateUser(
                 employee.getId(),
-                new UpdateUserRequest(null, null, null, null, null, null));
+                new UpdateUserRequest(null, null, null));
 
         verify(userService, never()).updateStatus(employee.getId(), UserStatus.SUSPENDED);
         verify(userService, never()).updateRole(employee.getId(), UserRole.ADMIN);
 
-        // The employment details and grants are as they were.
-        assertEquals("EMP-1", employee.getAdminProfile().getEmployeeCode());
-        assertEquals("Operations", employee.getAdminProfile().getDepartment());
-        assertEquals(
-                Set.of(AdminModule.ANALYTICS),
-                employee.getAdminProfile().getAccessConfig());
-    }
-
-    @Test
-    void anAbsentGrantSetLeavesTheGrantsAsTheyAre() {
-
-        User employee = registered(staff(UserRole.EMPLOYEE));
-
-        service.updateUser(
-                employee.getId(),
-                new UpdateUserRequest(null, null, null, null, "Senior Analyst", null));
-
-        assertEquals("Senior Analyst", employee.getAdminProfile().getDesignation());
+        // The grants are as they were.
         assertEquals(
                 Set.of(AdminModule.ANALYTICS),
                 employee.getAdminProfile().getAccessConfig());
@@ -145,12 +126,11 @@ class AdminUserServiceUpdateTest {
 
         service.updateUser(
                 employee.getId(),
-                new UpdateUserRequest(null, null, null, null, null, Set.of()));
+                new UpdateUserRequest(null, null, Set.of()));
 
-        // Distinct from absent, and the distinction is the point: the account
-        // keeps its employee details and loses every grant.
+        // Distinct from absent, and the distinction is the point: an absent set
+        // leaves the grants alone, an empty one withdraws every module.
         assertEquals(0, employee.getAdminProfile().getAccessConfig().size());
-        assertEquals("EMP-1", employee.getAdminProfile().getEmployeeCode());
     }
 
     @Test
@@ -161,7 +141,7 @@ class AdminUserServiceUpdateTest {
         service.updateUser(
                 employee.getId(),
                 new UpdateUserRequest(
-                        null, null, null, null, null,
+                        null, null,
                         Set.of(AdminModule.BOND_MANAGEMENT, AdminModule.ORDER_MANAGEMENT)));
 
         assertEquals(
@@ -180,7 +160,7 @@ class AdminUserServiceUpdateTest {
 
         service.updateUser(
                 employee.getId(),
-                new UpdateUserRequest(UserStatus.SUSPENDED, null, null, null, null, null));
+                new UpdateUserRequest(UserStatus.SUSPENDED, null, null));
 
         verify(userService).updateStatus(employee.getId(), UserStatus.SUSPENDED);
     }
@@ -192,7 +172,7 @@ class AdminUserServiceUpdateTest {
 
         service.updateUser(
                 employee.getId(),
-                new UpdateUserRequest(null, UserRole.ADMIN, null, null, null, null));
+                new UpdateUserRequest(null, UserRole.ADMIN, null));
 
         verify(userService).updateRole(employee.getId(), UserRole.ADMIN);
     }
@@ -211,7 +191,7 @@ class AdminUserServiceUpdateTest {
                 com.click4bonds.app.Modules.Common.Exceptions.ConflictException.class,
                 () -> service.updateUser(
                         customer.getId(),
-                        new UpdateUserRequest(null, UserRole.EMPLOYEE, null, null, null, null)));
+                        new UpdateUserRequest(null, UserRole.EMPLOYEE, null)));
     }
 
     // ------------------------------------------------------------------
@@ -223,20 +203,14 @@ class AdminUserServiceUpdateTest {
 
         User customer = registered(customer());
 
-        // A caller that sends a department for a customer has mistaken what it is
-        // editing. Discarding it would let the mistake read as a success.
-        assertThrows(
-                BadRequestException.class,
-                () -> service.updateUser(
-                        customer.getId(),
-                        new UpdateUserRequest(null, null, null, "Operations", null, null)));
-
+        // A caller that sends grants for a customer has mistaken what it is
+        // editing. Discarding them would let the mistake read as a success.
         assertThrows(
                 BadRequestException.class,
                 () -> service.updateUser(
                         customer.getId(),
                         new UpdateUserRequest(
-                                null, null, null, null, null, Set.of(AdminModule.ANALYTICS))));
+                                null, null, Set.of(AdminModule.ANALYTICS))));
 
         // The staff profile is never touched, because the request was refused
         // before any of it was written.
@@ -252,7 +226,7 @@ class AdminUserServiceUpdateTest {
         // what this endpoint is for.
         service.updateUser(
                 customer.getId(),
-                new UpdateUserRequest(UserStatus.SUSPENDED, null, null, null, null, null));
+                new UpdateUserRequest(UserStatus.SUSPENDED, null, null));
 
         verify(userService).updateStatus(customer.getId(), UserStatus.SUSPENDED);
     }
