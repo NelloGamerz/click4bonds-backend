@@ -30,11 +30,13 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
+import software.amazon.awssdk.services.s3.model.CopyObjectRequest;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.MetadataDirective;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
@@ -158,6 +160,67 @@ public class R2ObjectStore implements ObjectStore {
 
             throw new StorageException(
                     "Failed to store object at key " + key + " in bucket " + bucket,
+                    failure);
+        }
+    }
+
+    @Override
+    public void copy(String sourceKey, String destinationKey, String contentType) {
+
+        String bucket = requireEndpointAndBucket();
+
+        requireKey(sourceKey);
+
+        requireKey(destinationKey);
+
+        if (!StringUtils.hasText(contentType)) {
+
+            /*
+             * Rejected rather than left to the provider. A copy without a
+             * metadata directive keeps the source's content type, which sounds
+             * harmless and is not: this operation exists to move an upload that
+             * has just been checked as a specific type, and a copy that stored
+             * it as something else would put an object in the bucket that
+             * nothing afterwards agrees about.
+             */
+            throw new StorageException(
+                    "A copy needs the content type the object is to be stored as");
+        }
+
+        try {
+
+            /*
+             * R2 addresses the source by bucket and key in one header, as S3
+             * does. The keys this application copies are built from
+             * [A-Za-z0-9._/-] — see UploadService's key derivation — so there is
+             * nothing in one that needs escaping.
+             */
+            client.copyObject(
+                    CopyObjectRequest.builder()
+                            .sourceBucket(bucket)
+                            .sourceKey(sourceKey)
+                            .destinationBucket(bucket)
+                            .destinationKey(destinationKey)
+                            /*
+                             * REPLACE, not COPY: without it the copy inherits the
+                             * source's metadata and the content type set above is
+                             * ignored.
+                             */
+                            .metadataDirective(MetadataDirective.REPLACE)
+                            .contentType(contentType)
+                            .build());
+
+            log.info(
+                    "Object copied: sourceKey={} destinationKey={} bucket={}",
+                    sourceKey,
+                    destinationKey,
+                    bucket);
+
+        } catch (SdkException failure) {
+
+            throw new StorageException(
+                    "Failed to copy object from key " + sourceKey + " to key " + destinationKey
+                            + " in bucket " + bucket,
                     failure);
         }
     }

@@ -15,9 +15,11 @@ import java.time.Instant;
  * its way over another bond's file, and what makes the object unreadable to
  * anyone who was not given the URL.</p>
  *
- * @param storageKey  where the file will be stored. Report it back to the
- *                    confirmation endpoint, which is the only thing that makes
- *                    the upload real
+ * @param storageKey  where the file will wait until it is confirmed, not where
+ *                    it will live: confirming is what files it under its
+ *                    permanent key, and the confirmation answers with that key.
+ *                    Report this one back unchanged — it names the upload, it is
+ *                    not a reference to keep
  * @param uploadUrl   the signed URL to {@code PUT} the file to
  * @param contentType the type the upload is authorised as. <strong>Send it as
  *                    the {@code Content-Type} header</strong>, exactly as

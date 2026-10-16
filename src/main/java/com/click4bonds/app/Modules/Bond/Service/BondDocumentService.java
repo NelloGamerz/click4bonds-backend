@@ -52,8 +52,8 @@ import lombok.extern.slf4j.Slf4j;
  *   <li>The admin {@code PUT}s the file to the object store. A 20 MB memorandum
  *       does not pass through this application.</li>
  *   <li>{@link #confirm} — the admin reports the upload finished. The object is
- *       read back, its size and type checked, and only then is a document row
- *       written.</li>
+ *       read back, its size and type checked, filed under the key it will live
+ *       under, and only then is a document row written.</li>
  * </ol>
  *
  * <p>Step three is not a formality. It is the only point at which the size
@@ -164,7 +164,16 @@ public class BondDocumentService {
      * store knows what it kept.</p>
      *
      * <p>If any check fails the object is removed, so a refused upload leaves
-     * nothing behind in the bucket.</p>
+     * nothing behind in the bucket. What is removed is only ever the pending
+     * object the client has just sent — an upload is filed under a key of its
+     * own until it is confirmed, and confirmation is what moves it — so no
+     * refusal here can reach a file that is already recorded against a bond. See
+     * {@code UploadService}.</p>
+     *
+     * <p>The key recorded on the row is the one the object ends up at, not the
+     * one it was sent to, and the two differ by the pending part. Everything
+     * that reads a document afterwards — the download, the bond's logo mirror —
+     * uses the permanent key.</p>
      *
      * <p>A {@link BondDocumentType#LOGO} replaces the bond's previous logo —
      * its object and its row — and becomes the key the catalogue reads. Every
@@ -191,12 +200,20 @@ public class BondDocumentService {
          * back — size and content type — and removes it if it is not what the
          * URL authorised. See UploadService for why the size cannot be bounded
          * any earlier.
+         *
+         * It also files the object, which is why what comes back is used below
+         * rather than what was asked with: the key in the request is where the
+         * file waited to be checked, and {@code metadata.key()} is where it now
+         * lives. Storing the former would leave the row pointing at an object
+         * the confirmation has just removed.
          */
         ObjectMetadata metadata =
                 uploadService.confirmUpload(request.getStorageKey(), request.getContentType());
 
+        String storageKey = metadata.key();
+
         if (request.getDocumentType() == BondDocumentType.LOGO) {
-            replaceExistingLogo(bond, request.getStorageKey());
+            replaceExistingLogo(bond, storageKey);
         }
 
         User admin = userService.getUser(adminId);
@@ -205,7 +222,7 @@ public class BondDocumentService {
                 .bond(bond)
                 .documentType(request.getDocumentType())
                 .fileName(request.getFileName().trim())
-                .storageKey(request.getStorageKey())
+                .storageKey(storageKey)
                 .contentType(metadata.contentType())
                 .sizeBytes(metadata.size())
                 .uploadedBy(admin)
@@ -399,13 +416,20 @@ public class BondDocumentService {
      * confirm a key belonging to another — and, for a logo, make it that bond's
      * public image — or attach an object to a bond that never uploaded it.</p>
      *
+     * <p>Asked of {@code UploadService} rather than composed here out of the
+     * prefix, because a key it would accept is a narrower thing than a key
+     * beginning with the bond's folder: it has to be an upload that is still
+     * waiting to be confirmed, which is what stops this check drifting from the
+     * one the confirmation itself makes. The bond half of the rule — that the
+     * folder is <em>this</em> bond's — is the part this class owns.</p>
+     *
      * @throws BadRequestException rather than a storage type, because the
      *         mismatch is this module's rule about its own bonds rather than
      *         anything the store objected to
      */
-    private static void requireKeyIssuedFor(String prefix, String storageKey) {
+    private void requireKeyIssuedFor(String prefix, String storageKey) {
 
-        if (storageKey.startsWith(prefix + "/")) {
+        if (uploadService.isPendingKeyFor(prefix, storageKey)) {
             return;
         }
 

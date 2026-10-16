@@ -44,6 +44,40 @@ public interface ObjectStore {
     StoredObject put(String key, byte[] content, String contentType);
 
     /**
+     * Copies an object to another key, in the provider rather than through this
+     * application.
+     *
+     * <p>Added for one caller and one purpose: moving an upload from the key it
+     * was written to while unconfirmed, to the key it will live under once it
+     * has been checked. That move has to be a copy at the provider, because
+     * reading the bytes back to write them again would undo the point of the
+     * presigned upload — the object would pass through this application's heap
+     * after all, at up to the size limit — and because a copy is one operation
+     * the provider either completes or does not.</p>
+     *
+     * <p><strong>This replaces an object already at the destination</strong>,
+     * exactly as {@link #put} does, because a store that writes what it is told
+     * is the arrangement this interface exists for. Deciding that a destination
+     * may <em>not</em> be replaced is policy, and policy lives above the store:
+     * see {@code UploadService}, which checks the destination before copying
+     * precisely so that a confirmation can never overwrite a live object.</p>
+     *
+     * <p>The source is left in place. Whoever copies is responsible for removing
+     * it afterwards — and for that order: an interruption between the two leaves
+     * the object under both keys, which can be seen and cleaned up, where the
+     * reverse order would leave it under neither.</p>
+     *
+     * @param sourceKey      key of the object to copy from
+     * @param destinationKey key to copy it to, replacing anything there
+     * @param contentType    MIME type to store the copy as. Passed rather than
+     *                       carried over, so a copy cannot quietly lose or
+     *                       change the type the object was checked as
+     * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException
+     *         when the source is not readable or the copy could not be written
+     */
+    void copy(String sourceKey, String destinationKey, String contentType);
+
+    /**
      * Reads an object back.
      *
      * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException

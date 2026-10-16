@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.util.unit.DataSize;
 
 import lombok.Data;
+import lombok.ToString;
 
 /**
  * Configuration of the object store.
@@ -63,7 +64,17 @@ public class StorageProperties {
          */
         private String endpoint = "";
 
-        /** R2 API token access key id. */
+        /**
+         * R2 API token access key id.
+         *
+         * <p>Excluded from {@code toString} along with the secret below. It is
+         * not itself sensitive, but it is half of a credential pair and the
+         * {@code @Data} this class carries would otherwise print it — into a
+         * binding failure, a debugger's view of the bean, or any future
+         * {@code log.debug("{}", properties)} written by someone assuming a
+         * config object is safe to log.</p>
+         */
+        @ToString.Exclude
         private String accessKeyId = "";
 
         /**
@@ -74,7 +85,15 @@ public class StorageProperties {
          * variables, a shared profile, or an instance role — which is how a
          * deployment that does not want keys in its configuration supplies
          * them.</p>
+         *
+         * <p><strong>Excluded from {@code toString}.</strong> The generated
+         * form would print the secret verbatim, so a single log statement, a
+         * binding error, or a test that prints the bean would write a token with
+         * write access to the whole bucket. Lombok has no masking option, so the
+         * field is omitted rather than redacted; the accessor is unaffected and
+         * is how the store still reads it.</p>
          */
+        @ToString.Exclude
         private String secretAccessKey = "";
 
         /**

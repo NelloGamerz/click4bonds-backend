@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
+import com.click4bonds.app.Modules.Storage.Exception.StorageException;
 import com.click4bonds.app.Modules.Storage.Exception.UploadRejectedException;
 import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
 
@@ -57,6 +58,32 @@ import lombok.extern.slf4j.Slf4j;
  *       has verified that what landed is what was authorised.</li>
  * </ol>
  *
+ * <h2>An upload lands somewhere temporary, and is moved only once it is trusted</h2>
+ *
+ * <p>Every key this class issues begins with {@value #PENDING} — an upload goes
+ * to {@code pending/<prefix>/<year>/<month>/<uuid>.<ext>} — and
+ * {@link #confirmUpload} copies it to the same key with that marker removed
+ * once, and only once, it has been read back and found to be what was
+ * authorised. Confirming is what makes a file permanent, and the pending
+ * namespace is what makes the reverse impossible.</p>
+ *
+ * <p>The reason is the confirmation's own cleanup. A refusal has to remove what
+ * arrived — see {@link #confirmUpload} — and the key it is asked to remove is
+ * one a client reports back. Naming a permanent object's key to that call would
+ * otherwise be a way to delete it: an existing document, a generated letter,
+ * another upload. Requiring the key to be a pending key this service could have
+ * derived means the removal can only ever reach an object that arrived through
+ * this flow moments ago and has never been referenced by anything. The bucket's
+ * permanent half is not addressable from here at all.</p>
+ *
+ * <p>Promotion is a copy rather than an edit of the stored key, so the
+ * permanent key exists only after everything has been checked, and a
+ * confirmation that fails at any point leaves the permanent half of the bucket
+ * exactly as it found it — never with an object deleted, and never with one
+ * overwritten. A pending object that is never confirmed — an abandoned upload, a
+ * closed browser — is unreferenced by construction and can be swept by prefix;
+ * nothing lists or serves one.</p>
+ *
  * <h2>What is trusted where</h2>
  *
  * <p>The key and the content type are decided by this application and signed
@@ -65,7 +92,8 @@ import lombok.extern.slf4j.Slf4j;
  * thing a client genuinely controls, because a signed {@code PUT} cannot bind
  * the length of its body; it is therefore the one thing checked by reading the
  * result rather than by constraining the request. {@link #confirmUpload}
- * removes an object that fails, so a refused upload leaves nothing behind.</p>
+ * removes a pending object that fails, so a refused upload leaves nothing
+ * behind.</p>
  *
  * <p>This class does not re-expose reading or deleting. Those are
  * {@code ObjectStore}'s, and a caller that needs them — to serve the file back,
@@ -81,6 +109,19 @@ import lombok.extern.slf4j.Slf4j;
 public class UploadService {
 
     /**
+     * The first segment of every key this class issues: where an upload lives
+     * between arriving and being confirmed.
+     *
+     * <p>Reserved, and named once here, because two separate things turn on it.
+     * {@link #confirmUpload} will act on nothing else, which is what keeps a
+     * permanent object out of reach of the cleanup a refusal performs; and a
+     * caller's prefix may not begin with it, which is what stops a caller
+     * creating a folder whose contents would be indistinguishable from an
+     * unconfirmed upload.</p>
+     */
+    static final String PENDING = "pending";
+
+    /**
      * A prefix is a path, and every segment of it must be one this module would
      * have written itself. Anything else — a leading slash, a parent segment, a
      * character that means something to a filesystem or a URL — is a caller
@@ -88,6 +129,24 @@ public class UploadService {
      */
     private static final Pattern SAFE_PREFIX =
             Pattern.compile("[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*");
+
+    /**
+     * The shape of a key this class derives, without the {@value #PENDING}
+     * marker: a prefix, the month the upload arrived, and a random identifier
+     * carrying the extension of the type it was authorised as.
+     *
+     * <p>Checked rather than assumed at confirmation. The key is the one part
+     * of a confirmation a client supplies, and this is what decides whether it
+     * names a pending object at all — so it is matched against the exact shape
+     * {@link #deriveKey} produces rather than against a loose "does it start
+     * with the marker".</p>
+     */
+    private static final Pattern DERIVED_KEY = Pattern.compile(
+            "([A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*)"
+                    + "/[0-9]{4}/[0-9]{2}/"
+                    + "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}"
+                    + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+                    + "\\.[a-z0-9]+");
 
     /**
      * The extensions objects are stored under, by content type.
@@ -120,9 +179,12 @@ public class UploadService {
     /**
      * An upload the client has been authorised to perform.
      *
-     * @param key         where the object will be stored. Derived here, and the
-     *                    client has no influence over it — it is returned so
-     *                    the caller can record it before the upload happens
+     * @param key         where the object will be stored <em>until it is
+     *                    confirmed</em>: a pending key, beginning with
+     *                    {@value #PENDING}. Derived here, and the client has no
+     *                    influence over it — it is returned so the caller can
+     *                    report it back to {@link #confirmUpload}, which is the
+     *                    only thing that moves the object to its permanent key
      * @param url         the signed URL to {@code PUT} the file to
      * @param contentType the type the upload is authorised as. <strong>The
      *                    client must send this as the {@code Content-Type}
@@ -165,6 +227,10 @@ public class UploadService {
      * key is derived rather than accepted — which is what stops a client
      * choosing a key that overwrites something else, and what makes the result
      * of an upload unguessable from outside.</p>
+     *
+     * <p>The key is a <em>pending</em> key: what the URL writes to is not where
+     * the file ends up. {@link #confirmUpload} is what moves it, once it has
+     * been checked. See the class javadoc for why the two are separate keys.</p>
      *
      * @param prefix     where in the bucket the file belongs, e.g. {@code kyc}.
      *                   Chosen by the calling module, not by a request; a value
@@ -234,26 +300,65 @@ public class UploadService {
     }
 
     /**
-     * Checks what actually landed under a key, and removes it if it should not
-     * have.
+     * Whether a key is one this service issued for a prefix and has not yet
+     * promoted — the only kind of key {@link #confirmUpload} will act on.
+     *
+     * <p>For a caller that has to make a rule of its own about which uploads are
+     * <em>its</em> before confirming one. {@code BondDocumentService} is the
+     * case: it will only confirm a key filed under the bond being edited, which
+     * is a fact about bonds that this class cannot know — but the shape of a key
+     * this class could have issued is a fact about keys, and this is where that
+     * is decided rather than in every caller that needs it.</p>
+     *
+     * <p>Composed from the same check the confirmation itself makes, so a caller
+     * cannot accept a key that {@link #confirmUpload} would then refuse — and,
+     * more to the point, cannot refuse one it would accept.</p>
+     *
+     * @param prefix the prefix the upload was authorised under, as passed to
+     *               {@link #presignUpload}
+     * @param key    the key from a confirmation request. Anything is accepted
+     *               here, including null and a key belonging to a permanent
+     *               object: the answer is simply false
+     * @return true when the key is a pending key this service could have derived
+     *         under that prefix
+     */
+    public boolean isPendingKeyFor(String prefix, String key) {
+
+        return pendingTarget(key)
+                .filter(target -> target.startsWith(prefix + "/"))
+                .isPresent();
+    }
+
+    /**
+     * Checks what actually landed under a key, removes it if it should not have,
+     * and promotes it to a permanent key if it should.
      *
      * <p>The step that makes the size limit real. What the client claimed
      * before uploading is not evidence; this reads the object's own metadata —
      * the provider's record of what it accepted — and compares it against the
      * type that was authorised and the size that is allowed.</p>
      *
-     * <p>An object that fails is <strong>deleted before the exception is
+     * <p>Only a pending key is considered, and this is the property the whole
+     * class is arranged around: the key comes from a request, the refusal path
+     * removes it, and a key naming a permanent object would make that removal a
+     * way to delete a document that is already in use. See the class javadoc.
+     * A key that is not a pending key this service could have derived is refused
+     * before the store is read at all, so no request can probe or reach the
+     * permanent half of the bucket through here.</p>
+     *
+     * <p>An object that fails is <strong>removed before the exception is
      * thrown</strong>. Leaving it would mean the bucket accumulates every
      * oversized file a client ever sent while the application reports that it
      * accepted none, and — worse — the object would still be readable by
      * anyone holding its URL. Deleting it first means a rejection leaves the
-     * bucket as it was.</p>
+     * bucket as it was. The removal reaches only the pending object, which
+     * nothing has ever referenced, so this cannot lose data.</p>
      *
-     * <p>Failure to delete is logged and does not replace the rejection: the
+     * <p>Failure to remove is logged and does not replace the rejection: the
      * caller still needs to be told their upload was refused, and telling them
      * "the cleanup also failed" would bury the reason they can act on.</p>
      *
-     * @param key                 the key from
+     * @param key                 the pending key from
      *                            {@link #presignUpload} — the client reports
      *                            this back, which is safe because a wrong key
      *                            only fails to find an object
@@ -263,17 +368,24 @@ public class UploadService {
      *                            the two should always agree, and a
      *                            disagreement means something other than this
      *                            flow wrote the object
-     * @return the object's metadata, as the provider reports it, for the caller
-     *         to record
-     * @throws UploadRejectedException when nothing was uploaded under the key,
-     *                                 or what was uploaded is not what was
-     *                                 authorised
+     * @return the object's metadata as the provider reports it <em>at its new
+     *         key</em>: {@code key()} is where the object now lives, which is
+     *         what a caller must record. Recording the key that was passed in
+     *         would store a reference to an object this method has just removed
+     * @throws UploadRejectedException when the key is not a pending key this
+     *                                 service could have issued, when nothing
+     *                                 was uploaded under it, or when what was
+     *                                 uploaded is not what was authorised
      * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException
-     *         when the store could not be read
+     *         when the store could not be read, or the object could not be
+     *         promoted — the upload is then still under its pending key and the
+     *         call can be repeated
      */
     public ObjectMetadata confirmUpload(String key, String expectedContentType) {
 
         String expected = normalizeContentType(expectedContentType);
+
+        String permanentKey = pendingKeyTarget(key);
 
         Optional<ObjectMetadata> stored = objectStore.stat(key);
 
@@ -285,6 +397,10 @@ public class UploadService {
              * file that failed to read. Worded as the client's problem because
              * it is not the application's — nothing arrives here until the
              * client says it has finished.
+             *
+             * Also what a repeated confirmation finds: the first one promoted
+             * the object and removed the pending key, so there is nothing here
+             * to promote a second time.
              */
             throw new UploadRejectedException(
                     "No upload was found under key " + key
@@ -321,22 +437,229 @@ public class UploadService {
             throw rejected;
         }
 
-        log.info(
-                "Upload confirmed: key={} contentType={} size={}",
-                key,
-                actual,
-                metadata.size());
+        ObjectMetadata promoted = promote(key, permanentKey, actual);
 
-        return metadata;
+        log.info(
+                "Upload confirmed: key={} pendingKey={} contentType={} size={}",
+                promoted.key(),
+                key,
+                promoted.contentType(),
+                promoted.size());
+
+        return promoted;
+    }
+
+    /**
+     * Moves a checked upload from the key it arrived under to the key it will
+     * live under.
+     *
+     * <p>The order is copy, verify, then remove the source, and each step is
+     * there for what it leaves behind if it does not finish. A copy that fails
+     * leaves the upload under its pending key and nothing at the destination. A
+     * removal that fails leaves it under both, which is visible and harmless. The
+     * reverse order would leave it under neither, and the upload would be gone
+     * with nothing having been recorded.</p>
+     *
+     * <p>Nothing here deletes or overwrites anything that already exists at the
+     * destination. If something is there the promotion is refused outright rather
+     * than resolved — an object that already occupies the key is a live one, and
+     * deciding which of the two should survive is not a decision this flow is
+     * entitled to make.</p>
+     *
+     * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException
+     *         when the copy or the verification could not be completed. The
+     *         pending object is deliberately left in place: nothing was lost, and
+     *         the client repeating the confirmation is what finishes the job
+     */
+    private ObjectMetadata promote(
+            String pendingKey,
+            String permanentKey,
+            String contentType) {
+
+        if (objectStore.exists(permanentKey)) {
+
+            /*
+             * Refused, and the pending object removed, because it can never be
+             * filed: its permanent key is taken. Reaching this at all means
+             * either the key was already promoted by an earlier confirmation
+             * whose source removal failed — a retry, which is correctly refused
+             * — or two uploads derived the same key, which the random part makes
+             * impossible. Either way nothing that exists is touched.
+             */
+            UploadRejectedException occupied = new UploadRejectedException(
+                    "An object already exists at " + permanentKey
+                            + ", so this upload cannot be filed there. Nothing was overwritten.");
+
+            discard(pendingKey, occupied);
+
+            throw occupied;
+        }
+
+        try {
+
+            objectStore.copy(pendingKey, permanentKey, contentType);
+
+        } catch (RuntimeException failure) {
+
+            /*
+             * Thrown as a store failure rather than as a refusal, and the
+             * pending object is not removed: the upload is intact and correct,
+             * the store would not take it, and a repeated confirmation is the
+             * remedy that works. Reporting it as a refusal would tell the client
+             * to send the file again for no reason, and removing the object
+             * would make that the only option.
+             */
+            log.error(
+                    "An upload could not be promoted and is still pending: pendingKey={} "
+                            + "permanentKey={}",
+                    pendingKey,
+                    permanentKey,
+                    failure);
+
+            throw new StorageException(
+                    "The upload under key " + pendingKey + " could not be filed under "
+                            + permanentKey + ". It has not been lost; confirm it again.",
+                    failure);
+        }
+
+        Optional<ObjectMetadata> promoted = objectStore.stat(permanentKey);
+
+        if (promoted.isEmpty()) {
+
+            /*
+             * The copy reported success and the object is not there. Rare, and
+             * not something to paper over by recording the metadata read from
+             * the pending key: the caller is about to write a row describing an
+             * object at a key that does not have one.
+             *
+             * Left pending, for the same reason as a failed copy.
+             */
+            throw new StorageException(
+                    "The upload under key " + pendingKey + " was copied to " + permanentKey
+                            + " but could not be read back. It has not been lost; confirm it again.");
+        }
+
+        removePending(pendingKey, permanentKey);
+
+        return promoted.get();
+    }
+
+    /**
+     * Removes the pending object a successful promotion has superseded.
+     *
+     * <p>Never fatal. The object the caller is about to record is already
+     * stored and verified; failing the confirmation over a leftover duplicate
+     * would mean telling the client their upload could not be filed when it has
+     * been, and the row that was about to be written would not exist. A
+     * remaining pending object is unreferenced, unreachable from anything that
+     * lists or serves, and removable by prefix.</p>
+     */
+    private void removePending(String pendingKey, String permanentKey) {
+
+        try {
+
+            objectStore.delete(pendingKey);
+
+        } catch (RuntimeException cleanupFailure) {
+
+            log.error(
+                    "A promoted upload is still present under its pending key: pendingKey={} "
+                            + "permanentKey={}",
+                    pendingKey,
+                    permanentKey,
+                    cleanupFailure);
+        }
+    }
+
+    /**
+     * The key a pending key would be promoted to.
+     *
+     * <p>The pending key with its marker removed, which is why the marker is a
+     * leading segment rather than a suffix or a tag: promotion becomes the
+     * removal of one fixed part, and everything a key is for — the folder a
+     * caller chose, the month, the identifier, the extension of the authorised
+     * type — is carried across unchanged. It also means the promoted key cannot
+     * collide with a key this flow derives, since none of those begin with the
+     * marker.</p>
+     *
+     * @throws UploadRejectedException rather than returning empty, for the one
+     *         caller that has nothing sensible to do with "no": a confirmation
+     *         of a key that is not a pending key is an upload that needs to be
+     *         sent again, not an internal condition to branch on
+     */
+    private static String pendingKeyTarget(String key) {
+
+        return pendingTarget(key).orElseThrow(() -> new UploadRejectedException(
+                "That is not an upload waiting to be confirmed, so there is nothing to "
+                        + "confirm. Ask for an upload URL and send the file to it."));
+    }
+
+    /**
+     * The key a pending key would be promoted to, or empty when the value is not
+     * a pending key this class could have derived.
+     *
+     * <p>Structural, and deliberately strict. What is being established is that
+     * the key names an object this flow wrote a moment ago and nothing else has
+     * referenced — so "starts with the marker" is not enough on its own: the
+     * remainder has to be the shape {@link #deriveKey} produces, and it has to
+     * still be free of the marker, or the promoted key would itself look pending
+     * and could be reached by a later confirmation.</p>
+     */
+    private static Optional<String> pendingTarget(String key) {
+
+        if (!StringUtils.hasText(key) || !key.startsWith(PENDING + "/")) {
+            return Optional.empty();
+        }
+
+        String target = key.substring(PENDING.length() + 1);
+
+        if (!DERIVED_KEY.matcher(target).matches()) {
+            return Optional.empty();
+        }
+
+        /*
+         * "." and ".." are inside the character set DERIVED_KEY accepts, and
+         * both mean a directory rather than a folder name. The store refuses a
+         * key containing a parent segment, so this is not the only guard — but a
+         * prefix names a folder, and a prefix that is a directory is not the
+         * shape this class derives.
+         */
+        for (String segment : target.split("/")) {
+
+            if (segment.equals(".") || segment.equals("..")) {
+                return Optional.empty();
+            }
+        }
+
+        /*
+         * A key which, marker removed, still begins with the marker. Excluded so
+         * that nothing this flow promotes can be addressed by it again: a
+         * permanent key beginning with the marker would be indistinguishable
+         * from an unconfirmed upload, and the next confirmation that named it
+         * could remove it. Prefixes beginning with the marker are refused at
+         * presign time for the same reason — this is the check that holds even
+         * if one is not.
+         */
+        if (target.startsWith(PENDING + "/")) {
+            return Optional.empty();
+        }
+
+        return Optional.of(target);
     }
 
     /**
      * Removes an object that arrived under a URL this module signed.
      *
-     * <p>Only called from a rejection path today. Kept as a method because the
-     * deletion and the reason for it are one decision, and because the logging
-     * that surrounds it — which failure must not be allowed to mask which — is
-     * the part that is easy to get wrong inline.</p>
+     * <p>Only called from a rejection path, and only ever with a pending key —
+     * which is what makes removing an object on a code path a client can reach
+     * safe to do at all. The object has never been referenced by anything: the
+     * row, the letter, the record that would point at it is exactly what the
+     * rejection prevented from being written. See the class javadoc.</p>
+     *
+     * <p>Kept as a method because the deletion and the reason for it are one
+     * decision, and because the logging that surrounds it — which failure must
+     * not be allowed to mask which — is the part that is easy to get wrong
+     * inline.</p>
      */
     private void discard(String key, UploadRejectedException rejected) {
 
@@ -382,7 +705,9 @@ public class UploadService {
      */
     private String deriveKey(String prefix, String contentType) {
 
-        return prefix
+        return PENDING
+                + "/"
+                + prefix
                 + "/"
                 + LocalDate.now().format(MONTH_PREFIX)
                 + "/"
@@ -510,6 +835,25 @@ public class UploadService {
                 throw new IllegalArgumentException(
                         "An upload prefix must not contain a current or parent segment: " + prefix);
             }
+
+        }
+
+        /*
+         * A prefix beginning with the pending marker would be a caller creating
+         * a folder whose contents look exactly like unconfirmed uploads — and,
+         * worse, whose permanent keys would still begin with the marker
+         * themselves, putting objects this flow treats as temporary into the
+         * namespace it treats as temporary.
+         *
+         * Only the first segment matters: the marker is a marker only at the
+         * front of a key, so a folder named "pending" further along is an
+         * ordinary folder name.
+         */
+        if (prefix.equals(PENDING) || prefix.startsWith(PENDING + "/")) {
+
+            throw new IllegalArgumentException(
+                    "An upload prefix must not begin with the reserved segment '"
+                            + PENDING + "': " + prefix);
         }
 
         return prefix;

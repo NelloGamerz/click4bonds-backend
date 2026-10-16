@@ -141,6 +141,54 @@ class StoragePropertiesTest {
         });
     }
 
+    /**
+     * The credentials must not reach anything that prints this bean.
+     *
+     * <p>{@code @Data} generates a {@code toString} over every field, so a
+     * binding failure, a debugger's object view, a test that prints the bean or
+     * a future {@code log.debug("{}", properties)} would write the R2 secret —
+     * a token with write access to every object in the bucket — alongside the
+     * endpoint it belongs to.</p>
+     *
+     * <p>Asserted on the values rather than on the field names, because the
+     * property under test is that the secret is absent, not how Lombok chose to
+     * omit it. Asserted on the nested object as well as the bean: both carry
+     * {@code @Data}, so excluding the field on one would leave the other
+     * printing it.</p>
+     */
+    @Test
+    void doesNotPrintCredentialsInToString() {
+
+        runner.withPropertyValues(
+                        "storage.r2.endpoint=https://abc123.r2.cloudflarestorage.com",
+                        "storage.r2.access-key-id=an-access-key",
+                        "storage.r2.secret-access-key=a-secret-that-must-not-be-printed",
+                        "storage.r2.bucket=click4bonds-documents")
+                .run(context -> {
+
+                    StorageProperties properties =
+                            context.getBean(StorageProperties.class);
+
+                    assertThat(properties.toString())
+                            .doesNotContain("a-secret-that-must-not-be-printed")
+                            .doesNotContain("an-access-key");
+
+                    assertThat(properties.getR2().toString())
+                            .doesNotContain("a-secret-that-must-not-be-printed")
+                            .doesNotContain("an-access-key");
+
+                    /*
+                     * And the exclusions did not swallow the object: what a
+                     * person reading a binding failure actually needs — which
+                     * endpoint and bucket the deployment was pointed at — is
+                     * still there.
+                     */
+                    assertThat(properties.getR2().toString())
+                            .contains("https://abc123.r2.cloudflarestorage.com")
+                            .contains("click4bonds-documents");
+                });
+    }
+
     @Configuration(proxyBeanMethods = false)
     @EnableConfigurationProperties(StorageProperties.class)
     static class Binding {
