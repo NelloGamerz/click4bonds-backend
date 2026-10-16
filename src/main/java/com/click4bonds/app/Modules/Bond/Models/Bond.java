@@ -365,6 +365,32 @@ public class Bond {
     private Boolean isFlashNews = false;
 
     // =========================
+    // BRANDING
+    // =========================
+
+    /**
+     * Object-store key of this bond's logo, or null when it has none.
+     *
+     * <p>A key rather than an address, like every other stored object this
+     * application keeps. An address carries the endpoint and bucket that built
+     * it, so recording one would pin this row to a host that changes and would
+     * be meaningless if the bucket were ever fronted by a different domain; a
+     * key keeps meaning the same thing until the object is deleted.</p>
+     *
+     * <p><strong>Mirrored from a document row, and it has one writer.</strong>
+     * The logo is stored as a {@link com.click4bonds.app.Modules.Bond.Models.BondDocument}
+     * of type {@code LOGO}, and {@code BondDocumentService} is the only thing
+     * that sets or clears this field — when such a document is confirmed, and
+     * when it is deleted. Nothing else writes it, so the two cannot drift.</p>
+     *
+     * <p>It is duplicated here rather than read through the document table for
+     * one reason: the catalogue shows a logo on every card, and a listing of
+     * twenty bonds must not issue twenty more queries to find twenty keys.</p>
+     */
+    @Column(name = "logo_key", length = 512)
+    private String logoKey;
+
+    // =========================
     // AUDIT
     // =========================
 

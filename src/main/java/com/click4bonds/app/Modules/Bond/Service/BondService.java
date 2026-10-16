@@ -980,7 +980,31 @@ public class BondService {
                                 bond.getPrice(),
                                 bond.getLotSize()))
 
+                .logoUrl(
+                        logoUrl(bond))
+
                 .build();
+    }
+
+    /**
+     * Where the bond's logo can be fetched, or null when it has none.
+     *
+     * <p>Answers the application's own endpoint rather than the stored key. The
+     * key names an object in a private bucket, so a reader could not fetch it;
+     * this endpoint mints a fresh signed URL per request and so does not expire
+     * out from under a page that has been open for a while. The key itself
+     * stays on the entity, where it belongs — see {@link Bond#getLogoKey()}.</p>
+     *
+     * <p>Built from the bond's own ISIN rather than from anything the caller
+     * sent, so the value is always one this application would route.</p>
+     */
+    private static String logoUrl(Bond bond) {
+
+        if (bond.getLogoKey() == null || bond.getLogoKey().isBlank()) {
+            return null;
+        }
+
+        return "/api/bonds/" + bond.getIsin() + "/logo";
     }
 
     /**
@@ -1129,6 +1153,9 @@ public class BondService {
 
                 .isFlashNews(
                         bond.getIsFlashNews())
+
+                .logoUrl(
+                        logoUrl(bond))
 
                 .remainingQuantity(
                         bond.getRemainingQuantity())

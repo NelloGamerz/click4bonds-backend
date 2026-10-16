@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,9 +21,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
 import com.click4bonds.app.Modules.Storage.Exception.StorageException;
+import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
 import com.click4bonds.app.Modules.Storage.Model.StoredObject;
 
 import software.amazon.awssdk.core.ResponseInputStream;
@@ -241,6 +244,139 @@ class R2ObjectStoreTest {
 
         assertThatThrownBy(() -> store(configured()).presignedGetUrl(KEY, Duration.ZERO))
                 .isInstanceOf(StorageException.class);
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Presigned uploads
+     * ------------------------------------------------------------------ */
+
+    @Test
+    void signsAnUploadForTheBucketKeyAndContentType() {
+
+        /*
+         * Signed by a real presigner rather than a mock, because what is being
+         * checked is the signature — the store signs locally, so this needs no
+         * bucket and no network.
+         */
+        String url = store(configured())
+                .presignedPutUrl(KEY, CONTENT_TYPE, Duration.ofMinutes(15))
+                .toString();
+
+        assertThat(url).contains(BUCKET);
+        assertThat(url).contains(KEY);
+        assertThat(url).contains("X-Amz-Signature");
+    }
+
+    @Test
+    void bindsTheContentTypeIntoTheUploadSignature() {
+
+        /*
+         * The reason presignedPutUrl takes a content type at all. Signing it
+         * turns "the client promised this is a PDF" into a constraint the bucket
+         * enforces: a request that sends a different Content-Type is rejected,
+         * so a URL issued for a PDF cannot be used to store something else.
+         * Without this the allow-list would be advice rather than a control.
+         */
+        String url = store(configured())
+                .presignedPutUrl(KEY, CONTENT_TYPE, Duration.ofMinutes(15))
+                .toString();
+
+        String signedHeaders = UriComponentsBuilder
+                .fromUriString(url)
+                .build()
+                .getQueryParams()
+                .getFirst("X-Amz-SignedHeaders");
+
+        assertThat(signedHeaders).contains("content-type");
+    }
+
+    @Test
+    void refusesAnUploadWithoutAContentType() {
+
+        /*
+         * A URL signed with no content type would let the client store anything
+         * under it, which defeats the only constraint an upload URL carries.
+         */
+        assertThatThrownBy(() -> store(configured())
+                .presignedPutUrl(KEY, "  ", Duration.ofMinutes(15)))
+                .isInstanceOf(StorageException.class)
+                .hasMessageContaining("content type");
+    }
+
+    @Test
+    void refusesANonPositiveUploadLifetime() {
+
+        assertThatThrownBy(() -> store(configured())
+                .presignedPutUrl(KEY, CONTENT_TYPE, Duration.ofSeconds(-1)))
+                .isInstanceOf(StorageException.class);
+    }
+
+    /* ------------------------------------------------------------------ *
+     * Metadata
+     * ------------------------------------------------------------------ */
+
+    @Test
+    void reportsWhatTheProviderStored() {
+
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder()
+                        .contentType(CONTENT_TYPE)
+                        .contentLength(1234L)
+                        .eTag("an-etag")
+                        .lastModified(Instant.parse("2026-10-16T09:00:00Z"))
+                        .build());
+
+        ObjectMetadata metadata = store(configured()).stat(KEY).orElseThrow();
+
+        assertThat(metadata.key()).isEqualTo(KEY);
+        assertThat(metadata.contentType()).isEqualTo(CONTENT_TYPE);
+        assertThat(metadata.size()).isEqualTo(1234L);
+        assertThat(metadata.etag()).isEqualTo("an-etag");
+        assertThat(metadata.lastModified()).isEqualTo(Instant.parse("2026-10-16T09:00:00Z"));
+    }
+
+    @Test
+    void reportsAMissingObjectAsEmptyRatherThanFailing() {
+
+        /*
+         * The same reasoning as exists(): a missing object is an answer. The
+         * caller distinguishes it from a failure without catching anything,
+         * which is what lets a confirmation say "nothing was uploaded" instead
+         * of "the bucket is down" — two situations with different remedies.
+         */
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(NoSuchKeyException.builder().statusCode(404).build());
+
+        assertThat(store(configured()).stat(KEY)).isEmpty();
+    }
+
+    @Test
+    void reportsAFailedMetadataReadAsAFailure() {
+
+        /*
+         * Not as "absent". A caller that reads an unreachable bucket as "the
+         * upload never happened" would tell a client to send a file that is
+         * already there.
+         */
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenThrow(S3Exception.builder().statusCode(500).message("boom").build());
+
+        assertThatThrownBy(() -> store(configured()).stat(KEY))
+                .isInstanceOf(StorageException.class);
+    }
+
+    @Test
+    void survivesAProviderReplyWithNoLength() {
+
+        /*
+         * contentLength is a boxed Long, so an absent header would unbox to a
+         * NullPointerException. R2 always sends Content-Length for a HEAD, but a
+         * metadata read is not the place to find out otherwise.
+         */
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder().contentType(CONTENT_TYPE).build());
+
+        assertThat(store(configured()).stat(KEY).orElseThrow().size()).isZero();
     }
 
     /* ------------------------------------------------------------------ *

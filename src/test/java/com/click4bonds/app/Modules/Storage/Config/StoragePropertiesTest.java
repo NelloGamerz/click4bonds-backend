@@ -70,6 +70,60 @@ class StoragePropertiesTest {
     }
 
     @Test
+    void bindsTheUploadPolicy() {
+
+        runner.withPropertyValues(
+                        "storage.r2.presigned-upload-ttl=3m",
+                        "storage.r2.presigned-download-ttl=90s",
+                        "storage.r2.max-upload-size=5MB",
+                        "storage.r2.allowed-content-types[0]=application/pdf",
+                        "storage.r2.allowed-content-types[1]=image/png")
+                .run(context -> {
+
+                    StorageProperties.R2 r2 =
+                            context.getBean(StorageProperties.class).getR2();
+
+                    assertThat(r2.getPresignedUploadTtl()).isEqualTo(Duration.ofMinutes(3));
+                    assertThat(r2.getPresignedDownloadTtl()).isEqualTo(Duration.ofSeconds(90));
+                    assertThat(r2.getMaxUploadSize().toBytes()).isEqualTo(5L * 1024 * 1024);
+                    assertThat(r2.getAllowedContentTypes())
+                            .containsExactly("application/pdf", "image/png");
+                });
+    }
+
+    @Test
+    void defaultsToAUsableUploadPolicy() {
+
+        runner.run(context -> {
+
+            StorageProperties.R2 r2 = context.getBean(StorageProperties.class).getR2();
+
+            /*
+             * A presigned URL is handed to a browser, and anyone holding it has
+             * the access it grants until it expires — so the defaults are short.
+             * Uploads get the longer window because the person on the other end
+             * has to find a file and send it; a download starts as soon as the
+             * URL is issued.
+             */
+            assertThat(r2.getPresignedUploadTtl()).isEqualTo(Duration.ofMinutes(15));
+            assertThat(r2.getPresignedDownloadTtl()).isEqualTo(Duration.ofMinutes(5));
+
+            assertThat(r2.getMaxUploadSize().toBytes()).isEqualTo(25L * 1024 * 1024);
+
+            /*
+             * The document types this platform publishes. A replacement list
+             * rather than an extension of these: this is the whole policy, and a
+             * deployment that wants something else states what it wants.
+             */
+            assertThat(r2.getAllowedContentTypes()).containsExactly(
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    "image/png",
+                    "image/jpeg");
+        });
+    }
+
+    @Test
     void leavesCredentialsBlankWhenNothingIsConfigured() {
 
         runner.run(context -> {

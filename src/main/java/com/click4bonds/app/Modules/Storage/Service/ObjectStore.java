@@ -2,7 +2,9 @@ package com.click4bonds.app.Modules.Storage.Service;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.Optional;
 
+import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
 import com.click4bonds.app.Modules.Storage.Model.StoredObject;
 
 /**
@@ -55,6 +57,27 @@ public interface ObjectStore {
      *         when the store could not be reached to ask
      */
     boolean exists(String key);
+
+    /**
+     * What the store holds under this key, as the store reports it.
+     *
+     * <p>Where {@link #exists} answers only whether there is something there,
+     * this answers what: the size and content type actually stored, and when it
+     * was written. That matters for objects this application did not write —
+     * an upload that went straight from a client to the bucket, whose size is
+     * therefore the provider's word and not ours to assume.</p>
+     *
+     * <p>Absence is returned as empty rather than thrown, for the same reason
+     * {@link #exists} answers {@code false} instead of failing: a missing object
+     * is an answer. The provider failing to answer is not, and throws.</p>
+     *
+     * @return the object's metadata, or empty when nothing is stored under this
+     *         key
+     * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException
+     *         when the store could not be reached, or answered with something
+     *         other than the object's metadata or a missing-object error
+     */
+    Optional<ObjectMetadata> stat(String key);
 
     /**
      * Removes an object. Removing one that is not there succeeds.
@@ -117,4 +140,39 @@ public interface ObjectStore {
      *         when the URL could not be signed
      */
     URI presignedGetUrl(String key, Duration ttl);
+
+    /**
+     * A URL that grants temporary write access to one object.
+     *
+     * <p>The mirror of {@link #presignedGetUrl}, and the reason a client can
+     * upload at all without the bucket being writable or the bytes passing
+     * through this application: the client {@code PUT}s the file straight to
+     * the provider against a URL that expires.</p>
+     *
+     * <p><strong>The content type is signed into the URL</strong>, so it is a
+     * constraint rather than a hint: the provider rejects a request that sends
+     * a different one, and the object cannot be stored under a type other than
+     * the one that was authorised. A caller is therefore not free to pass
+     * whatever it received from a client — see
+     * {@link com.click4bonds.app.Modules.Storage.Service.UploadService}, which
+     * decides what may be signed.</p>
+     *
+     * <p><strong>No size limit can be imposed here.</strong> Nothing in a
+     * signed {@code PUT} binds the length of the body, so the provider will
+     * accept an arbitrarily large object and the limit has to be enforced by
+     * reading the size back afterwards — the same read that
+     * {@link #stat} provides.</p>
+     *
+     * @param key         key of the object to grant write access to. Note that
+     *                    this grants replacement of an object already there, so
+     *                    a key taken from a request is a way to overwrite
+     *                    somebody else's object; callers must derive it.
+     * @param contentType MIME type the upload is authorised to store, signed
+     *                    into the URL
+     * @param ttl         how long the URL stays valid
+     * @return the signed URL
+     * @throws com.click4bonds.app.Modules.Storage.Exception.StorageException
+     *         when the URL could not be signed
+     */
+    URI presignedPutUrl(String key, String contentType, Duration ttl);
 }
