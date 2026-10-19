@@ -60,7 +60,7 @@ public class BondService {
      * before that when the response was reduced to summary fields — either way a
      * stale entry would fail to bind rather than merely carry extra keys.</p>
      */
-    private static final String BOND_CACHE_PREFIX = "bond:v4:get:";
+    private static final String BOND_CACHE_PREFIX = "bond:v5:get:";
 
     /**
      * How long a bond read by ISIN may be served from Redis.
@@ -1001,16 +1001,25 @@ public class BondService {
      * <p>Without that configuration it falls back to this application's own
      * endpoint, which redirects to a freshly signed URL. The key names an
      * object in a private bucket, so neither form can be built from the key
-     * alone. The key itself stays on the entity, where it belongs — see
-     * {@link Bond#getLogoKey()}.</p>
+     * alone.</p>
      *
-     * <p>The public form is built from the bond's stored key, and the fallback
-     * from its own ISIN, rather than from anything the caller sent, so the
-     * value is always one this application meant to expose.</p>
+     * <p>The logo belongs to the bond's <em>issuer</em>, not to the bond: every
+     * bond of one issuer shows the same image, so it is stored once on
+     * {@link com.click4bonds.app.Modules.Bond.Models.Issuer#getLogoKey()} and
+     * each bond response reads it from there. The read joins the issuer, and
+     * this method is the only thing the response takes from that join.</p>
+     *
+     * <p>The public form is built from the issuer's stored key, and the
+     * fallback from the bond's own ISIN, rather than from anything the caller
+     * sent, so the value is always one this application meant to expose.</p>
      */
     private String logoUrl(Bond bond) {
 
-        if (bond.getLogoKey() == null || bond.getLogoKey().isBlank()) {
+        String logoKey = bond.getIssuer() == null
+                ? null
+                : bond.getIssuer().getLogoKey();
+
+        if (logoKey == null || logoKey.isBlank()) {
             return null;
         }
 
@@ -1018,7 +1027,7 @@ public class BondService {
 
         if (publicBaseUrl != null && !publicBaseUrl.isBlank()) {
 
-            return joinUrl(publicBaseUrl, bond.getLogoKey());
+            return joinUrl(publicBaseUrl, logoKey);
         }
 
         return "/api/bonds/" + bond.getIsin() + "/logo";

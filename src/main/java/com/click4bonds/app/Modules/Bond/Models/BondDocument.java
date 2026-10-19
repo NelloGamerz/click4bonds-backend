@@ -36,7 +36,7 @@ import lombok.Setter;
  * database and out of every backup of it.</p>
  *
  * <p><strong>{@link #storageKey} is a key, not an address</strong>, matching
- * {@link Bond#getLogoKey()} and for the same reason: it names the object
+ * {@link Issuer#getLogoKey()} and for the same reason: it names the object
  * without pinning the row to whichever endpoint and bucket happened to be
  * configured when it was written. Reads and deletions resolve it against the
  * current configuration, and a mismatch fails loudly rather than fetching from

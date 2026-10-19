@@ -57,4 +57,13 @@ public interface BondDocumentRepository extends JpaRepository<BondDocument, UUID
 
     /** Removes every document of one type from a bond. Used to replace a logo. */
     void deleteByBond_IdAndDocumentType(UUID bondId, BondDocumentType documentType);
+
+    /**
+     * Removes every row naming one stored object.
+     *
+     * <p>Used when an issuer's logo is replaced: the old key may be recorded on
+     * a {@code LOGO} row belonging to any bond of that issuer, and those rows
+     * describe an object that has just been deleted.</p>
+     */
+    void deleteByStorageKey(String storageKey);
 }

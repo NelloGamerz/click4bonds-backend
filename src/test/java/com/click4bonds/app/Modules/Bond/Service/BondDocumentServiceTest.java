@@ -31,8 +31,10 @@ import com.click4bonds.app.Modules.Bond.Dto.PresignBondUploadResponse;
 import com.click4bonds.app.Modules.Bond.Enums.BondDocumentType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.BondDocument;
+import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondDocumentRepository;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
@@ -88,6 +90,9 @@ class BondDocumentServiceTest {
     private BondRepository bondRepository;
 
     @Mock
+    private IssuerRepository issuerRepository;
+
+    @Mock
     private BondService bondService;
 
     @Mock
@@ -103,21 +108,30 @@ class BondDocumentServiceTest {
 
     private Bond bond;
 
+    private Issuer issuer;
+
     @BeforeEach
     void setUp() {
 
         bondDocumentService = new BondDocumentService(
                 bondDocumentRepository,
                 bondRepository,
+                issuerRepository,
                 bondService,
                 userService,
                 uploadService,
                 objectStore);
 
+        issuer = Issuer.builder()
+                .id(UUID.randomUUID())
+                .name("An issuer")
+                .build();
+
         bond = Bond.builder()
                 .id(UUID.randomUUID())
                 .isin(ISIN)
                 .name("A bond")
+                .issuer(issuer)
                 .build();
 
         /*
@@ -346,9 +360,9 @@ class BondDocumentServiceTest {
          */
         assertThat(saved.getValue().getStorageKey()).isEqualTo(DOCUMENT_KEY);
 
-        /* A document is not a logo, so the mirror is untouched. */
-        assertThat(bond.getLogoKey()).isNull();
-        verify(bondRepository, never()).save(any(Bond.class));
+        /* A document is not a logo, so the issuer's mirror is untouched. */
+        assertThat(issuer.getLogoKey()).isNull();
+        verify(issuerRepository, never()).save(any(Issuer.class));
     }
 
     /* ------------------------------------------------------------------ *
@@ -399,10 +413,10 @@ class BondDocumentServiceTest {
         verify(objectStore).delete("bonds/" + LOWER_ISIN + "/logo/2025/01/old.png");
         verify(bondDocumentRepository).delete(previous);
 
-        /* And the bond now points at the new one — the promoted key, not the
+        /* And the issuer now points at the new one — the promoted key, not the
          * pending one the upload was sent to. */
-        assertThat(bond.getLogoKey()).isEqualTo(LOGO_KEY);
-        verify(bondRepository).save(bond);
+        assertThat(issuer.getLogoKey()).isEqualTo(LOGO_KEY);
+        verify(issuerRepository).save(issuer);
     }
 
     @Test
@@ -531,7 +545,7 @@ class BondDocumentServiceTest {
     @Test
     void redirectsTheLogoToASignedUrl() {
 
-        bond.setLogoKey(LOGO_KEY);
+        issuer.setLogoKey(LOGO_KEY);
 
         when(uploadService.presignDownload(LOGO_KEY)).thenReturn(
                 new UploadService.PresignedDownload(
@@ -592,9 +606,9 @@ class BondDocumentServiceTest {
         order.verify(objectStore).delete(DOCUMENT_KEY);
         order.verify(bondDocumentRepository).delete(document);
 
-        /* A document is not a logo, so the mirror is untouched. */
-        assertThat(bond.getLogoKey()).isNull();
-        verify(bondRepository, never()).save(any(Bond.class));
+        /* A document is not a logo, so the issuer's mirror is untouched. */
+        assertThat(issuer.getLogoKey()).isNull();
+        verify(issuerRepository, never()).save(any(Issuer.class));
     }
 
     @Test
@@ -602,7 +616,7 @@ class BondDocumentServiceTest {
 
         UUID documentId = UUID.randomUUID();
 
-        bond.setLogoKey(LOGO_KEY);
+        issuer.setLogoKey(LOGO_KEY);
 
         BondDocument document = BondDocument.builder()
                 .id(documentId)
@@ -623,8 +637,8 @@ class BondDocumentServiceTest {
          * Otherwise the catalogue would keep pointing at an object that is gone,
          * and every card would show a broken image.
          */
-        assertThat(bond.getLogoKey()).isNull();
-        verify(bondRepository).save(bond);
+        assertThat(issuer.getLogoKey()).isNull();
+        verify(issuerRepository).save(issuer);
     }
 
     private static ConfirmBondUploadRequest confirmRequest(
