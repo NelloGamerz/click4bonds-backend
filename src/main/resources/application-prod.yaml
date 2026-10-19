@@ -269,6 +269,10 @@ storage:
     access-key-id: ${R2_ACCESS_KEY_ID}
     secret-access-key: ${R2_SECRET_ACCESS_KEY}
     bucket: ${R2_BUCKET}
+    # Public custom domain in front of the bucket. The logo is served from here
+    # directly rather than through the API's redirect, so an <img> costs one
+    # edge request instead of two. Blank keeps the redirect endpoint.
+    public-base-url: ${R2_PUBLIC_BASE_URL:https://assets.clcik4bond.com}
     region: ${R2_REGION:auto}
 
     # Upload policy. Every one of these has a working default and none has to be
@@ -291,3 +295,6 @@ storage:
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
       - image/png
       - image/jpeg
+      - image/jpg
+      - image/webp
+      - image/svg+xml

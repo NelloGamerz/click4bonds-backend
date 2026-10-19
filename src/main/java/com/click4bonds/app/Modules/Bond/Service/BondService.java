@@ -38,6 +38,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.RedisOperationException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
+import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
 import com.click4bonds.app.Modules.User.Model.User;
 
 import lombok.RequiredArgsConstructor;
@@ -76,6 +77,7 @@ public class BondService {
     private final BondRequestMapper bondRequestMapper;
     private final BondValuationService bondValuationService;
     private final RedisService redisService;
+    private final StorageProperties storageProperties;
 
     // =========================================================
     // CREATE
@@ -989,22 +991,55 @@ public class BondService {
     /**
      * Where the bond's logo can be fetched, or null when it has none.
      *
-     * <p>Answers the application's own endpoint rather than the stored key. The
-     * key names an object in a private bucket, so a reader could not fetch it;
-     * this endpoint mints a fresh signed URL per request and so does not expire
-     * out from under a page that has been open for a while. The key itself
-     * stays on the entity, where it belongs — see {@link Bond#getLogoKey()}.</p>
+     * <p>When a public base URL is configured for the bucket, this is the
+     * absolute URL of the object on that custom domain — e.g.
+     * {@code https://assets.example.com/bonds/ine123a01011/logo/...png}. A
+     * browser fetches it straight from the bucket's edge, with no redirect
+     * through this application and no per-request signing, which is what makes
+     * a catalogue of cards cheap to render.</p>
      *
-     * <p>Built from the bond's own ISIN rather than from anything the caller
-     * sent, so the value is always one this application would route.</p>
+     * <p>Without that configuration it falls back to this application's own
+     * endpoint, which redirects to a freshly signed URL. The key names an
+     * object in a private bucket, so neither form can be built from the key
+     * alone. The key itself stays on the entity, where it belongs — see
+     * {@link Bond#getLogoKey()}.</p>
+     *
+     * <p>The public form is built from the bond's stored key, and the fallback
+     * from its own ISIN, rather than from anything the caller sent, so the
+     * value is always one this application meant to expose.</p>
      */
-    private static String logoUrl(Bond bond) {
+    private String logoUrl(Bond bond) {
 
         if (bond.getLogoKey() == null || bond.getLogoKey().isBlank()) {
             return null;
         }
 
+        String publicBaseUrl = storageProperties.getR2().getPublicBaseUrl();
+
+        if (publicBaseUrl != null && !publicBaseUrl.isBlank()) {
+
+            return joinUrl(publicBaseUrl, bond.getLogoKey());
+        }
+
         return "/api/bonds/" + bond.getIsin() + "/logo";
+    }
+
+    /**
+     * Joins a base URL and an object key with exactly one slash between them.
+     *
+     * <p>Configuration tends to arrive with a trailing slash and a key may
+     * start with one; neither is guaranteed, and both together would produce a
+     * {@code //} the bucket does not serve.</p>
+     */
+    private static String joinUrl(String baseUrl, String key) {
+
+        String base = baseUrl.endsWith("/")
+                ? baseUrl.substring(0, baseUrl.length() - 1)
+                : baseUrl;
+
+        String path = key.startsWith("/") ? key.substring(1) : key;
+
+        return base + "/" + path;
     }
 
     /**
@@ -1056,7 +1091,7 @@ public class BondService {
      * one, so it is accepted here and keeps its own extra fields set by the
      * caller.</p>
      */
-    private static void applyDetail(
+    private void applyDetail(
             BondDetailResponse.BondDetailResponseBuilder<?, ?> builder,
             Bond bond) {
 

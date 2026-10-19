@@ -42,4 +42,5 @@ src/main/resources/application-dev.yaml
 # Do not drop the leading slash.
 /storage/
 .github/workflows/qodana_code_quality.yml
-.github/workflows/qodana_code_quality.yml
+graphify-out/
+Click4Bonds Knowledge Base/

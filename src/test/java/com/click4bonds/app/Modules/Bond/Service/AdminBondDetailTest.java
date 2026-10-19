@@ -39,6 +39,7 @@ import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
+import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -78,7 +79,8 @@ class AdminBondDetailTest {
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                redisService);
+                redisService,
+                new StorageProperties());
     }
 
     // =========================================================
@@ -183,7 +185,8 @@ class AdminBondDetailTest {
                 analytics,
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                redisService);
+                redisService,
+                new StorageProperties());
 
         service.getBondsForAdmin(null, PageRequest.of(0, 20));
 
@@ -277,7 +280,8 @@ class AdminBondDetailTest {
                 analytics,
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                redisService);
+                redisService,
+                new StorageProperties());
 
         assertNotNull(service.getBondForAdmin(ISIN));
 

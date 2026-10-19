@@ -139,6 +139,12 @@ storage:
     access-key-id: ${R2_ACCESS_KEY_ID:}
     secret-access-key: ${R2_SECRET_ACCESS_KEY:}
     bucket: ${R2_BUCKET:}
+    # Public base URL of the custom domain fronting the bucket. Publicly served
+    # assets (the bond logo) are addressed through it directly, so the response
+    # carries a full URL and the browser fetches it from the bucket's edge —
+    # no API request, no redirect, no signing. Set it to an empty value to
+    # fall back to the API's /api/bonds/{isin}/logo redirect endpoint.
+    public-base-url: ${R2_PUBLIC_BASE_URL:https://assets.click4bond.com}
     # R2 is region-agnostic and expects "auto".
     region: ${R2_REGION:auto}
 

@@ -39,6 +39,7 @@ import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.RedisOperationException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
 import com.click4bonds.app.Modules.Common.Redis.RedisServiceImpl;
+import com.click4bonds.app.Modules.Storage.Config.StorageProperties;
 import com.click4bonds.app.Modules.User.Service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -101,7 +102,8 @@ class BondServiceCacheTest {
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                new RedisServiceImpl(template, mapper));
+                new RedisServiceImpl(template, mapper),
+                new StorageProperties());
     }
 
     // =========================================================
@@ -233,7 +235,8 @@ class BondServiceCacheTest {
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                unavailable);
+                unavailable,
+                new StorageProperties());
 
         BondDetailResponse bond = service.getBond(ISIN, null, false);
 
@@ -257,7 +260,8 @@ class BondServiceCacheTest {
                 mock(AnalyticsService.class),
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
-                unavailable);
+                unavailable,
+                new StorageProperties());
 
         BondDetailResponse bond = service.getBond(ISIN, null, false);
 
