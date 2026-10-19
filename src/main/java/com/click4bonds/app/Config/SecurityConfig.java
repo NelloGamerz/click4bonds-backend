@@ -87,131 +87,137 @@ import com.click4bonds.app.Modules.Auth.Service.AuthJwtService;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-        @Bean
-        SecurityFilterChain securityFilterChain(
-                        HttpSecurity http,
-                        AuthJwtService authJwtService,
-                        JwtAuthenticationConverter jwtAuthenticationConverter)
-                        throws Exception {
+    @Bean
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            AuthJwtService authJwtService,
+            JwtAuthenticationConverter jwtAuthenticationConverter)
+            throws Exception {
 
-                http
-                                .csrf(csrf -> csrf.disable())
-                                .cors(Customizer.withDefaults())
+        http
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
 
-                                // No container session is created or consulted.
-                                // The only session in this application is the one
-                                // held in Redis and identified by the cookie.
-                                .sessionManagement(session -> session
-                                                .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                // No container session is created or consulted.
+                // The only session in this application is the one
+                // held in Redis and identified by the cookie.
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 
-                                .authorizeHttpRequests(auth -> auth
+                .authorizeHttpRequests(auth -> auth
 
-                                                // Reads the profile of the account the
-                                                // token names, so it needs the token.
-                                                // Declared before the rule below, because
-                                                // matchers are evaluated in order and the
-                                                // first match wins — without this the
-                                                // /auth/** permitAll would swallow it.
-                                                .requestMatchers(HttpMethod.GET, "/auth/me")
-                                                .authenticated()
+                        // Reads the profile of the account the
+                        // token names, so it needs the token.
+                        // Declared before the rule below, because
+                        // matchers are evaluated in order and the
+                        // first match wins — without this the
+                        // /auth/** permitAll would swallow it.
+                        .requestMatchers(HttpMethod.GET, "/auth/me")
+                        .authenticated()
 
-                                                // Sign-in. Reachable without a token
-                                                // because these calls are how a caller
-                                                // obtains one.
-                                                .requestMatchers("/auth/**")
-                                                .permitAll()
+                        // Sign-in. Reachable without a token
+                        // because these calls are how a caller
+                        // obtains one.
+                        .requestMatchers("/auth/**")
+                        .permitAll()
 
-                                                // Public endpoints
-                                                .requestMatchers(
-                                                                "/public/**",
-                                                                "/actuator/health",
-                                                                "/actuator/health/**",
-                                                                "/actuator/prometheus",
-                                                                "/swagger-ui/**",
-                                                                "/swagger-ui.html",
-                                                                "/v3/api-docs/**",
-                                                                "/error",
-                                                                "/api/v1/contact-inquiries")
-                                                .permitAll()
+                        // Public endpoints
+                        .requestMatchers(
+                                "/public/**",
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                "/actuator/prometheus",
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/v3/api-docs/**",
+                                "/error",
+                                "/api/v1/contact-inquiries")
+                        .permitAll()
 
-                                                // Analytics smoke test. The controller behind
-                                                // this path only exists under the dev profile, so
-                                                // in any other environment the rule matches
-                                                // nothing and the path 404s.
-                                                // .requestMatchers(HttpMethod.POST, "/api/analytics/test")
-                                                // .permitAll()
+                        // Analytics smoke test. The controller behind
+                        // this path only exists under the dev profile, so
+                        // in any other environment the rule matches
+                        // nothing and the path 404s.
+                        // .requestMatchers(HttpMethod.POST, "/api/analytics/test")
+                        // .permitAll()
 
-                                                // Documents attached to a bond
-                                                // require a signed-in caller, and this
-                                                // rule must come before the public bond
-                                                // rule below: matchers are evaluated in
-                                                // order and the first match wins, so
-                                                // leaving it out would make every
-                                                // uploaded memorandum public the moment
-                                                // an admin attached it. The bond's logo
-                                                // is deliberately not covered — it is
-                                                // shown on the public catalogue card and
-                                                // fetched by an <img> element, which
-                                                // cannot carry a token.
-                                                .requestMatchers(
-                                                                HttpMethod.GET,
-                                                                "/api/bonds/*/documents",
-                                                                "/api/bonds/*/documents/**")
-                                                .authenticated()
+                        // Documents attached to a bond
+                        // require a signed-in caller, and this
+                        // rule must come before the public bond
+                        // rule below: matchers are evaluated in
+                        // order and the first match wins, so
+                        // leaving it out would make every
+                        // uploaded memorandum public the moment
+                        // an admin attached it. The bond's logo
+                        // is deliberately not covered — it is
+                        // shown on the public catalogue card and
+                        // fetched by an <img> element, which
+                        // cannot carry a token.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/bonds/*/documents",
+                                "/api/bonds/*/documents/**")
+                        .authenticated()
 
-                                                // Public bond endpoints
-                                                .requestMatchers(HttpMethod.GET, "/api/bonds", "/api/bonds/**")
-                                                .permitAll()
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/bonds/*/documents",
+                                "/api/bonds/*/documents/**")
+                        .authenticated()
 
-                                                // Everything else requires authentication
-                                                .anyRequest()
-                                                .authenticated())
+                        // Public bond endpoints
+                        .requestMatchers(HttpMethod.GET, "/api/bonds", "/api/bonds/**")
+                        .permitAll()
 
-                                // A missing or rejected token answers 401 with a
-                                // WWW-Authenticate challenge, so a client can tell
-                                // "sign in again" apart from "you may not do this"
-                                // and knows to refresh.
-                                .exceptionHandling(exceptions -> exceptions
-                                                .authenticationEntryPoint(
-                                                                new BearerTokenAuthenticationEntryPoint()))
+                        // Everything else requires authentication
+                        .anyRequest()
+                        .authenticated())
 
-                                .addFilterBefore(
-                                                new JwtAuthenticationFilter(
-                                                                authJwtService,
-                                                                jwtAuthenticationConverter),
-                                                UsernamePasswordAuthenticationFilter.class);
+                // A missing or rejected token answers 401 with a
+                // WWW-Authenticate challenge, so a client can tell
+                // "sign in again" apart from "you may not do this"
+                // and knows to refresh.
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(
+                                new BearerTokenAuthenticationEntryPoint()))
 
-                return http.build();
-        }
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(
+                                authJwtService,
+                                jwtAuthenticationConverter),
+                        UsernamePasswordAuthenticationFilter.class);
 
-        /**
-         * Maps the role claim onto Spring Security authorities.
-         *
-         * <p>A token carries the user's role as its {@code UserRole} name, so
-         * {@code CUSTOMER} becomes {@code ROLE_CUSTOMER} — the same convention
-         * {@code @PreAuthorize("hasRole('CUSTOMER')")} expects. The role comes
-         * from the user's record at the moment the token was issued, so it is
-         * always one of the values that enum defines.</p>
-         *
-         * <p>Used by {@link JwtAuthenticationFilter} when it builds the
-         * authentication for a request.</p>
-         */
-        @Bean
-        public JwtAuthenticationConverter jwtAuthenticationConverter() {
-                JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        return http.build();
+    }
 
-                converter.setJwtGrantedAuthoritiesConverter(jwt -> {
-                        String role = jwt.getClaimAsString(AuthJwtService.ROLE_CLAIM);
+    /**
+     * Maps the role claim onto Spring Security authorities.
+     *
+     * <p>A token carries the user's role as its {@code UserRole} name, so
+     * {@code CUSTOMER} becomes {@code ROLE_CUSTOMER} — the same convention
+     * {@code @PreAuthorize("hasRole('CUSTOMER')")} expects. The role comes
+     * from the user's record at the moment the token was issued, so it is
+     * always one of the values that enum defines.</p>
+     *
+     * <p>Used by {@link JwtAuthenticationFilter} when it builds the
+     * authentication for a request.</p>
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
 
-                        if (role == null) {
-                                return List.of();
-                        }
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            String role = jwt.getClaimAsString(AuthJwtService.ROLE_CLAIM);
 
-                        return List.of(
-                                        new SimpleGrantedAuthority(
-                                                        "ROLE_" + role.toUpperCase()));
-                });
+            if (role == null) {
+                return List.of();
+            }
 
-                return converter;
-        }
+            return List.of(
+                    new SimpleGrantedAuthority(
+                            "ROLE_" + role.toUpperCase()));
+        });
+
+        return converter;
+    }
 }

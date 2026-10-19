@@ -8,17 +8,20 @@ package com.click4bonds.app.Modules.Bond.Enums;
  * database can be understood without consulting this file.</p>
  *
  * <p>{@link #LOGO} is the odd one out and is worth pointing at. It is a
- * document like any other — same upload, same table, same deletion — but a bond
- * has at most one of them, it is mirrored onto
- * {@link com.click4bonds.app.Modules.Bond.Models.Bond#getLogoKey()} so the
- * catalogue can show it without a query per row, and it is served from the
- * public {@code /api/bonds/{isin}/logo} rather than from the document
- * endpoints. It is therefore excluded from the document listing: an admin
- * looking at a bond's documents does not mean "and its logo".</p>
+ * document like any other — same upload, same table, same deletion — but an
+ * <em>issuer</em> has at most one of them. It is mirrored onto
+ * {@link com.click4bonds.app.Modules.Bond.Models.Issuer#getLogoKey()} so every
+ * bond of that issuer shows the same image without a query per row, and it is
+ * served from the public {@code /api/bonds/{isin}/logo} rather than from the
+ * document endpoints. It is therefore excluded from the document listing: an
+ * admin looking at a bond's documents does not mean "and its logo".</p>
  */
 public enum BondDocumentType {
 
-    /** The bond's logo. At most one per bond, and shown to the public. */
+    /**
+     * The logo of the bond's issuer. At most one per issuer, and shown to the
+     * public on every bond of that issuer.
+     */
     LOGO,
 
     /** The information memorandum: the offer document for the issue. */

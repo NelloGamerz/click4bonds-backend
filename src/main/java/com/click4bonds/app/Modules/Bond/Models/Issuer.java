@@ -165,6 +165,29 @@ public class Issuer {
     private String contactPhone;
 
     // =========================
+    // BRANDING
+    // =========================
+
+    /**
+     * Object-store key of this issuer's logo, or null when it has none.
+     *
+     * <p>The logo belongs to the issuer rather than to a bond: every bond of
+     * one issuer shows the same image, so it is stored once here and read by
+     * each bond's response. A key rather than an address, like every other
+     * stored object this application keeps — an address would pin the row to
+     * the endpoint and bucket configured when it was written.</p>
+     *
+     * <p><strong>It has one writer.</strong> The logo is uploaded, checked and
+     * recorded as a {@link BondDocument} of type {@code LOGO} through the
+     * bond-document flow, and {@code BondDocumentService} is the only thing
+     * that sets or clears this field — when such a document is confirmed, and
+     * when it is deleted. Nothing else writes it, so it cannot drift from the
+     * document row.</p>
+     */
+    @Column(name = "logo_key", length = 512)
+    private String logoKey;
+
+    // =========================
     // AUDIT
     // =========================
 

@@ -1,10 +1,12 @@
 package com.click4bonds.app.Modules.Bond.Repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
@@ -20,13 +22,34 @@ import jakarta.persistence.LockModeType;
 
 public interface BondRepository extends JpaRepository<Bond, UUID> {
 
+        /**
+         * One bond by ISIN, with its issuer joined in.
+         *
+         * <p>The bond response exposes the issuer's {@code logo_key} through
+         * {@code logoUrl}, so the issuer is fetched in the same statement
+         * rather than lazily per bond. See the class-level note on the join in
+         * {@link #searchBonds}.</p>
+         */
+        @EntityGraph(attributePaths = "issuer")
         Optional<Bond> findByIsin(String isin);
 
         boolean existsByIsin(String isin);
 
+        @EntityGraph(attributePaths = "issuer")
         Page<Bond> findByStatus(
                         BondStatus status,
                         Pageable pageable);
+
+        /**
+         * Every bond page, with the issuer joined in.
+         *
+         * <p>Overridden only to attach the entity graph: a catalogue page maps
+         * each row to its response, and every response reads the issuer's logo
+         * key, so leaving the issuer lazy would issue one query per row.</p>
+         */
+        @Override
+        @EntityGraph(attributePaths = "issuer")
+        Page<Bond> findAll(Pageable pageable);
 
         Page<Bond> findByNameContainingIgnoreCase(
                         String name,
@@ -62,9 +85,19 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
         // @Param("isFlashNews") Boolean isFlashNews,
         // Pageable pageable);
 
+        /**
+         * The catalogue's filtered listing.
+         *
+         * <p>The issuer is fetched as a left join purely so
+         * {@code BondResponse.logoUrl} can be read from
+         * {@code issuer.logo_key} without a second query per row; that one
+         * column is the only thing the response takes from the joined issuer,
+         * and a bond with no issuer still appears (with no logo).</p>
+         */
         @Query("""
                             SELECT b
                             FROM Bond b
+                            LEFT JOIN FETCH b.issuer
                             WHERE (:search IS NULL OR :search = ''
                                    OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
                                    OR LOWER(b.isin) LIKE LOWER(CONCAT('%', :search, '%')))
@@ -110,6 +143,7 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
         @Query("""
                             SELECT b
                             FROM Bond b
+                            LEFT JOIN FETCH b.issuer
                             WHERE b.status = :status
                               AND (:search IS NULL OR :search = ''
                                    OR LOWER(b.name) LIKE LOWER(CONCAT('%', :search, '%'))
@@ -179,4 +213,18 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
         int reserveQuantity(
                         @Param("id") UUID id,
                         @Param("quantity") Long quantity);
+
+        /**
+         * The ISINs of every bond belonging to an issuer.
+         *
+         * <p>Used when the issuer's logo changes: each bond's cached detail
+         * response embeds the logo URL, so every one of them has to be evicted
+         * rather than only the bond the upload was confirmed through.</p>
+         */
+        @Query("""
+                            SELECT b.isin
+                            FROM Bond b
+                            WHERE b.issuer.id = :issuerId
+                        """)
+        List<String> findIsinsByIssuerId(@Param("issuerId") UUID issuerId);
 }

@@ -15,8 +15,10 @@ import com.click4bonds.app.Modules.Bond.Dto.PresignBondUploadResponse;
 import com.click4bonds.app.Modules.Bond.Enums.BondDocumentType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.BondDocument;
+import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondDocumentRepository;
 import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
@@ -65,11 +67,16 @@ import lombok.extern.slf4j.Slf4j;
  * <h2>The logo is a document, with one difference</h2>
  *
  * <p>A logo is uploaded, checked and stored exactly like any other file, under
- * {@link BondDocumentType#LOGO}. What differs is that a bond has one rather
- * than many: confirming a logo replaces the previous one, object and row
- * together, and mirrors the new key onto {@link Bond#getLogoKey()} so the
- * catalogue can show it without a query per bond. This class is the only writer
- * of that field, which is what keeps the mirror honest.</p>
+ * {@link BondDocumentType#LOGO}. What differs is that an <em>issuer</em> has one
+ * rather than many: confirming a logo replaces the previous one, object and row
+ * together, and mirrors the new key onto
+ * {@link com.click4bonds.app.Modules.Bond.Models.Issuer#getLogoKey()} so the
+ * catalogue can show the same image for every bond of that issuer. This class is
+ * the only writer of that field, which is what keeps the mirror honest.</p>
+ *
+ * <p>A {@code LOGO} is confirmed through a bond, because that is where an admin
+ * already is, but it is stored against the bond's issuer — the logo is the
+ * issuer's, not the bond's. A bond with no issuer therefore cannot take one.</p>
  *
  * <p>It is also the only file served publicly, from
  * {@code /api/bonds/{isin}/logo}, because it appears on a public catalogue page
@@ -90,6 +97,7 @@ public class BondDocumentService {
 
     private final BondDocumentRepository bondDocumentRepository;
     private final BondRepository bondRepository;
+    private final IssuerRepository issuerRepository;
     private final BondService bondService;
     private final UserService userService;
     private final UploadService uploadService;
@@ -212,8 +220,17 @@ public class BondDocumentService {
 
         String storageKey = metadata.key();
 
-        if (request.getDocumentType() == BondDocumentType.LOGO) {
-            replaceExistingLogo(bond, storageKey);
+        /*
+         * The logo belongs to the issuer, so it is resolved before anything is
+         * written: a bond with no issuer has nowhere to put one, and failing
+         * here is better than recording a document nothing points at.
+         */
+        Issuer issuer = request.getDocumentType() == BondDocumentType.LOGO
+                ? requireIssuer(bond)
+                : null;
+
+        if (issuer != null) {
+            replaceExistingLogo(bond, issuer, storageKey);
         }
 
         User admin = userService.getUser(adminId);
@@ -230,18 +247,24 @@ public class BondDocumentService {
 
         BondDocument saved = bondDocumentRepository.save(document);
 
-        if (request.getDocumentType() == BondDocumentType.LOGO) {
+        if (issuer != null) {
 
             /*
-             * The mirror, written only here. The bond is already managed by this
-             * transaction, but it is saved explicitly so the invariant does not
-             * depend on how this method was entered — a caller that reached it
-             * without a transaction would otherwise find the field silently
-             * unsaved.
+             * The mirror, written only here. The issuer is already managed by
+             * this transaction, but it is saved explicitly so the invariant
+             * does not depend on how this method was entered — a caller that
+             * reached it without a transaction would otherwise find the field
+             * silently unsaved.
              */
-            bond.setLogoKey(saved.getStorageKey());
+            issuer.setLogoKey(saved.getStorageKey());
 
-            bondRepository.save(bond);
+            issuerRepository.save(issuer);
+
+            /*
+             * Every bond of this issuer embeds the logo URL in its cached
+             * detail response, so all of them go stale together.
+             */
+            evictCachedBonds(issuer);
         }
 
         log.info(
@@ -298,7 +321,13 @@ public class BondDocumentService {
 
         Bond bond = bondService.findBond(isin);
 
-        String key = bond.getLogoKey();
+        /*
+         * The logo is the issuer's, so a bond with no issuer has none either.
+         * Both cases answer the same 404, which is deliberate — see below.
+         */
+        String key = bond.getIssuer() == null
+                ? null
+                : bond.getIssuer().getLogoKey();
 
         if (key == null) {
 
@@ -374,9 +403,23 @@ public class BondDocumentService {
 
         if (document.getDocumentType() == BondDocumentType.LOGO) {
 
-            bond.setLogoKey(null);
+            Issuer issuer = bond.getIssuer();
 
-            bondRepository.save(bond);
+            /*
+             * Only clear the issuer's mirror when it still points at the
+             * document being removed. A newer logo may have been confirmed
+             * through another bond of the same issuer, and deleting the older
+             * row must not blank the current image.
+             */
+            if (issuer != null
+                    && document.getStorageKey().equals(issuer.getLogoKey())) {
+
+                issuer.setLogoKey(null);
+
+                issuerRepository.save(issuer);
+
+                evictCachedBonds(issuer);
+            }
         }
 
         log.info(
@@ -443,27 +486,28 @@ public class BondDocumentService {
     }
 
     /**
-     * Takes a bond's existing logo out of the way before a new one is recorded.
+     * Takes the issuer's existing logo out of the way before a new one is
+     * recorded.
      *
      * <p>The object is deleted before the row, for the reason given on
-     * {@link #delete}. The old key is left on the bond until the new document is
-     * saved — {@link #confirm} sets it immediately afterwards — so a failure
-     * between the two leaves the bond pointing at a logo that still exists,
+     * {@link #delete}. The old key is left on the issuer until the new document
+     * is saved — {@link #confirm} sets it immediately afterwards — so a failure
+     * between the two leaves the issuer pointing at a logo that still exists,
      * rather than at nothing.</p>
+     *
+     * <p>Two records can name the old object and both are cleared. This bond's
+     * previous {@code LOGO} row is removed, and the key on the issuer itself is
+     * deleted when it names a different object — which is the case when the
+     * logo was last confirmed through another bond of the same issuer. The
+     * replacement key is never deleted, so confirming the same key twice is
+     * harmless.</p>
      */
-    private void replaceExistingLogo(Bond bond, String replacementKey) {
+    private void replaceExistingLogo(Bond bond, Issuer issuer, String replacementKey) {
 
-        bondDocumentRepository
+        String previousKey = bondDocumentRepository
                 .findFirstByBond_IdAndDocumentType(bond.getId(), BondDocumentType.LOGO)
-                .ifPresent(previous -> {
-
-                    /*
-                     * Confirming the same key twice would otherwise delete the
-                     * object that the confirmation is about to describe.
-                     */
-                    if (previous.getStorageKey().equals(replacementKey)) {
-                        return;
-                    }
+                .filter(previous -> !previous.getStorageKey().equals(replacementKey))
+                .map(previous -> {
 
                     objectStore.delete(previous.getStorageKey());
 
@@ -473,7 +517,63 @@ public class BondDocumentService {
                             "Replaced the logo for bond {}: previousKey={}",
                             bond.getIsin(),
                             previous.getStorageKey());
-                });
+
+                    return previous.getStorageKey();
+
+                })
+                .orElse(null);
+
+        String issuerKey = issuer.getLogoKey();
+
+        if (issuerKey != null
+                && !issuerKey.equals(replacementKey)
+                && !issuerKey.equals(previousKey)) {
+
+            objectStore.delete(issuerKey);
+
+            /*
+             * The row that named it may belong to another bond of this issuer.
+             * It describes an object that no longer exists, so it goes too.
+             */
+            bondDocumentRepository.deleteByStorageKey(issuerKey);
+
+            log.info(
+                    "Replaced the logo for issuer {}: previousKey={}",
+                    issuer.getId(),
+                    issuerKey);
+        }
+    }
+
+    /**
+     * The issuer a logo would belong to.
+     *
+     * @throws BadRequestException when the bond has no issuer, because the logo
+     *         is stored on the issuer and there is nothing to attach it to
+     */
+    private static Issuer requireIssuer(Bond bond) {
+
+        if (bond.getIssuer() == null) {
+
+            throw new BadRequestException(
+                    "Bond has no issuer, so it cannot have a logo: "
+                            + bond.getIsin()
+                            + ". Add an issuer first.");
+        }
+
+        return bond.getIssuer();
+    }
+
+    /**
+     * Drops every cached bond read belonging to {@code issuer}.
+     *
+     * <p>The logo URL is part of the cached detail response, and it belongs to
+     * the issuer rather than the bond, so changing it invalidates every bond the
+     * issuer has — not only the one the upload was confirmed through.</p>
+     */
+    private void evictCachedBonds(Issuer issuer) {
+
+        bondRepository.findIsinsByIssuerId(issuer.getId())
+                .forEach(bondService::evictCachedBond);
     }
 
     /**
