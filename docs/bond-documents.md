@@ -178,9 +178,11 @@ appears on the public catalogue card, and it is fetched by an `<img>` element �
 which cannot carry an `Authorization` header. An authenticated logo endpoint
 would simply not work for its only caller.
 
-It is answered as a **redirect** to a short-lived signed URL, not by streaming
-the image. The same file is served to every viewer, so there is no reason for
-those bytes to pass through this application.
+When `storage.r2.public-base-url` is configured, `logoUrl` points straight at
+the bucket's custom domain, so this endpoint is not in the path at all. Without
+that configuration it is answered as a **redirect** to a short-lived signed
+URL, not by streaming the image. Either way the bytes do not pass through this
+application — the same file is served to every viewer.
 
 **An information memorandum is not.** It is a document an admin chose to attach,
 its contents are reviewed by nothing here, and the safe default for something
@@ -207,10 +209,20 @@ a named file, and a redirect would offer it whatever the object store calls the
 object — a UUID — instead of the name an admin gave it. It would also publish the
 bucket's address to anyone who followed it.
 
-`BondResponse.logoUrl` and `BondDetailResponse.logoUrl` carry
-`/api/bonds/{isin}/logo` when the bond has a logo, and `null` when it does not.
-A URL of this application rather than of the object store, because a signed URL
-would expire while the catalogue card was still on screen.
+`BondResponse.logoUrl` and `BondDetailResponse.logoUrl` carry `null` when the
+bond has no logo. When it has one:
+
+- **`storage.r2.public-base-url` is set** — the absolute URL of the object on
+  the bucket's custom domain, e.g.
+  `https://assets.indiabonds.com/bonds/ine123a01011/logo/...png`. The browser
+  fetches it from the edge directly: no API request, no redirect, no signing.
+- **It is blank** (local machines, deployments with no public domain) —
+  `/api/bonds/{isin}/logo`, which redirects to a freshly signed URL.
+
+Neither form hands out a signed URL in the response itself, because that would
+expire while the catalogue card was still on screen. Only the paths an operator
+has deliberately published on the custom domain are readable; the bucket stays
+private for documents.
 
 ---
 

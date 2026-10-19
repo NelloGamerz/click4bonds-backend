@@ -22,6 +22,7 @@ import lombok.ToString;
  *     access-key-id: ...
  *     secret-access-key: ...
  *     bucket: click4bonds-documents
+ *     public-base-url: https://assets.example.com
  *     presigned-upload-ttl: 15m
  *     presigned-download-ttl: 5m
  *     max-upload-size: 25MB
@@ -105,6 +106,24 @@ public class StorageProperties {
          * than a second key namespace — keys are the caller's to choose.</p>
          */
         private String bucket = "";
+
+        /**
+         * Public base URL of a custom domain fronting the bucket, without a
+         * trailing slash — e.g. {@code https://assets.example.com}.
+         *
+         * <p>Objects the application deliberately publishes (the bond logo) are
+         * addressed through this domain when it is set, so a browser fetches
+         * them straight from the bucket's edge instead of asking this
+         * application for a redirect and then following it. The bucket itself
+         * stays private; only the paths an operator has exposed on the custom
+         * domain are readable.</p>
+         *
+         * <p><strong>Blank disables public asset URLs.</strong> Callers then
+         * fall back to their own endpoint, which is what a local machine or a
+         * deployment without a custom domain needs. Nothing fails to start:
+         * the property only changes how a public asset is addressed.</p>
+         */
+        private String publicBaseUrl = "";
 
         /**
          * Signing region. R2 is region-agnostic and expects {@code auto}; the
