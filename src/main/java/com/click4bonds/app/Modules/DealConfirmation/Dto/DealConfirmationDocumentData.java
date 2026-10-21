@@ -76,6 +76,12 @@ public record DealConfirmationDocumentData(
         /** Accrued interest for one bond of face value 100; null when unresolved. */
         BigDecimal accruedInterestPerHundredFace,
 
+        /**
+         * Clean price of one lot at the value date, in rupees, from the same
+         * purchase consideration the YTM projection uses; null when unresolved.
+         */
+        BigDecimal principalPerLot,
+
         Long quantityPerLot,
 
         Long numberOfLots,
@@ -132,6 +138,7 @@ public record DealConfirmationDocumentData(
                 accrual == null ? null : accrual.previousCouponDate(),
                 accrual == null ? null : accrual.accruedDays(),
                 accrual == null ? null : accrual.accruedInterestPerHundredFace(),
+                accrual == null ? null : accrual.principalPerLot(),
                 deal.getQuantityPerLot(),
                 deal.getNumberOfLots(),
                 deal.getTotalQuantity(),

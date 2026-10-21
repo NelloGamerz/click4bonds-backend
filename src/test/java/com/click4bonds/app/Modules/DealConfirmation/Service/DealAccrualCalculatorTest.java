@@ -17,9 +17,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
+import com.click4bonds.app.Modules.Bond.Dto.PurchaseConsideration;
+import com.click4bonds.app.Modules.Bond.Enums.PurchasePriceTreatment;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.CouponScheduleService;
+import com.click4bonds.app.Modules.Bond.Service.PurchaseConsiderationService;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 
 /**
@@ -42,26 +46,32 @@ class DealAccrualCalculatorTest {
     @Mock
     private CouponScheduleService couponScheduleService;
 
+    @Mock
+    private PurchaseConsiderationService purchaseConsiderationService;
+
     private DealAccrualCalculator calculator;
 
     @BeforeEach
     void setUp() {
         calculator = new DealAccrualCalculator(
                 accruedInterestService,
-                couponScheduleService);
+                couponScheduleService,
+                purchaseConsiderationService);
     }
 
     @Test
     void countsDaysFromThePreviousCouponToTheValueDate() {
 
         givenScheduleResolves();
-        givenAccruedInterest("2.401");
+        givenAccruedInterest(64L, "2.401");
+        givenPrincipal("1100.00");
 
         DealAccrual accrual = calculator.calculate(bond(), VALUE_DATE).orElseThrow();
 
         assertEquals(PREVIOUS_COUPON, accrual.previousCouponDate());
         assertEquals(64L, accrual.accruedDays());
         assertEquals(new BigDecimal("2.401"), accrual.accruedInterestPerHundredFace());
+        assertEquals(new BigDecimal("1100.00"), accrual.principalPerLot());
     }
 
     @Test
@@ -75,7 +85,8 @@ class DealAccrualCalculatorTest {
         when(couponScheduleService.resolve(any(), any()))
                 .thenReturn(new CouponScheduleService.CouponSchedule(null, VALUE_DATE));
 
-        givenAccruedInterest("0");
+        givenAccruedInterest(0L, "0");
+        givenPrincipal("1100.00");
 
         DealAccrual accrual = calculator.calculate(bond(), VALUE_DATE).orElseThrow();
 
@@ -87,8 +98,10 @@ class DealAccrualCalculatorTest {
     void treatsAMissingAccruedInterestFigureAsZero() {
 
         givenScheduleResolves();
+        givenPrincipal("1100.00");
 
-        when(accruedInterestService.calculate(any(), any())).thenReturn(null);
+        when(accruedInterestService.accrue(any(), any()))
+                .thenReturn(new AccruedInterest(64L, null));
 
         DealAccrual accrual = calculator.calculate(bond(), VALUE_DATE).orElseThrow();
 
@@ -116,6 +129,7 @@ class DealAccrualCalculatorTest {
         assertTrue(accrual.isEmpty());
         verifyNoInteractions(couponScheduleService);
         verifyNoInteractions(accruedInterestService);
+        verifyNoInteractions(purchaseConsiderationService);
     }
 
     @Test
@@ -154,10 +168,22 @@ class DealAccrualCalculatorTest {
                         LocalDate.of(2026, 10, 23)));
     }
 
-    private void givenAccruedInterest(String amount) {
+    private void givenAccruedInterest(long days, String amount) {
 
-        when(accruedInterestService.calculate(any(), any()))
-                .thenReturn(new BigDecimal(amount));
+        when(accruedInterestService.accrue(any(), any()))
+                .thenReturn(new AccruedInterest(days, new BigDecimal(amount)));
+    }
+
+    private void givenPrincipal(String cleanPrice) {
+
+        when(purchaseConsiderationService.determine(any(), any(), any(), any()))
+                .thenReturn(new PurchaseConsideration(
+                        PurchasePriceTreatment.CUM_INTEREST,
+                        new BigDecimal(cleanPrice),
+                        BigDecimal.ZERO,
+                        new BigDecimal(cleanPrice),
+                        null,
+                        null));
     }
 
     private Bond bond() {

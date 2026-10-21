@@ -332,6 +332,7 @@ class DealConfirmationDocumentConsumerTest {
                         LocalDate.of(2026, 7, 23),
                         64L,
                         new BigDecimal("2.401"),
+                        new BigDecimal("100.00"),
                         100L,
                         5L,
                         11L,

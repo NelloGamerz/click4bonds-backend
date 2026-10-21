@@ -21,9 +21,11 @@ import lombok.RequiredArgsConstructor;
  * happens exactly once:</p>
  *
  * <ul>
- *   <li>a quantity becomes a quantum by multiplying by the face value;</li>
- *   <li>accrued interest is stored per bond of face value 100 and printed for
- *       the whole position;</li>
+ *   <li>a quantity (the number of lots bought) becomes a quantum by
+ *       multiplying by the lot size;</li>
+ *   <li>the principal and the accrued interest are each stored per lot and
+ *       printed for the whole position by multiplying by the lots bought —
+ *       the same per-unit figures the YTM projection uses;</li>
  *   <li>stamp duty is computed from the consideration rather than configured,
  *       because it is a rate applied to a figure the deal itself supplies;</li>
  *   <li>TDS is computed from the accrued interest, likewise.</li>
@@ -138,20 +140,34 @@ public class DealConfirmationSheetValuesFactory {
          */
         LocalDate letterDate = dealDate == null ? LocalDate.now() : dealDate;
 
-        BigDecimal faceValue = BigDecimal.valueOf(
-                documentProperties.getDeal().getFaceValue());
+        /*
+         * "No. of bonds" prints the quantity the customer bought — the number of
+         * lots — not the units those lots add up to. The units are already
+         * carried by {@code totalQuantity}, which is {@code quantityPerLot x
+         * numberOfLots}.
+         */
+        long numberOfBonds = snapshot.numberOfLots();
 
-        long numberOfBonds = snapshot.totalQuantity();
-
-        BigDecimal quantum = money(faceValue.multiply(BigDecimal.valueOf(numberOfBonds)));
-
-        BigDecimal principalAmount = money(snapshot.totalAmount());
+        long totalQuantity = snapshot.totalQuantity();
 
         /*
-         * Accrued interest arrives per bond of face value 100, so the position's
-         * accrued interest is that figure times the quantity — the face value
-         * cancels and deliberately does not appear again here.
+         * The quantum is the rupee face value of the position: the number of
+         * lots bought times the lot size. The stored total quantity is exactly
+         * that product, so it is taken rather than recomputed — the same figure
+         * the deal reserved inventory against.
          */
+        BigDecimal quantum = money(BigDecimal.valueOf(totalQuantity));
+
+        /*
+         * Both figures arrive per lot and are scaled by the lots bought, the
+         * same way the YTM projection scales its purchase leg. The principal is
+         * the clean-price leg of that purchase consideration; the accrued
+         * interest is the accrual the YTM API reports for the same value date.
+         */
+        BigDecimal principalAmount = money(
+                snapshot.principalPerLot()
+                        .multiply(BigDecimal.valueOf(numberOfBonds)));
+
         BigDecimal accruedInterest = money(
                 snapshot.accruedInterestPerHundredFace()
                         .multiply(BigDecimal.valueOf(numberOfBonds)));
@@ -307,6 +323,12 @@ public class DealConfirmationSheetValuesFactory {
                     "Deal " + snapshot.dealReference() + " has no quantity");
         }
 
+        if (snapshot.numberOfLots() == null) {
+            throw new DocumentGenerationException(
+                    "Deal " + snapshot.dealReference() + " has no number of lots,"
+                            + " so the quantity bought cannot be printed");
+        }
+
         if (snapshot.pricePerUnit() == null || snapshot.totalAmount() == null) {
             throw new DocumentGenerationException(
                     "Deal " + snapshot.dealReference()
@@ -317,6 +339,13 @@ public class DealConfirmationSheetValuesFactory {
             throw new DocumentGenerationException(
                     "Deal " + snapshot.dealReference()
                             + " has no accrued interest, so the consideration"
+                            + " cannot be printed");
+        }
+
+        if (snapshot.principalPerLot() == null) {
+            throw new DocumentGenerationException(
+                    "Deal " + snapshot.dealReference()
+                            + " has no principal, so the consideration"
                             + " cannot be printed");
         }
 

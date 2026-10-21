@@ -23,10 +23,15 @@ import java.time.LocalDate;
  * @param accruedInterestPerHundredFace accrued interest for one bond of face
  *                           value 100, so the letter multiplies by quantity
  *                           rather than the calculator knowing the quantity.
+ * @param principalPerLot     the clean price of one lot at the value date, in
+ *                           rupees, taken from the same purchase consideration
+ *                           the YTM projection uses. Per lot, so the letter
+ *                           multiplies it by the lots bought.
  */
 public record DealAccrual(
         LocalDate previousCouponDate,
         long accruedDays,
-        BigDecimal accruedInterestPerHundredFace
+        BigDecimal accruedInterestPerHundredFace,
+        BigDecimal principalPerLot
 ) {
 }
