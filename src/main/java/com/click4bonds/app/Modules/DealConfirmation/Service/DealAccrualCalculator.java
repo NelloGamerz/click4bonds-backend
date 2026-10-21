@@ -7,9 +7,11 @@ import java.util.Optional;
 import org.springframework.stereotype.Component;
 
 import com.click4bonds.app.Modules.Bond.Dto.AccruedInterest;
+import com.click4bonds.app.Modules.Bond.Dto.PurchaseConsideration;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.AccruedInterestService;
 import com.click4bonds.app.Modules.Bond.Service.CouponScheduleService;
+import com.click4bonds.app.Modules.Bond.Service.PurchaseConsiderationService;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 
 import lombok.RequiredArgsConstructor;
@@ -41,6 +43,13 @@ public class DealAccrualCalculator {
 
     private final AccruedInterestService accruedInterestService;
     private final CouponScheduleService couponScheduleService;
+
+    /**
+     * The same service the YTM projection builds its purchase leg from, so the
+     * principal the letter prints is the clean price that engine would charge —
+     * not a second reading of {@code Bond.price}.
+     */
+    private final PurchaseConsiderationService purchaseConsiderationService;
 
     /**
      * Computes the accrual for a bond as at the value date.
@@ -85,10 +94,28 @@ public class DealAccrualCalculator {
              */
             AccruedInterest accrued = accruedInterestService.accrue(bond, valueDate);
 
+            BigDecimal accruedAmount =
+                    accrued.amount() == null ? BigDecimal.ZERO : accrued.amount();
+
+            /*
+             * The principal is the clean-price leg of the purchase consideration
+             * the YTM projection uses — {@code BondFaceValue.cleanPrice} applied
+             * to the bond's price and lot size. The coupon payments are not
+             * needed for it: only the consideration's cum/ex-interest treatment
+             * depends on them, and this letter prints the clean price and the
+             * accrual as separate figures.
+             */
+            PurchaseConsideration purchase = purchaseConsiderationService.determine(
+                    bond,
+                    valueDate,
+                    accruedAmount,
+                    null);
+
             return Optional.of(new DealAccrual(
                     schedule.previous(),
                     accrued.days(),
-                    accrued.amount() == null ? BigDecimal.ZERO : accrued.amount()));
+                    accruedAmount,
+                    purchase.cleanPrice()));
 
         } catch (RuntimeException unpredictable) {
 

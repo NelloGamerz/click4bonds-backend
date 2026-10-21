@@ -41,29 +41,30 @@ class DealConfirmationSheetValuesFactoryTest {
     // =========================================================
 
     @Test
-    void multipliesTheQuantityByTheFaceValueToGetTheQuantum() {
+    void printsTheQuantityAsTheNumberOfBondsAndTheLotsTimesTheLotSizeAsTheQuantum() {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
 
         /*
-         * Bond has no face-value field, so the config supplies the convention
-         * (100). Quantum is the face value of the position, which is what the
-         * letter shows beside "Principal Amount".
+         * "No. of bonds" prints the quantity bought — the number of lots — not
+         * the units those lots add up to. The quantum is the face value of the
+         * position, which is the lots bought times the lot size: the deal's
+         * total quantity, five hundred units here.
          */
-        assertEquals(new BigDecimal("1100.00"), values.quantum());
+        assertEquals(5L, values.numberOfBonds());
+        assertEquals(new BigDecimal("500.00"), values.quantum());
     }
 
     @Test
-    void takesThePrincipalFromWhatTheDealActuallyCharged() {
+    void takesThePrincipalFromTheSameCleanPriceTheYtmProjectionUses() {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
 
         /*
-         * Not recomputed from quantum x price. The persisted total is what the
-         * platform charged; recomputing it here would let the letter and the
-         * ledger disagree.
+         * The clean-price leg of the YTM purchase consideration, per lot, times
+         * the five lots bought — not the deal's stored total amount.
          */
-        assertEquals(new BigDecimal("1100.00"), values.principalAmount());
+        assertEquals(new BigDecimal("500.00"), values.principalAmount());
     }
 
     @Test
@@ -72,10 +73,10 @@ class DealConfirmationSheetValuesFactoryTest {
         DealConfirmationSheetValues values = factory.build(snapshot());
 
         /*
-         * AccruedInterestService returns interest for a single bond of face
-         * value 100. Eleven of them accrue eleven times as much.
+         * AccruedInterestService returns interest for one lot. Five lots accrue
+         * five times as much.
          */
-        assertEquals(new BigDecimal("26.41"), values.accruedInterest());
+        assertEquals(new BigDecimal("12.01"), values.accruedInterest());
     }
 
     @Test
@@ -83,7 +84,7 @@ class DealConfirmationSheetValuesFactoryTest {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
 
-        assertEquals(new BigDecimal("1126.41"), values.totalConsideration());
+        assertEquals(new BigDecimal("512.01"), values.totalConsideration());
     }
 
     @Test
@@ -96,6 +97,7 @@ class DealConfirmationSheetValuesFactoryTest {
          */
         DealConfirmationSheetValues values = factory.build(
                 snapshotWith(builder -> builder
+                        .numberOfLots(100_000L)
                         .totalQuantity(100_000L)
                         .totalAmount(new BigDecimal("10000000.0000"))));
 
@@ -113,6 +115,7 @@ class DealConfirmationSheetValuesFactoryTest {
          */
         DealConfirmationSheetValues values = factory.build(
                 snapshotWith(builder -> builder
+                        .numberOfLots(25_000L)
                         .totalQuantity(25_000L)
                         .totalAmount(new BigDecimal("2500000.0000"))
                         .accruedInterestPerHundredFace(BigDecimal.ZERO)));
@@ -125,8 +128,8 @@ class DealConfirmationSheetValuesFactoryTest {
     void roundsAwayStampDutyBelowHalfARupee() {
 
         /*
-         * A retail-sized deal pays nothing under this rule: 1,126.41 at 0.0001%
-         * is 0.0011, which the sheet's ROUND(...,0) takes to zero. The letter
+         * A retail-sized deal pays nothing under this rule: 512.01 at 0.0001% is
+         * 0.0005, which the sheet's ROUND(...,0) takes to zero. The letter
          * prints 0.00 rather than a fraction of a paisa it cannot show.
          */
         DealConfirmationSheetValues values = factory.build(snapshot());
@@ -144,7 +147,9 @@ class DealConfirmationSheetValuesFactoryTest {
          */
         DealConfirmationSheetValues values = factory.build(
                 snapshotWith(builder -> builder
+                        .numberOfLots(3L)
                         .totalQuantity(3L)
+                        .principalPerLot(new BigDecimal("100.00"))
                         .pricePerUnit(new BigDecimal("100.0000"))
                         .totalAmount(new BigDecimal("300.0000"))
                         .accruedInterestPerHundredFace(new BigDecimal("1.005"))));
@@ -183,11 +188,11 @@ class DealConfirmationSheetValuesFactoryTest {
 
         /*
          * quantum x coupon x days / 360, on the sheet's own convention:
-         * 1100.00 x 0.137 x 32 / 360 = 13.40. The corporate figure for the same
-         * deal is 26.41, from a different count — neither is a rounding of the
+         * 500.00 x 0.137 x 32 / 360 = 6.09. The corporate figure for the same
+         * deal is 12.01, from a different count — neither is a rounding of the
          * other, which is why they travel separately.
          */
-        assertEquals(new BigDecimal("13.40"), values.gsecAccruedInterest());
+        assertEquals(new BigDecimal("6.09"), values.gsecAccruedInterest());
 
         assertNotEquals(
                 values.accruedInterest(), values.gsecAccruedInterest(),
@@ -201,13 +206,13 @@ class DealConfirmationSheetValuesFactoryTest {
 
         /*
          * The G-Sec sheet runs the other way from the corporate one: TDS comes OFF
-         * rather than stamp duty going on. 10% of the 13.40 accrued interest is
-         * 1.34, so the consideration is 1100.00 + 13.40 = 1113.40 and the customer
-         * pays 1112.06.
+         * rather than stamp duty going on. 10% of the 6.09 accrued interest is
+         * 0.61, so the consideration is 500.00 + 6.09 = 506.09 and the customer
+         * pays 505.48.
          */
-        assertEquals(new BigDecimal("1113.40"), values.gsecConsiderationAmount());
-        assertEquals(new BigDecimal("1.34"), values.gsecTds());
-        assertEquals(new BigDecimal("1112.06"), values.gsecTotalConsiderationAmount());
+        assertEquals(new BigDecimal("506.09"), values.gsecConsiderationAmount());
+        assertEquals(new BigDecimal("0.61"), values.gsecTds());
+        assertEquals(new BigDecimal("505.48"), values.gsecTotalConsiderationAmount());
     }
 
     @Test
@@ -276,7 +281,7 @@ class DealConfirmationSheetValuesFactoryTest {
          * The corporate letter is unaffected by the G-Sec figures being absent —
          * it does not print them.
          */
-        assertEquals(new BigDecimal("26.41"), values.accruedInterest());
+        assertEquals(new BigDecimal("12.01"), values.accruedInterest());
     }
 
     // =========================================================
@@ -420,10 +425,23 @@ class DealConfirmationSheetValuesFactoryTest {
         private LocalDate valueDate = VALUE_DATE;
         private String customerName = "Test Customer";
         private BigDecimal couponRate = new BigDecimal("13.70");
-        private Long totalQuantity = 11L;
+        private Long quantityPerLot = 100L;
+        private Long numberOfLots = 5L;
+        private Long totalQuantity = 500L;
+        private BigDecimal principalPerLot = new BigDecimal("100.00");
         private BigDecimal pricePerUnit = new BigDecimal("100.0000");
         private BigDecimal totalAmount = new BigDecimal("1100.0000");
         private BigDecimal accruedInterestPerHundredFace = new BigDecimal("2.401");
+
+        SnapshotBuilder numberOfLots(Long value) {
+            this.numberOfLots = value;
+            return this;
+        }
+
+        SnapshotBuilder principalPerLot(BigDecimal value) {
+            this.principalPerLot = value;
+            return this;
+        }
 
         SnapshotBuilder totalQuantity(Long value) {
             this.totalQuantity = value;
@@ -469,8 +487,9 @@ class DealConfirmationSheetValuesFactoryTest {
                     LocalDate.of(2026, 7, 23),
                     64L,
                     accruedInterestPerHundredFace,
-                    100L,
-                    5L,
+                    principalPerLot,
+                    quantityPerLot,
+                    numberOfLots,
                     totalQuantity,
                     pricePerUnit,
                     totalAmount,

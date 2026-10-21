@@ -30,9 +30,13 @@ import java.time.LocalDate;
  * @param couponRate              the bond's coupon as stored, a percentage:
  *                                8.80 prints as 8.80
  * @param accruedDays             days of interest accrued at settlement
- * @param numberOfBonds           quantity bought
- * @param quantum                 face value of the position
- * @param principalAmount         price value of the position
+ * @param numberOfBonds           quantity bought: the number of lots, not
+ *                                {@code lots x lot size}
+ * @param quantum                 face value of the position:
+ *                                {@code numberOfBonds x lot size}
+ * @param principalAmount         clean price of the position: the YTM
+ *                                projection's clean-price leg, per lot, times
+ *                                the lots bought
  * @param accruedInterest         interest component of the consideration
  * @param stampDuty               corporate sheet only. Stamp duty on the
  *                                consideration, whole rupees, <em>added</em>
