@@ -19,6 +19,13 @@ email:
   # Supported values: resend | msg91
   provider: ${EMAIL_PROVIDER:resend}
 
+  # Emailing the generated deal confirmation letter to the customer.
+  #
+  # Independent of document.enabled below: switching this off stops the email,
+  # not the letter — it is still generated, stored and downloadable.
+  deal-confirmation:
+    enabled: ${DEAL_CONFIRMATION_EMAIL_ENABLED:true}
+
 # Generation of customer-facing documents — today, the deal confirmation letter.
 #
 # Split into two groups: how documents are produced (template, pdf) and what they

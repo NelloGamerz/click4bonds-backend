@@ -85,6 +85,7 @@ final class VerificationTestSupport {
 
         return new EmailService(
                 new EmailProviderFactory(List.of(provider), properties),
+                properties,
                 "http://localhost:3000");
     }
 

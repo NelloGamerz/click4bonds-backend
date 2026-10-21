@@ -1,11 +1,16 @@
 package com.click4bonds.app.Modules.Email.Service;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Email.Config.EmailProperties;
+import com.click4bonds.app.Modules.Email.Model.EmailAttachment;
 import com.click4bonds.app.Modules.Email.Model.EmailRequest;
 import com.click4bonds.app.Modules.Email.Provider.EmailProvider;
 import com.click4bonds.app.Modules.Email.Provider.EmailProviderFactory;
+import com.click4bonds.app.Modules.Email.Template.DealConfirmationEmailTemplate;
 import com.click4bonds.app.Modules.Email.Template.OtpEmailTemplate;
 import com.click4bonds.app.Modules.Email.Template.WelcomeEmailTemplate;
 
@@ -14,10 +19,10 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Application facing entry point for sending email.
  *
- * <p>Callers express the use case ({@link #sendOtp}, {@link #sendWelcomeEmail})
- * and this service takes care of the subject, the template and the delivery
- * provider. Nothing outside the email module needs to know which provider is
- * configured.</p>
+ * <p>Callers express the use case ({@link #sendOtp}, {@link #sendWelcomeEmail},
+ * {@link #sendDealConfirmationEmail}) and this service takes care of the
+ * subject, the template and the delivery provider. Nothing outside the email
+ * module needs to know which provider is configured.</p>
  *
  * <p>Sending is synchronous: it keeps OTP delivery behaviour predictable, and
  * the project has no existing asynchronous mail convention. The call blocks
@@ -28,13 +33,16 @@ import lombok.extern.slf4j.Slf4j;
 public class EmailService {
 
     private final EmailProviderFactory emailProviderFactory;
+    private final EmailProperties emailProperties;
     private final String loginUrl;
 
     public EmailService(
             EmailProviderFactory emailProviderFactory,
+            EmailProperties emailProperties,
             @Value("${frontend.url:}") String loginUrl) {
 
         this.emailProviderFactory = emailProviderFactory;
+        this.emailProperties = emailProperties;
         this.loginUrl = loginUrl;
     }
 
@@ -74,6 +82,47 @@ public class EmailService {
         send(new EmailRequest(to, WelcomeEmailTemplate.SUBJECT, WelcomeEmailTemplate.render(userName, loginUrl)));
 
         log.info("Welcome email sent to {}", to);
+    }
+
+    /**
+     * Sends a created deal's confirmation letter to the customer.
+     *
+     * <p>Called once the document has been rendered and stored. Delivery is
+     * skipped — without failing the caller — when
+     * {@code email.deal-confirmation.enabled=false}: the letter still exists in
+     * the store and can be downloaded, so a disabled mailer is a configuration
+     * choice, not an error.</p>
+     *
+     * @param to            recipient address
+     * @param customerName  name used in the greeting; may be missing
+     * @param dealReference customer-facing deal reference
+     * @param attachment    the rendered confirmation document
+     * @throws com.click4bonds.app.Modules.Email.Exception.EmailSendException if
+     *         the provider rejects or cannot be reached
+     */
+    public void sendDealConfirmationEmail(
+            String to,
+            String customerName,
+            String dealReference,
+            EmailAttachment attachment) {
+
+        if (!emailProperties.getDealConfirmation().isEnabled()) {
+
+            log.info(
+                    "Deal confirmation emails are disabled; not sending the letter for deal {} to {}",
+                    dealReference,
+                    to);
+
+            return;
+        }
+
+        send(new EmailRequest(
+                to,
+                DealConfirmationEmailTemplate.subject(dealReference),
+                DealConfirmationEmailTemplate.render(customerName, dealReference),
+                List.of(attachment)));
+
+        log.info("Deal confirmation email sent to {} for deal {}", to, dealReference);
     }
 
     private void send(EmailRequest request) {

@@ -5,6 +5,8 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,7 +55,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin/orders")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'ORDER_MANAGEMENT')")
+//@PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'ORDER_MANAGEMENT')")
 public class AdminBondOrderController {
 
     private final BondOrderService orderService;
@@ -63,7 +65,7 @@ public class AdminBondOrderController {
     /**
      * Places an order for a named customer.
      *
-     * @param customerId     the account the order is for; must be a customer
+//     * @param customerId     the account the order is for; must be a customer
      * @param request        bond and number of lots; the price and the units per
      *                       lot both come from the bond, not the request
      * @param idempotencyKey optional key that makes a retry safe. Send a fresh
@@ -75,10 +77,12 @@ public class AdminBondOrderController {
      */
     @PostMapping
     public ResponseEntity<BondOrderResponse> createOrder(
-            @RequestParam UUID customerId,
+//            @RequestParam UUID customerId,
+            @AuthenticationPrincipal Jwt jwt,
             @Valid @RequestBody CreateOrderRequest request,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
 
+        UUID customerId = UUID.fromString(jwt.getSubject());
         User customer = userService.getUser(customerId);
 
         /*

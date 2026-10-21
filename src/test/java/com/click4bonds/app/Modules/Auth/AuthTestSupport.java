@@ -14,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.click4bonds.app.Config.SecurityConfig;
 import com.click4bonds.app.Modules.Auth.Config.AuthProperties;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.Email.Config.EmailProperties;
 import com.click4bonds.app.Modules.Email.Service.EmailService;
 import com.click4bonds.app.Modules.Sms.service.SmsService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
@@ -205,7 +206,7 @@ public final class AuthTestSupport {
         private final Map<String, Integer> expiryMinutes = new HashMap<>();
 
         public RecordingEmailService() {
-            super(null, "http://localhost/never-called");
+            super(null, new EmailProperties(), "http://localhost/never-called");
         }
 
         @Override

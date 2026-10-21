@@ -11,6 +11,8 @@ import lombok.Data;
  * <pre>
  * email:
  *   provider: resend
+ *   deal-confirmation:
+ *     enabled: true
  * </pre>
  */
 @Data
@@ -24,4 +26,24 @@ public class EmailProperties {
      * start.
      */
     private String provider = "resend";
+
+    /**
+     * Deal confirmation delivery settings.
+     */
+    private DealConfirmation dealConfirmation = new DealConfirmation();
+
+    /**
+     * Whether the confirmation letter is emailed to the customer once it has
+     * been generated.
+     *
+     * <p>Separate from {@code document.enabled}, which decides whether a letter
+     * is produced at all: an environment can store letters without mailing
+     * them, and switching this off must not stop a document being generated.</p>
+     */
+    @Data
+    public static class DealConfirmation {
+
+        /** When false the letter is still generated and stored, just not sent. */
+        private boolean enabled = true;
+    }
 }

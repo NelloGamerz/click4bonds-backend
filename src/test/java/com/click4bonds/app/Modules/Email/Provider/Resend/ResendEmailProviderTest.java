@@ -8,11 +8,15 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Base64;
+import java.util.List;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
+import com.click4bonds.app.Modules.Email.Model.EmailAttachment;
 import com.click4bonds.app.Modules.Email.Model.EmailRequest;
 import com.click4bonds.app.Modules.Email.Provider.EmailProviderType;
 import com.resend.Resend;
@@ -66,6 +70,32 @@ class ResendEmailProviderTest {
         assertEquals("user@example.com", sent.getTo().getFirst());
         assertEquals("Verify your Click4Bond account", sent.getSubject());
         assertEquals("<p>hello</p>", sent.getHtml());
+    }
+
+    @Test
+    void shouldSendAttachmentsAsBase64() throws ResendException {
+
+        when(emails.send(any(CreateEmailOptions.class)))
+                .thenReturn(new CreateEmailResponse("msg_123"));
+
+        EmailAttachment attachment =
+                new EmailAttachment("letter.pdf", "application/pdf", "pdf bytes".getBytes());
+
+        provider.send(new EmailRequest(
+                "user@example.com", "Subject", "<p>body</p>", List.of(attachment)));
+
+        ArgumentCaptor<CreateEmailOptions> captor = ArgumentCaptor.forClass(CreateEmailOptions.class);
+        verify(emails).send(captor.capture());
+
+        List<com.resend.services.emails.model.Attachment> sent =
+                captor.getValue().getAttachments();
+
+        assertEquals(1, sent.size());
+        assertEquals("letter.pdf", sent.getFirst().getFileName());
+        assertEquals("application/pdf", sent.getFirst().getContentType());
+        assertEquals(
+                Base64.getEncoder().encodeToString("pdf bytes".getBytes()),
+                sent.getFirst().getContent());
     }
 
     @Test
