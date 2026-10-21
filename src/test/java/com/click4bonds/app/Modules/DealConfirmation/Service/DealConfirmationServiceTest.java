@@ -463,6 +463,7 @@ class DealConfirmationServiceTest {
         return new DealConfirmationSheetValues(
                 LocalDate.of(2026, 9, 22),
                 "DC-20260922-000001",
+                "Test Customer",
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "ICCL",

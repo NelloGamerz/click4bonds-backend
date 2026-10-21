@@ -23,27 +23,30 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Produces the ATSPL deal confirmation letter.
  *
- * <p>The real implementation behind {@link DealConfirmationDocumentService}: it
- * fills {@code ATSPL Deal Format.xlsx}, renders a PDF from it, and stores both.
- * It is the only class that knows a deal confirmation is a spreadsheet, and it
- * knows nothing about how a deal is created — the snapshot it is handed is
- * complete.</p>
+ * <p>The real implementation behind {@link DealConfirmationDocumentService}. It
+ * produces the letter by one of two routes, chosen by the layout:
+ * {@link DealConfirmationPdfService} draws the corporate letter directly from
+ * the computed values, while the G-Sec letter fills
+ * {@code ATSPL Deal Format.xlsx} and converts it. It knows nothing about how a
+ * deal is created — the snapshot it is handed is complete.</p>
  *
- * <p><strong>Which sheet it fills is not decided here.</strong> A Sovereign-rated
- * bond is confirmed on the G-Sec sell sheet and everything else on the corporate
- * PSU sheet; {@link DealConfirmationSheetStrategyFactory} makes that choice and
- * the {@link DealConfirmationSheetStrategy} it returns supplies the sheet name,
- * the cells and any number-format overrides. This class is only the pipeline
- * around it — fill, render, store — so adding a third layout does not touch
- * it.</p>
+ * <p><strong>Which layout a deal gets is not decided here.</strong> A
+ * Sovereign-rated bond is confirmed on the G-Sec sell sheet and everything else
+ * on the corporate PSU sheet; {@link DealConfirmationSheetStrategyFactory} makes
+ * that choice, and the {@link DealConfirmationSheetStrategy} it returns supplies
+ * the sheet name, the cells and any number-format overrides — or says that the
+ * letter is drawn directly instead. This class is only the pipeline around it,
+ * so adding a third layout does not touch it.</p>
  *
- * <p><strong>The spreadsheet is always stored before the PDF is.</strong> The
- * workbook is filled, then uploaded and rendered at the same time — the render
- * reads the bytes in memory, so it never waits on the upload. The upload is
- * still waited on first: a deal whose spreadsheet did not land is reported as a
- * storage failure with no PDF stored against it, and a render failure leaves the
- * filled workbook in the bucket for an operator to convert by hand. The deal is
- * unlettered and retryable rather than silently half-documented.</p>
+ * <p><strong>The template route stores the spreadsheet before the PDF.</strong>
+ * The workbook is filled, then uploaded and rendered at the same time — the
+ * render reads the bytes in memory, so it never waits on the upload. The upload
+ * is still waited on first: a deal whose spreadsheet did not land is reported as
+ * a storage failure with no PDF stored against it, and a render failure leaves
+ * the filled workbook in the bucket for an operator to convert by hand. The deal
+ * is unlettered and retryable rather than silently half-documented. The direct
+ * route has no spreadsheet to fall back on, so a render failure stores
+ * nothing.</p>
  *
  * <p><strong>It runs on the document executor, not the caller's thread.</strong>
  * The two stages are submitted to a pool sized for exactly this shape of work;
@@ -66,6 +69,7 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
 
     private final XlsxTemplateWriter templateWriter;
     private final PdfConverter pdfConverter;
+    private final DealConfirmationPdfService pdfService;
     private final DocumentStorage storage;
     private final DealConfirmationSheetValuesFactory valuesFactory;
     private final DealConfirmationSheetStrategyFactory sheetStrategyFactory;
@@ -88,8 +92,6 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
         DealConfirmationSheetStrategy strategy =
                 sheetStrategyFactory.strategyFor(dealConfirmation.rating());
 
-        Map<String, Object> cells = strategy.toCells(values);
-
         /*
          * Filed under the value date, which is the date the trade settles and
          * the date the letter is about.
@@ -97,6 +99,23 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
         String stem = DocumentKeys.stemForDeal(
                 values.dealReference(),
                 values.valueDate());
+
+        /*
+         * A layout that draws itself is rendered from the values alone. The
+         * corporate letter takes this path on the normal configuration, which
+         * is why its production no longer waits on LibreOffice; the G-Sec
+         * letter does not, and keeps the template route below unchanged.
+         *
+         * When PDF rendering is switched off the corporate letter falls back to
+         * the spreadsheet, because that is the degraded mode this setting has
+         * always selected: a usable document rather than none.
+         */
+        if (strategy.rendersDirectly() && properties.getPdf().isEnabled()) {
+
+            return generateDirectly(values, stem);
+        }
+
+        Map<String, Object> cells = strategy.toCells(values);
 
         byte[] xlsx = templateWriter.fill(
                 strategy.sheetName(),
@@ -176,6 +195,46 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
 
         log.info(
                 "Deal confirmation letter generated for deal {}: key={} pdfBytes={}",
+                values.dealReference(),
+                storedPdf.storageKey(),
+                pdf.length);
+
+        return new DealConfirmationDocument(
+                storedPdf.fileName(),
+                storedPdf.contentType(),
+                pdf,
+                storedPdf.storageKey());
+    }
+
+    /**
+     * Draws the letter straight from the values and stores the PDF.
+     *
+     * <p>There is no spreadsheet to keep: the PDF is the document. Rendering
+     * happens on the document executor like the rest of this pipeline, because
+     * it is CPU work and the caller is a Kafka listener rather than a request
+     * thread.</p>
+     *
+     * <p>A render failure stores nothing, so the deal stays unlettered and
+     * retryable — the same failure mode the template path has.</p>
+     */
+    private DealConfirmationDocument generateDirectly(
+            DealConfirmationSheetValues values,
+            String stem) {
+
+        byte[] pdf = await(CompletableFuture.supplyAsync(
+                () -> pdfService.render(values),
+                documentExecutor));
+
+        String pdfKey = stem + "." + DocumentFormat.PDF.extension();
+
+        StoredDocument storedPdf = store(
+                pdfKey,
+                values.dealReference(),
+                DocumentFormat.PDF,
+                pdf);
+
+        log.info(
+                "Deal confirmation letter drawn directly for deal {}: key={} pdfBytes={}",
                 values.dealReference(),
                 storedPdf.storageKey(),
                 pdf.length);

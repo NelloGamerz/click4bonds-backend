@@ -39,6 +39,21 @@ public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrateg
 
     private final DocumentProperties documentProperties;
 
+    /**
+     * The corporate letter is drawn directly as a PDF.
+     *
+     * <p>Its layout no longer lives in the workbook: {@link DealConfirmationPdfService}
+     * reproduces this letter from the same values, so the spreadsheet is not
+     * filled on the normal path. The cell map below is kept as the degraded
+     * path — when PDF rendering is switched off the letter is still produced as
+     * a spreadsheet.</p>
+     */
+    @Override
+    public boolean rendersDirectly() {
+
+        return true;
+    }
+
     @Override
     public String sheetName() {
 
