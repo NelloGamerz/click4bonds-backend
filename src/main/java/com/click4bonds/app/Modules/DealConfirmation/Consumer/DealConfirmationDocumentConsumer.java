@@ -9,6 +9,8 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentRecorder;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.Email.Model.EmailAttachment;
+import com.click4bonds.app.Modules.Email.Service.EmailService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -41,6 +43,13 @@ import lombok.extern.slf4j.Slf4j;
  * this listener needs the factory that knows about
  * {@link DealConfirmationDocumentEvent} — see
  * {@link DealConfirmationDocumentKafkaConfig}.</p>
+ *
+ * <p><strong>The rendered letter is emailed to the customer.</strong> Once the
+ * PDF exists in the store, the same bytes are attached to a confirmation email.
+ * That send is deliberately split off from the document work below: a bounced
+ * or rejected email must not undo — or look like — a failed generation, so it
+ * has its own try/catch, and a failure is logged while the deal keeps its
+ * recorded document.</p>
  */
 @Component
 @RequiredArgsConstructor
@@ -49,6 +58,7 @@ public class DealConfirmationDocumentConsumer {
 
     private final DealConfirmationDocumentService documentService;
     private final DealConfirmationDocumentRecorder documentRecorder;
+    private final EmailService emailService;
 
     /**
      * Renders one deal's letter and records where it landed.
@@ -98,11 +108,70 @@ public class DealConfirmationDocumentConsumer {
                     document.fileName(),
                     document.contentType());
 
+            emailConfirmation(dealData, document);
+
         } catch (Exception failure) {
 
             log.error(
                     "Deal confirmation document generation failed for deal {}; the deal itself stands",
                     dealData.dealReference(),
+                    failure);
+        }
+    }
+
+    /**
+     * Sends the letter that was just generated to the customer.
+     *
+     * <p>Runs after the document is recorded, so the email can never be the
+     * reason a produced letter goes unrecorded. A customer with no address on
+     * file is skipped rather than failed: the letter still exists in the store,
+     * and a missing email is not something a redelivery would fix.</p>
+     *
+     * @param dealData the deal the letter belongs to
+     * @param document the generated letter, whose bytes are attached
+     */
+    private void emailConfirmation(
+            DealConfirmationDocumentData dealData,
+            DealConfirmationDocument document) {
+
+        String to = dealData.customerEmail();
+
+        if (to == null || to.isBlank()) {
+
+            log.warn(
+                    "Deal confirmation letter for deal {} was not emailed: the customer has no email address",
+                    dealData.dealReference());
+
+            return;
+        }
+
+        try {
+
+            emailService.sendDealConfirmationEmail(
+                    to,
+                    dealData.customerName(),
+                    dealData.dealReference(),
+                    new EmailAttachment(
+                            document.fileName(),
+                            document.contentType(),
+                            document.content()));
+
+            log.info(
+                    "Deal confirmation letter emailed to {} for deal {}",
+                    to,
+                    dealData.dealReference());
+
+        } catch (Exception failure) {
+
+            /*
+             * The document is stored and recorded; only its delivery failed.
+             * Rethrowing would redeliver the message and regenerate the letter
+             * for an address the provider will reject again.
+             */
+            log.error(
+                    "Deal confirmation letter for deal {} could not be emailed to {}",
+                    dealData.dealReference(),
+                    to,
                     failure);
         }
     }

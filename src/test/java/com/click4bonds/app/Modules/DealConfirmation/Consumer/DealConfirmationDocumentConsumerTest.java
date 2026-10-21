@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -18,6 +19,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -31,6 +33,9 @@ import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentRecorder;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
+import com.click4bonds.app.Modules.Email.Exception.EmailSendException;
+import com.click4bonds.app.Modules.Email.Model.EmailAttachment;
+import com.click4bonds.app.Modules.Email.Service.EmailService;
 
 /**
  * What {@link DealConfirmationDocumentConsumer} does with a consumed request,
@@ -53,11 +58,14 @@ class DealConfirmationDocumentConsumerTest {
     @Mock
     private DealConfirmationDocumentRecorder documentRecorder;
 
+    @Mock
+    private EmailService emailService;
+
     private DealConfirmationDocumentConsumer consumer;
 
     @BeforeEach
     void setUp() {
-        consumer = new DealConfirmationDocumentConsumer(documentService, documentRecorder);
+        consumer = new DealConfirmationDocumentConsumer(documentService, documentRecorder, emailService);
     }
 
     // =========================================================
@@ -82,6 +90,76 @@ class DealConfirmationDocumentConsumerTest {
          * the update is keyed by the primary key.
          */
         verify(documentRecorder).record(event.dealId(), STORAGE_KEY);
+
+        /*
+         * The letter is emailed as well, with the rendered PDF attached rather
+         * than a link: the customer should receive the document even if they
+         * never sign in.
+         */
+        verify(emailService).sendDealConfirmationEmail(
+                eq("customer@example.com"),
+                eq("Test Customer"),
+                eq(REFERENCE),
+                any(EmailAttachment.class));
+    }
+
+    @Test
+    void emailsTheBytesThatWereStoredAsTheAttachment() {
+
+        DealConfirmationDocumentEvent event = event();
+
+        when(documentService.generate(event.documentData())).thenReturn(pdf());
+
+        consumer.onDealConfirmationDocument(event);
+
+        ArgumentCaptor<EmailAttachment> captor = ArgumentCaptor.forClass(EmailAttachment.class);
+
+        verify(emailService).sendDealConfirmationEmail(
+                any(), any(), any(), captor.capture());
+
+        EmailAttachment attachment = captor.getValue();
+
+        assertEquals(REFERENCE + ".pdf", attachment.fileName());
+        assertEquals("application/pdf", attachment.contentType());
+        assertArrayEquals("pdf bytes".getBytes(), attachment.content());
+    }
+
+    @Test
+    void skipsTheEmailWhenTheCustomerHasNoAddress() {
+
+        DealConfirmationDocumentEvent event = eventWithCustomerEmail(null);
+
+        when(documentService.generate(any())).thenReturn(pdf());
+
+        consumer.onDealConfirmationDocument(event);
+
+        /*
+         * The document is still produced and recorded; only delivery has
+         * nowhere to go, which no retry can fix.
+         */
+        verify(documentRecorder).record(event.dealId(), STORAGE_KEY);
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
+    void anEmailFailureDoesNotUndoTheStoredDocument() {
+
+        DealConfirmationDocumentEvent event = event();
+
+        when(documentService.generate(any())).thenReturn(pdf());
+
+        doThrow(new EmailSendException("resend unavailable"))
+                .when(emailService)
+                .sendDealConfirmationEmail(any(), any(), any(), any());
+
+        consumer.onDealConfirmationDocument(event);
+
+        /*
+         * The letter exists and is recorded. Rethrowing would redeliver the
+         * message and regenerate the document for an address the provider has
+         * already rejected.
+         */
+        verify(documentRecorder).record(event.dealId(), STORAGE_KEY);
     }
 
     @Test
@@ -99,6 +177,7 @@ class DealConfirmationDocumentConsumerTest {
         consumer.onDealConfirmationDocument(event);
 
         verify(documentRecorder, never()).record(any(), any());
+        verifyNoInteractions(emailService);
     }
 
     // =========================================================
@@ -123,6 +202,7 @@ class DealConfirmationDocumentConsumerTest {
         consumer.onDealConfirmationDocument(event);
 
         verify(documentRecorder, never()).record(any(), any());
+        verifyNoInteractions(emailService);
     }
 
     @Test
@@ -144,6 +224,7 @@ class DealConfirmationDocumentConsumerTest {
          * fix, so it is reported and dropped.
          */
         verify(documentRecorder).record(eq(event.dealId()), eq(STORAGE_KEY));
+        verifyNoInteractions(emailService);
     }
 
     @Test
@@ -227,6 +308,10 @@ class DealConfirmationDocumentConsumerTest {
     }
 
     private static DealConfirmationDocumentEvent event() {
+        return eventWithCustomerEmail("customer@example.com");
+    }
+
+    private static DealConfirmationDocumentEvent eventWithCustomerEmail(String customerEmail) {
 
         return new DealConfirmationDocumentEvent(
                 UUID.randomUUID(),
@@ -236,7 +321,7 @@ class DealConfirmationDocumentConsumerTest {
                         null,
                         LocalDate.of(2026, 9, 25),
                         "Test Customer",
-                        "customer@example.com",
+                        customerEmail,
                         "TEST BOND 2027",
                         "INE123A07012",
                         "SECURED",
