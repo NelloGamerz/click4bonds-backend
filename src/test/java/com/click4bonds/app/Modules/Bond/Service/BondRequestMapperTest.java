@@ -73,7 +73,7 @@ class BondRequestMapperTest {
         assertEquals(0, new BigDecimal("6.88").compareTo(bond.getSemiYtm()));
         assertEquals(0, new BigDecimal("7.00").compareTo(bond.getAnnualYtm()));
         assertNotNull(bond.getYtmCalculatedAt());
-        assertEquals(0, new BigDecimal("1.50").compareTo(bond.getQuantumInLacs()));
+        assertEquals(0, new BigDecimal("150000.00").compareTo(bond.getQuantum()));
         assertNull(bond.getLotSize());
         assertEquals(LotSizeType.DEMAT, bond.getLotSizeType());
         assertEquals(BondStatus.DRAFT, bond.getStatus());
@@ -96,7 +96,7 @@ class BondRequestMapperTest {
 
         Bond bond = mapper.toEntity(request, null);
 
-        assertNull(bond.getQuantumInLacs());
+        assertNull(bond.getQuantum());
         assertEquals(LocalDate.of(2033, 10, 15), bond.getMaturityDate());
         assertEquals(CouponFrequency.YEARLY, bond.getCouponFrequency());
         assertEquals(0, new BigDecimal("1000000").compareTo(bond.getLotSize()));
@@ -118,7 +118,7 @@ class BondRequestMapperTest {
         request.setMaturityDate("2029-08-27");
         request.setMaturityDescription("22/04/2029-27/08/2029 (20% every month)");
         request.setQuantumDescription("50 Lakh");
-        request.setQuantumInLacs("50");
+        request.setQuantum("50");
         request.setLotSizeDescription("10000 Lot");
         request.setLotSize("10000");
         request.setLotSizeType("DEMAT");
@@ -129,7 +129,7 @@ class BondRequestMapperTest {
         assertEquals(LocalDate.of(2029, 8, 27), bond.getMaturityDate());
         assertEquals(0, new BigDecimal("10000").compareTo(bond.getLotSize()));
         assertEquals(LotSizeType.FIXED_LOT, bond.getLotSizeType());
-        assertEquals(0, new BigDecimal("50.00").compareTo(bond.getQuantumInLacs()));
+        assertEquals(0, new BigDecimal("5000000.00").compareTo(bond.getQuantum()));
         assertEquals(CouponFrequency.MONTHLY, bond.getCouponFrequency());
     }
 
@@ -144,11 +144,11 @@ class BondRequestMapperTest {
         request.setCouponRate("9.00%");
         request.setMaturityDescription("7/Mar/28");
         request.setQuantumDescription("1 Bonds");
-        request.setQuantumInLacs("50");
+        request.setQuantum("50");
 
         // The description is authoritative: "1 Bonds" means the amount is not
         // expressed in lakhs, so the companion is not used to fill it in.
-        assertNull(mapper.toEntity(request, null).getQuantumInLacs());
+        assertNull(mapper.toEntity(request, null).getQuantum());
     }
 
     @Test
@@ -262,7 +262,7 @@ class BondRequestMapperTest {
 
         assertEquals(0, new BigDecimal("9.10").compareTo(bond.getCouponRate()));
         assertEquals(SecurityType.UNSECURED, bond.getSecurityType());
-        assertEquals(0, new BigDecimal("70.00").compareTo(bond.getQuantumInLacs()));
+        assertEquals(0, new BigDecimal("7000000.00").compareTo(bond.getQuantum()));
         assertEquals(0, new BigDecimal("775").compareTo(bond.getLotSize()));
         assertEquals(CouponFrequency.MONTHLY, bond.getCouponFrequency());
     }

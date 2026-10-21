@@ -76,7 +76,7 @@ public class BondRequestMapper {
 
         ParsedQuantum quantum = resolveQuantum(
                 request.getQuantumDescription(),
-                request.getQuantumInLacs());
+                request.getQuantum());
 
         ParsedLot lot = resolveLot(
                 request.getLotSizeDescription(),
@@ -137,15 +137,12 @@ public class BondRequestMapper {
 
                 // Quantum
                 .quantumDescription(trimToNull(request.getQuantumDescription()))
-                .quantumInLacs(quantum.inLacs())
+                .quantum(toFullQuantum(quantum.inLacs()))
 
                 // Lot
                 .lotSizeDescription(trimToNull(request.getLotSizeDescription()))
                 .lotSize(lot.size())
                 .lotSizeType(lot.type())
-
-                // Inventory
-                .remainingQuantity(request.getRemainingQuantity())
 
                 // Flags
                 .isFlashNews(Boolean.TRUE.equals(request.getIsFlashNews()))
@@ -300,15 +297,17 @@ public class BondRequestMapper {
 
             bond.setQuantumDescription(trimToNull(request.getQuantumDescription()));
 
-            bond.setQuantumInLacs(
-                    resolveQuantum(
-                            request.getQuantumDescription(),
-                            request.getQuantumInLacs()).inLacs());
+            bond.setQuantum(
+                    toFullQuantum(
+                            resolveQuantum(
+                                    request.getQuantumDescription(),
+                                    request.getQuantum()).inLacs()));
 
-        } else if (request.getQuantumInLacs() != null) {
+        } else if (request.getQuantum() != null) {
 
-            bond.setQuantumInLacs(
-                    fieldParser.parseDecimal(request.getQuantumInLacs(), "quantumInLacs"));
+            bond.setQuantum(
+                    toFullQuantum(
+                            fieldParser.parseDecimal(request.getQuantum(), "quantum")));
         }
 
         // -----------------------------------------------------
@@ -367,20 +366,6 @@ public class BondRequestMapper {
             }
 
             bond.setYtmCalculatedAt(Instant.now());
-        }
-
-        // -----------------------------------------------------
-        // Inventory
-        // -----------------------------------------------------
-
-        /*
-         * Absolute value, not a delta: an admin restocking a bond sends the new
-         * total. Status is deliberately left alone — a restocked SOLD_OUT bond
-         * has to be activated through the existing activate endpoint, so the
-         * inventory and the status never disagree silently.
-         */
-        if (request.getRemainingQuantity() != null) {
-            bond.setRemainingQuantity(request.getRemainingQuantity());
         }
 
         if (request.getIsFlashNews() != null) {
@@ -518,6 +503,20 @@ public class BondRequestMapper {
      * Bonds"} legitimately mean "no numeric quantum", so an explicit value is
      * not used to fill those in — only an absent description falls back to it.
      */
+    /**
+     * Converts a value expressed in lakhs (as the request and the description
+     * parser both express it) to the full INR amount stored on the bond.
+     *
+     * <p>The request still speaks in lakhs — {@code "50"} means 50 lakh — but
+     * inventory is reserved in full amounts, so the stored quantum is
+     * {@code 50 × 100,000 = 5,000,000}. Keeping the conversion here is what
+     * stops a 50-lakh bond from reporting "available 50" against a request of
+     * 10,000 units.</p>
+     */
+    private static BigDecimal toFullQuantum(BigDecimal inLacs) {
+        return inLacs == null ? null : inLacs.movePointRight(5);
+    }
+
     private ParsedQuantum resolveQuantum(String description, String explicitInLacs) {
 
         if (description != null && !description.isBlank()) {
@@ -526,7 +525,7 @@ public class BondRequestMapper {
 
         if (explicitInLacs != null && !explicitInLacs.isBlank()) {
             return new ParsedQuantum(
-                    fieldParser.parseDecimal(explicitInLacs, "quantumInLacs"));
+                    fieldParser.parseDecimal(explicitInLacs, "quantum"));
         }
 
         return new ParsedQuantum(null);

@@ -117,12 +117,14 @@ public class DealConfirmationWriter {
          * while it holds the row lock: if another buyer got there first and took
          * the remaining units, this matches zero rows.
          */
-        int reserved = bondRepository.reserveQuantity(bond.getId(), context.totalQuantity());
+        int reserved = bondRepository.reserveQuantity(
+                bond.getId(),
+                BigDecimal.valueOf(context.totalQuantity()));
 
         if (reserved == 0) {
 
             log.warn(
-                    "Inventory reservation rejected: isin={} requested={} (insufficient remaining quantity)",
+                    "Inventory reservation rejected: isin={} requested={} (insufficient quantum)",
                     context.isin(),
                     context.totalQuantity());
 
@@ -143,10 +145,10 @@ public class DealConfirmationWriter {
         markSoldOutIfExhausted(reservedBond);
 
         log.info(
-                "Inventory reserved: isin={} quantity={} remaining={}",
+                "Inventory reserved: isin={} quantity={} remaining quantum={}",
                 context.isin(),
                 context.totalQuantity(),
-                reservedBond.getRemainingQuantity());
+                reservedBond.getQuantum());
 
         DealConfirmation deal = buildDeal(
                 context.customer(),
@@ -364,17 +366,17 @@ public class DealConfirmationWriter {
         }
 
         /*
-         * NULL inventory is not zero inventory: it means nobody ever recorded how
-         * many units of this bond exist. Treating it as unlimited would sell
+         * NULL quantum is not zero quantum: it means nobody ever recorded how
+         * much of this bond exists. Treating it as unlimited would sell
          * units that do not exist, so it is refused with an explanation an admin
          * can act on.
          */
-        if (bond.getRemainingQuantity() == null) {
+        if (bond.getQuantum() == null) {
             throw new BadRequestException(
                     "Inventory has not been set for bond: " + bond.getIsin());
         }
 
-        if (bond.getRemainingQuantity() <= 0) {
+        if (bond.getQuantum().signum() <= 0) {
             throw new ConflictException(
                     "Insufficient quantity available for bond: " + bond.getIsin());
         }
@@ -384,11 +386,13 @@ public class DealConfirmationWriter {
          * than exists" case gets a message that says how much is left, instead
          * of the bare rejected-reservation one.
          */
-        if (bond.getRemainingQuantity() < totalQuantity) {
+        BigDecimal requested = BigDecimal.valueOf(totalQuantity);
+
+        if (bond.getQuantum().compareTo(requested) < 0) {
             throw new ConflictException(
                     "Insufficient quantity available for bond: " + bond.getIsin()
                             + " (requested " + totalQuantity
-                            + ", available " + bond.getRemainingQuantity() + ")");
+                            + ", available " + bond.getQuantum() + ")");
         }
     }
 
@@ -517,8 +521,8 @@ public class DealConfirmationWriter {
      */
     private void markSoldOutIfExhausted(Bond bond) {
 
-        if (bond.getRemainingQuantity() != null
-                && bond.getRemainingQuantity() == 0
+        if (bond.getQuantum() != null
+                && bond.getQuantum().signum() == 0
                 && bond.getStatus() == BondStatus.ACTIVE) {
 
             bond.setStatus(BondStatus.SOLD_OUT);

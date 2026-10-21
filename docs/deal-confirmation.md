@@ -279,56 +279,50 @@ There is **no `GET` endpoint** — a deal can only be created, not read back. Se
 
 ## 4. Inventory is not this module's concern
 
-Inventory lives on the bond as `Bond.remainingQuantity` (`Bond.java:339`).
+Inventory lives on the bond as `Bond.quantum`.
 
-**Nothing in the Deal Confirmation module reads or writes it.** If you are
-looking for where units are claimed, it is not here — this section exists so the
-absence is deliberate rather than a search that ends in confusion.
+**The Deal Confirmation module claims stock, but does not own the field.** It
+reads it to validate availability and calls the repository's atomic reservation
+before the deal row is inserted — this section explains how that boundary works.
 
-### Why it was removed
+### How the reservation fits
 
-Deal creation used to reserve the units itself, in the same transaction as the
-insert. That made a deal confirmation a claim on stock, which is the wrong
-ownership for the flow Click4Bonds is moving to:
+Deal creation reserves the units itself, in the same transaction as the insert:
 
 ```
-customer selects bond → reservation (reserves atomically) → draft deal confirmation
+customer selects bond → deal confirmation (reserves atomically, then inserts)
                       → payment → settlement → final confirmation
 ```
 
-Under that split the reservation happens *before* a draft deal exists, and the
-units are consumed once payment settles. A deal confirmation that also reserved
-would reserve twice, and would have to release when a payment failed — a
-lifecycle this module has no business running.
+The reservation is the conditional UPDATE below, so a request that loses the
+race is refused before any deal row exists, and an insert that fails rolls the
+reservation back with the transaction.
 
 Two things follow, and both are enforced by tests rather than convention:
 
-- **No inventory validation.** `validatePurchasable` checks the bond's *status*
-  only (`DealConfirmationWriter.validatePurchasable`). It does not check
-  `remainingQuantity`, not even to give a friendlier message: a check here would
-  be a non-atomic stand-in for the real guard, and the units are not this
-  module's to promise or refuse. A `null` remaining quantity is no longer a
-  reason to reject a request, because availability is not decided here.
-- **No status flip.** Taking the last unit used to flip the bond to `SOLD_OUT`
-  as a side effect. Nothing flips it automatically now; the status that gates
-  selling is set through the admin API. A bond at zero units with status
-  `ACTIVE` is therefore possible, and is refused by whatever claims the last
-  units — the conditional UPDATE matches zero rows.
+- **Validation reads, but does not decide.** `validatePurchasable` checks the
+  bond's status and its `quantum`, rejecting a `null` (unconfigured) or
+  non-positive quantum and a request larger than what remains
+  (`DealConfirmationWriter.validatePurchasable`). This is only a friendlier
+  pre-check; the real guard is the atomic reservation below.
+- **The status flip follows the reservation.** `markSoldOutIfExhausted` flips
+  the bond to `SOLD_OUT` after the conditional UPDATE reports success and the
+  bond is reloaded at zero. A bond at zero units with status `ACTIVE` is still
+  refused by the conditional UPDATE matching zero rows.
 
 ### The oversell guard is preserved
 
-`BondRepository.reserveQuantity` (`BondRepository.java:86-126`) is kept
-untouched, with no caller in production code. It is the actual oversell
-protection and the reservation step will call it:
+`BondRepository.reserveQuantity` is the actual oversell protection, and
+`DealConfirmationWriter.create` calls it before inserting the deal:
 
 ```sql
 UPDATE bonds
-   SET remaining_quantity = remaining_quantity - :quantity
+   SET quantum = quantum - :quantity
  WHERE id = :id
-   AND remaining_quantity >= :quantity
+   AND quantum >= :quantity
 ```
 
-The `remaining_quantity >= :quantity` predicate is evaluated by PostgreSQL while
+The `quantum >= :quantity` predicate is evaluated by PostgreSQL while
 it holds the row lock, so two concurrent reservations are serialized by the
 database and the loser matches zero rows instead of taking inventory negative. A
 read-then-write in Java would let both read the same figure and both proceed —
@@ -337,20 +331,20 @@ why the guard must never be "simplified" into that shape. `clearAutomatically =
 true` is required because the `UPDATE` bypasses the persistence context, leaving
 any in-memory `Bond` stale; a caller that needs the new figure must reload it.
 
-A method with no callers is exactly the kind that gets cleaned up, so
-`BondRepositoryReserveQuantityContractTest` pins the statement's shape: that it
+Because the statement is easy to "simplify" into a race,
+`BondRepositoryReserveQuantityContractTest` pins its shape: that it
 is a single `UPDATE`, that it carries the guard predicate, and that it is the
 only `@Modifying` method on the repository.
 
 ### Admin surface
 
-`remainingQuantity` is settable through the bond API:
+`quantum` is settable through the bond API:
 
 | DTO | Field | Semantics |
 |---|---|---|
-| `CreateBondRequest` | `remainingQuantity` (`@Min(0)`, optional) | Initial inventory. Omit → unconfigured. |
-| `UpdateBondRequest` | `remainingQuantity` (`@Min(0)`, optional) | **Absolute, not a delta.** Restocking sends the new total. |
-| `BondResponse` | `remainingQuantity` | Read-only view; `null` = unconfigured. |
+| `CreateBondRequest` | `quantum` (optional) | Initial inventory. Omit → unconfigured. |
+| `UpdateBondRequest` | `quantum` (optional) | **Absolute, not a delta.** Restocking sends the new total. |
+| `BondDetailResponse` | `quantum` | Read-only view; `null` = unconfigured. |
 
 Status is deliberately left alone by an update: a restocked bond has to be
 activated through the activate endpoint, so inventory and status never disagree

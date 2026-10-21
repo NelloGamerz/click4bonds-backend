@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.Bond.Repository;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -175,12 +176,12 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
         Optional<Bond> findByIdForUpdate(@Param("id") UUID id);
 
         /**
-         * Reserves (deducts) {@code quantity} units from a bond's inventory.
+         * Reserves (deducts) {@code quantity} from a bond's quantum.
          *
          * <p><strong>This is the oversell guard, and it must stay in this layer
          * intact.</strong> It is deliberately a single conditional UPDATE rather
          * than a read-then-write in Java. The
-         * {@code remainingQuantity >= :quantity} predicate is evaluated by the
+         * {@code quantum >= :quantity} predicate is evaluated by the
          * database while it holds a row lock, so two concurrent buyers are
          * serialized by PostgreSQL and the loser matches zero rows instead of
          * taking the inventory negative. Reading the quantity, checking it in
@@ -199,20 +200,20 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
          * business outcome — the caller reports "insufficient quantity" — not an
          * error to be retried.</p>
          *
-         * @param id       bond whose inventory is being reserved
-         * @param quantity units to deduct; must be greater than zero
+         * @param id       bond whose quantum is being reserved
+         * @param quantity amount to deduct; must be greater than zero
          * @return number of rows updated — always 0 or 1
          */
         @Modifying(clearAutomatically = true, flushAutomatically = true)
         @Query("""
                             UPDATE Bond b
-                            SET b.remainingQuantity = b.remainingQuantity - :quantity
+                            SET b.quantum = b.quantum - :quantity
                             WHERE b.id = :id
-                              AND b.remainingQuantity >= :quantity
+                              AND b.quantum >= :quantity
                         """)
         int reserveQuantity(
                         @Param("id") UUID id,
-                        @Param("quantity") Long quantity);
+                        @Param("quantity") BigDecimal quantity);
 
         /**
          * The ISINs of every bond belonging to an issuer.

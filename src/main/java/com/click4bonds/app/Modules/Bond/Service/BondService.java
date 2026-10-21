@@ -713,13 +713,13 @@ public class BondService {
 
         log.info(
                 "Bond fields applied: isin={}, bondId={}, name={}, couponRate={}, "
-                        + "maturityDate={}, remainingQuantity={}",
+                        + "maturityDate={}, quantum={}",
                 bond.getIsin(),
                 bond.getId(),
                 bond.getName(),
                 bond.getCouponRate(),
                 bond.getMaturityDate(),
-                bond.getRemainingQuantity());
+                bond.getQuantum());
 
         // -----------------------------------------------------
         // Derive the other half of the price/yield pair
@@ -1182,8 +1182,8 @@ public class BondService {
                 .quantumDescription(
                         bond.getQuantumDescription())
 
-                .quantumInLacs(
-                        bond.getQuantumInLacs())
+                .quantum(
+                        bond.getQuantum())
 
                 .maxNoOfBonds(
                         maxNoOfBonds(bond))
@@ -1204,9 +1204,6 @@ public class BondService {
                 .logoUrl(
                         logoUrl(bond))
 
-                .remainingQuantity(
-                        bond.getRemainingQuantity())
-
                 // Status
                 .status(
                         bond.getStatus())
@@ -1221,14 +1218,13 @@ public class BondService {
 
     private Integer maxNoOfBonds(Bond bond) {
 
-        if (bond.getQuantumInLacs() == null
+        if (bond.getQuantum() == null
                 || bond.getLotSize() == null
                 || bond.getLotSize().signum() <= 0) {
             return null;
         }
 
-        return bond.getQuantumInLacs()
-                .movePointRight(5)
+        return bond.getQuantum()
                 .divideToIntegralValue(bond.getLotSize())
                 .intValueExact();
     }

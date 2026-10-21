@@ -284,15 +284,27 @@ public class Bond {
     private String quantumDescription;
 
     /**
-     * Normalized value in INR lakhs.
+     * Normalized value as a full INR amount, not in lakhs.
      * <p>
-     * 3 Lakh -> 3.00
-     * 1.50 Lakh -> 1.50
+     * 3 Lakh -> 300000.00
+     * 1.50 Lakh -> 150000.00
      * <p>
      * NULL when value is "Any", "1 Bonds", etc.
+     * <p>
+     * This is also the bond's inventory: it is decremented by
+     * {@code BondRepository#reserveQuantity}, which is a single conditional
+     * UPDATE so two buyers submitting at the same time can never oversell the
+     * bond — see {@code DealConfirmationWriter}.
+     * <p>
+     * NULL means inventory has not been configured for this bond. Such a bond
+     * cannot be purchased; the deal API rejects it with a business error rather
+     * than assuming an unlimited supply. A value of {@code 0} is different: it
+     * means the bond is sold out.
+     * <p>
+     * Reaching zero also flips {@link #status} to {@link BondStatus#SOLD_OUT}.
      */
     @Column(precision = 19, scale = 2)
-    private BigDecimal quantumInLacs;
+    private BigDecimal quantum;
 
     // =========================
     // LOT SIZE
@@ -327,29 +339,6 @@ public class Bond {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private LotSizeType lotSizeType;
-
-    // =========================
-    // INVENTORY
-    // =========================
-
-    /**
-     * Units of this bond still available for purchase.
-     * <p>
-     * This is the single source of truth for inventory. It is decremented by
-     * {@code BondRepository#reserveQuantity}, which is a single conditional
-     * UPDATE so two buyers submitting at the same time can never oversell the
-     * bond — see {@code DealConfirmationWriter}.
-     * <p>
-     * NULL means inventory has not been configured for this bond (true of every
-     * bond imported before this column existed). Such a bond cannot be
-     * purchased; the deal API rejects it with a business error rather than
-     * assuming an unlimited supply. A value of {@code 0} is different: it means
-     * the bond is sold out.
-     * <p>
-     * Reaching zero also flips {@link #status} to {@link BondStatus#SOLD_OUT}.
-     */
-    @Column(name = "remaining_quantity")
-    private Long remainingQuantity;
 
     // =========================
     // STATUS
