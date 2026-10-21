@@ -44,6 +44,27 @@ public interface DealConfirmationSheetStrategy {
     Map<String, Object> toCells(DealConfirmationSheetValues values);
 
     /**
+     * Whether this layout is drawn as a PDF directly rather than filled into the
+     * spreadsheet template and converted.
+     *
+     * <p>The corporate letter is drawn from
+     * {@link DealConfirmationPdfService}, which needs no spreadsheet and no
+     * LibreOffice: the same values are laid out in code. The G-Sec letter keeps
+     * the template path, so it returns {@code false} through this default.</p>
+     *
+     * <p>This is a property of the layout, not of the deal, which is why it
+     * travels with the strategy: a future third layout decides for itself how it
+     * is produced, and {@link AtSplDealConfirmationDocumentService} needs no
+     * branch per sheet.</p>
+     *
+     * @return true when {@link #toCells} is not used to produce the letter
+     */
+    default boolean rendersDirectly() {
+
+        return false;
+    }
+
+    /**
      * The cells whose template number format does not fit the value written to
      * them.
      *

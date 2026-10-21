@@ -14,6 +14,8 @@ import java.time.LocalDate;
  *
  * @param letterDate              date printed at the top of the letter
  * @param dealReference           our reference for the deal
+ * @param counterpartyName        the customer's name, as printed at the head of
+ *                                the letter and in its signature block
  * @param counterpartyLine        the "Counterparty Name- ..." line
  * @param transactionType         e.g. "Our Sale"
  * @param modeOfDelivery          e.g. "ICCL"
@@ -74,6 +76,7 @@ import java.time.LocalDate;
 public record DealConfirmationSheetValues(
         LocalDate letterDate,
         String dealReference,
+        String counterpartyName,
         String counterpartyLine,
         String transactionType,
         String modeOfDelivery,

@@ -55,6 +55,9 @@ class AtSplDealConfirmationDocumentServiceTest {
     private PdfConverter pdfConverter;
 
     @Mock
+    private DealConfirmationPdfService pdfService;
+
+    @Mock
     private DocumentStorage storage;
 
     private DocumentProperties properties;
@@ -69,6 +72,7 @@ class AtSplDealConfirmationDocumentServiceTest {
         service = new AtSplDealConfirmationDocumentService(
                 templateWriter,
                 pdfConverter,
+                pdfService,
                 storage,
                 new DealConfirmationSheetValuesFactory(properties, new GsecAccrualCalculator()),
                 new DealConfirmationSheetStrategyFactory(
@@ -90,22 +94,19 @@ class AtSplDealConfirmationDocumentServiceTest {
     // =========================================================
 
     @Test
-    void storesBothArtefactsUnderOneStemAndReturnsThePdf() {
+    void drawsTheCorporateLetterDirectlyAndStoresOnlyThePdf() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         DealConfirmationDocument document = service.generate(snapshot());
 
         /*
-         * One stem for both formats, so regenerating a deal replaces a matched
-         * pair rather than leaving the previous spreadsheet beside the new PDF.
+         * The corporate letter no longer goes through a spreadsheet: it is
+         * drawn from the values and stored as a PDF, so neither the template
+         * writer nor the LibreOffice converter is touched.
          */
-        verify(storage).store(
-                eq("2026/09/" + REFERENCE + ".xlsx"),
-                eq(REFERENCE + ".xlsx"),
-                eq(DocumentFormat.XLSX.contentType()),
-                eq(XLSX));
+        verify(pdfService).render(any());
+        verifyNoInteractions(templateWriter, pdfConverter);
 
         verify(storage).store(
                 eq("2026/09/" + REFERENCE + ".pdf"),
@@ -121,10 +122,40 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void filesTheLetterUnderTheValueDate() {
+    void storesBothArtefactsUnderOneStemForTheGsecLetter() {
 
         givenTheSpreadsheetIsFilled();
         givenThePdfRenders();
+
+        DealConfirmationDocument document = service.generate(snapshot("Sovereign"));
+
+        /*
+         * The G-Sec letter keeps the template route unchanged: one stem for
+         * both formats, so regenerating a deal replaces a matched pair rather
+         * than leaving the previous spreadsheet beside the new PDF.
+         */
+        verify(storage).store(
+                eq("2026/09/" + REFERENCE + ".xlsx"),
+                eq(REFERENCE + ".xlsx"),
+                eq(DocumentFormat.XLSX.contentType()),
+                eq(XLSX));
+
+        verify(storage).store(
+                eq("2026/09/" + REFERENCE + ".pdf"),
+                eq(REFERENCE + ".pdf"),
+                eq(DocumentFormat.PDF.contentType()),
+                eq(PDF));
+
+        verifyNoInteractions(pdfService);
+
+        assertEquals(REFERENCE + ".pdf", document.fileName());
+        assertArrayEquals(PDF, document.content());
+    }
+
+    @Test
+    void filesTheLetterUnderTheValueDate() {
+
+        givenThePdfIsDrawn();
 
         service.generate(snapshot());
 
@@ -139,12 +170,12 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void fillsTheSheetTheTemplateConfigNames() {
+    void fillsTheSheetTheTemplateConfigNamesForTheGsecLetter() {
 
         givenTheSpreadsheetIsFilled();
         givenThePdfRenders();
 
-        service.generate(snapshot());
+        service.generate(snapshot("Sovereign"));
 
         /*
          * The sheet name is configurable because the workbook has two sale
@@ -152,7 +183,7 @@ class AtSplDealConfirmationDocumentServiceTest {
          * asserting the wiring here makes a config regression obvious.
          */
         verify(templateWriter).fill(
-                eq(properties.getTemplate().getSheetName()),
+                eq(properties.getTemplate().getGsecSheetName()),
                 anyMap(),
                 anyMap());
     }
@@ -162,22 +193,19 @@ class AtSplDealConfirmationDocumentServiceTest {
     // =========================================================
 
     @Test
-    void printsARatedBondOnTheCorporateSheet() {
+    void printsARatedBondOnTheCorporateLetter() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         service.generate(snapshot("AAA"));
 
         /*
          * Anything that is not a Sovereign keeps the letter it has always had.
-         * This is the regression guard for the whole feature: the new rule must
-         * not move ordinary deals onto another sheet.
+         * The corporate letter is now drawn directly, so the layout is selected
+         * by proving the renderer was used and the G-Sec sheet was not.
          */
-        verify(templateWriter).fill(
-                eq(properties.getTemplate().getSheetName()),
-                anyMap(),
-                anyMap());
+        verify(pdfService).render(any());
+        verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     @Test
@@ -219,10 +247,9 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void printsAnUnratedBondOnTheCorporateSheet() {
+    void printsAnUnratedBondOnTheCorporateLetter() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         /*
          * A bond with no rating recorded keeps the letter every deal had before
@@ -231,10 +258,8 @@ class AtSplDealConfirmationDocumentServiceTest {
          */
         service.generate(snapshot(null));
 
-        verify(templateWriter).fill(
-                eq(properties.getTemplate().getSheetName()),
-                anyMap(),
-                anyMap());
+        verify(pdfService).render(any());
+        verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     // =========================================================
@@ -261,7 +286,7 @@ class AtSplDealConfirmationDocumentServiceTest {
                 eq(DocumentFormat.XLSX.contentType()),
                 eq(XLSX));
 
-        verifyNoInteractions(pdfConverter);
+        verifyNoInteractions(pdfConverter, pdfService);
 
         assertEquals(DocumentFormat.XLSX.contentType(), document.contentType());
         assertTrue(document.isPresent());
@@ -277,14 +302,32 @@ class AtSplDealConfirmationDocumentServiceTest {
         when(templateWriter.fill(anyString(), any(), any()))
                 .thenThrow(new DocumentGenerationException("template is missing"));
 
-        assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> service.generate(snapshot("Sovereign")));
 
         /*
          * Nothing half-written: if the fill failed there is no spreadsheet to
          * keep and no PDF to render.
          */
         verifyNoInteractions(storage);
-        verifyNoInteractions(pdfConverter);
+        verifyNoInteractions(pdfConverter, pdfService);
+    }
+
+    @Test
+    void storesNothingWhenTheLetterCannotBeDrawn() {
+
+        when(pdfService.render(any()))
+                .thenThrow(new DocumentGenerationException("the letter cannot be drawn"));
+
+        assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
+
+        /*
+         * The direct route has no intermediate artefact to keep, so a failed
+         * render leaves nothing behind and the deal stays retryable.
+         */
+        verifyNoInteractions(storage);
+        verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     @Test
@@ -295,7 +338,9 @@ class AtSplDealConfirmationDocumentServiceTest {
         when(pdfConverter.toPdf(any(), anyString()))
                 .thenThrow(new DocumentGenerationException("soffice is not installed"));
 
-        assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> service.generate(snapshot("Sovereign")));
 
         /*
          * The spreadsheet is stored before rendering is attempted, so a render
@@ -350,7 +395,7 @@ class AtSplDealConfirmationDocumentServiceTest {
         assertThrows(DocumentGenerationException.class, () -> service.generate(incomplete));
 
         verifyNoInteractions(storage);
-        verifyNoInteractions(templateWriter);
+        verifyNoInteractions(templateWriter, pdfConverter, pdfService);
     }
 
     @Test
@@ -396,7 +441,7 @@ class AtSplDealConfirmationDocumentServiceTest {
                 () -> service.generate(withoutReference));
 
         verifyNoInteractions(storage);
-        verifyNoInteractions(templateWriter);
+        verifyNoInteractions(templateWriter, pdfConverter, pdfService);
     }
 
     // =========================================================
@@ -420,6 +465,18 @@ class AtSplDealConfirmationDocumentServiceTest {
     private void givenThePdfRenders() {
 
         when(pdfConverter.toPdf(any(), anyString())).thenReturn(PDF);
+
+        givenDocumentsAreStored();
+    }
+
+    private void givenThePdfIsDrawn() {
+
+        when(pdfService.render(any())).thenReturn(PDF);
+
+        givenDocumentsAreStored();
+    }
+
+    private void givenDocumentsAreStored() {
 
         when(storage.store(anyString(), anyString(), anyString(), any()))
                 .thenAnswer(call -> new StoredDocument(

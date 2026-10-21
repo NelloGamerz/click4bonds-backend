@@ -128,6 +128,7 @@ class GsecSellSheetStrategyTest {
         DealConfirmationSheetValues withoutMaturity = new DealConfirmationSheetValues(
                 LocalDate.of(2026, 9, 25),
                 "DC-20260925-000001",
+                "Test Customer",
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "Demat",
@@ -312,6 +313,7 @@ class GsecSellSheetStrategyTest {
         return new DealConfirmationSheetValues(
                 LocalDate.of(2026, 9, 25),
                 "DC-20260925-000001",
+                "Test Customer",
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "Demat",

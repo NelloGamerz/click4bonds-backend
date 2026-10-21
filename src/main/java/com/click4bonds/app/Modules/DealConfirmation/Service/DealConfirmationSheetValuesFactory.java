@@ -177,10 +177,13 @@ public class DealConfirmationSheetValuesFactory {
 
         GsecMoney gsec = gsecMoney(snapshot, quantum, principalAmount);
 
+        String counterpartyName = nullToEmpty(snapshot.customerName());
+
         return new DealConfirmationSheetValues(
                 letterDate,
                 snapshot.dealReference(),
-                "Counterparty Name- " + nullToEmpty(snapshot.customerName()),
+                counterpartyName,
+                "Counterparty Name- " + counterpartyName,
                 documentProperties.getDeal().getTransactionType(),
                 documentProperties.getOrganisation().getModeOfDelivery(),
                 dealDate,
