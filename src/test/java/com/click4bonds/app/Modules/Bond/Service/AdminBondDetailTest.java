@@ -316,6 +316,7 @@ class AdminBondDetailTest {
         assertEquals(0, bond.getAnnualYtm().compareTo(new BigDecimal("8.6521")));
         assertEquals(0, bond.getPrice().compareTo(new BigDecimal("102.08")));
         assertEquals(0, bond.getLotSize().compareTo(new BigDecimal("1000")));
+        assertEquals(300, bond.getMaxNoOfBonds());
     }
 
     private String write(Object value) {
@@ -342,6 +343,7 @@ class AdminBondDetailTest {
                 .ratingAgency("CRISIL")
                 .rating("AAA")
                 .price(new BigDecimal("102.08"))
+                .quantumInLacs(new BigDecimal("3"))
                 .lotSize(new BigDecimal("1000"))
                 .status(BondStatus.ACTIVE)
                 .sourceFileName("bonds-oct.xlsx")
