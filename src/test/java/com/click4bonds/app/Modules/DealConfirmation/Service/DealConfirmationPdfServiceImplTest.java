@@ -78,6 +78,7 @@ class DealConfirmationPdfServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         byte[] pdf = service.render(sparse);
