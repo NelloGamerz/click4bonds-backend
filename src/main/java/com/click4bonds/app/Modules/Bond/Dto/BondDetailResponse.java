@@ -198,15 +198,18 @@ public class BondDetailResponse {
     private String quantumDescription;
 
     /**
-     * Normalized value in lakhs.
+     * Normalized value as a full INR amount, not in lakhs.
+     *
+     * <p>A 50-lakh quantum is returned as {@code 5000000.00}, which is the
+     * figure the inventory is reserved against.</p>
      */
-    private BigDecimal quantumInLacs;
+    private BigDecimal quantum;
 
     /**
      * Maximum number of bonds represented by the configured quantum.
      *
-     * <p>The quantum is stored in lakhs and the lot size in rupees, so this
-     * value is calculated as {@code quantumInLacs × 100,000 ÷ lotSize}.</p>
+     * <p>Both the quantum and the lot size are full rupee amounts, so this
+     * value is calculated as {@code quantum ÷ lotSize}.</p>
      */
     private Integer maxNoOfBonds;
 
@@ -247,18 +250,6 @@ public class BondDetailResponse {
      * own page leads with it.</p>
      */
     private String logoUrl;
-
-    // =========================
-    // INVENTORY
-    // =========================
-
-    /**
-     * Units still available for purchase.
-     *
-     * <p>NULL means inventory has not been configured for this bond, so it
-     * cannot be purchased yet.</p>
-     */
-    private Long remainingQuantity;
 
     // =========================
     // STATUS

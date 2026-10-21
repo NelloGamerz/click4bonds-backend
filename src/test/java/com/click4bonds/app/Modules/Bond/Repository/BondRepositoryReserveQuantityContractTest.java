@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Bond.Repository;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -107,12 +108,12 @@ class BondRepositoryReserveQuantityContractTest {
          * instead of taking the inventory negative.
          */
         assertTrue(
-                jpql.contains("b.remainingQuantity >= :quantity"),
+                jpql.contains("b.quantum >= :quantity"),
                 "the atomic oversell predicate must not be removed, was: " + jpql);
 
         // And the decrement it guards.
         assertTrue(
-                jpql.contains("SET b.remainingQuantity = b.remainingQuantity - :quantity"),
+                jpql.contains("SET b.quantum = b.quantum - :quantity"),
                 "the guarded decrement must remain a relative update, was: " + jpql);
     }
 
@@ -140,7 +141,7 @@ class BondRepositoryReserveQuantityContractTest {
     // ============================================================
 
     private Method reserveQuantityMethod() throws Exception {
-        return BondRepository.class.getMethod("reserveQuantity", UUID.class, Long.class);
+        return BondRepository.class.getMethod("reserveQuantity", UUID.class, BigDecimal.class);
     }
 
     /** The JPQL with its formatting collapsed, so assertions read as one line. */

@@ -343,7 +343,7 @@ class AdminBondDetailTest {
                 .ratingAgency("CRISIL")
                 .rating("AAA")
                 .price(new BigDecimal("102.08"))
-                .quantumInLacs(new BigDecimal("3"))
+                .quantum(new BigDecimal("300000"))
                 .lotSize(new BigDecimal("1000"))
                 .status(BondStatus.ACTIVE)
                 .sourceFileName("bonds-oct.xlsx")

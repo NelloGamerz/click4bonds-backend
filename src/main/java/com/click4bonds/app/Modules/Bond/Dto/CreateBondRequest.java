@@ -17,7 +17,7 @@ import lombok.Data;
  * half-parsed is written.
  *
  * <p>
- * The normalized companions ({@code quantumInLacs}, {@code lotSize},
+ * The normalized companions ({@code quantum}, {@code lotSize},
  * {@code lotSizeType}, {@code maturityDate}, {@code maturityType},
  * {@code couponFrequency}) may still be sent explicitly, and then they win over
  * what the raw text would have produced.
@@ -269,10 +269,13 @@ public class CreateBondRequest {
      * Optional explicit normalized value in lakhs. When absent it is derived
      * from {@link #quantumDescription}.
      *
+     * <p>The request speaks in lakhs, but the bond stores the full INR amount:
+     * {@code 3.00} lakh is stored as {@code 300000.00}.</p>
+     *
      * Example:
      * 3 Lakh -> 3.00
      */
-    private String quantumInLacs;
+    private String quantum;
 
     // =========================
     // LOT SIZE
@@ -305,20 +308,6 @@ public class CreateBondRequest {
      * {@link #lotSizeDescription}.
      */
     private String lotSizeType;
-
-    // =========================
-    // INVENTORY
-    // =========================
-
-    /**
-     * Units available for purchase.
-     *
-     * <p>Optional: omitting it leaves the bond's inventory unconfigured, which
-     * makes the bond unbuyable until an admin sets a value. Use {@code 0} to
-     * create an already sold-out bond.</p>
-     */
-    @Min(0)
-    private Long remainingQuantity;
 
     // =========================
     // FLAGS

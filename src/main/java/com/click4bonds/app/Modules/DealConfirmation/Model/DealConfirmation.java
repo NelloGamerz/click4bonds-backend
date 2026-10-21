@@ -37,7 +37,7 @@ import lombok.Setter;
  * agreed — quantities, the price as it stood, the reference the customer
  * quotes — and deliberately carries no claim on stock: it neither reserves,
  * deducts nor releases inventory, and it is written without any reference to
- * {@link Bond#getRemainingQuantity()}.</p>
+ * {@link Bond#getQuantum()}.</p>
  *
  * <p>Inventory belongs to the reservation and payment flow around this record:
  * units are reserved before a draft deal exists and consumed once payment

@@ -89,9 +89,8 @@ Fields are grouped by intent in the source. The load-bearing ones:
 | `maturityType` | `maturity_type` | Enum. **Stored but never read by the calculation engine** — see [§9](#9-what-is-not-wired-up). |
 | `price` | `price` | Nullable: Excel price can be blank. Clean price per 100 face. |
 | `semiYtm` / `annualYtm` / `ytc` / `ytmCalculatedAt` | | Supplied by an admin on create/update, otherwise calculated internally. Exposed on `BondResponse`. |
-| `quantumDescription` / `quantumInLacs` / `maxNoOfBonds` | | Original text, normalized lakh value, and the integer number of bonds represented by `quantumInLacs × 100,000 ÷ lotSize`. `maxNoOfBonds` is `null` when either input is unavailable or the lot size is not positive. |
+| `quantumDescription` / `quantum` / `maxNoOfBonds` | | Original text, normalized full INR value (a 50-lakh quantum is stored as `5000000.00`), and the integer number of bonds represented by `quantum ÷ lotSize`. `maxNoOfBonds` is `null` when either input is unavailable or the lot size is not positive. `quantum` is also the inventory — nullable, where `NULL` means "not configured". |
 | `lotSizeDescription` / `lotSize` / `lotSizeType` | | Original text, numeric value, and its kind. |
-| `remainingQuantity` | `remaining_quantity` | Inventory. Nullable — `NULL` means "not configured". |
 | `status` | `status` | `NOT NULL`, defaults to `DRAFT`. |
 | `isFlashNews` | `is_flash_news` | `NOT NULL`, default `false`. |
 | `createdBy` | `created_by` → `users.clerk_user_id` | Note the FK targets **`clerk_user_id`**, not the user PK. |
@@ -172,7 +171,7 @@ verbatim — `couponRate: "8.45%"`, `securityType: "Secured"`,
 `BondRequestMapper` normalizes each one through `BondFieldParser` before it
 reaches the entity, and derives the companions:
 `maturityDate`/`maturityType` from `maturityDescription`, `couponFrequency` from
-`ipDateDescription`, `quantumInLacs` from `quantumDescription`, and
+`ipDateDescription`, `quantum` from `quantumDescription`, and
 `lotSize`/`lotSizeType` from `lotSizeDescription`.
 
 **The description is the source of truth.** When a description field is present
@@ -228,7 +227,7 @@ Rules enforced by `BondService`:
   applied. Blocked once `MATURED`. Changing `price` calls
   `invalidateYieldCalculation`, nulling `semiYtm`, `annualYtm`, `ytc` and
   `ytmCalculatedAt`, so a stale yield can never be served alongside a new price.
-- **`remainingQuantity` on update is absolute, not a delta.** An admin restocking
+- **`quantum` on update is absolute, not a delta.** An admin restocking
   sends the new total. Status is deliberately left alone — a restocked `SOLD_OUT`
   bond must be re-activated through `/activate`.
 - **Activate** — blocked from `MATURED` and `CANCELLED`; re-checks that
@@ -303,18 +302,18 @@ literal `50%` searches for a percent sign.
 
 ## 6. Inventory and the oversell guard
 
-`Bond.remainingQuantity` is the single source of truth for stock. `NULL` means
+`Bond.quantum` is the single source of truth for stock. `NULL` means
 inventory was never configured (true of every bond imported before the column
 existed); `0` means sold out.
 
-`BondRepository.reserveQuantity` deducts units with a single conditional UPDATE
-(JPQL, shown with SQL-ish syntax):
+`BondRepository.reserveQuantity` deducts the requested amount with a single
+conditional UPDATE (JPQL, shown with SQL-ish syntax):
 
 ```sql
 UPDATE Bond b
-   SET b.remainingQuantity = b.remainingQuantity - :quantity
+   SET b.quantum = b.quantum - :quantity
  WHERE b.id = :id
-   AND b.remainingQuantity >= :quantity
+   AND b.quantum >= :quantity
 ```
 
 The `>=` predicate is evaluated by the database while it holds the row lock, so

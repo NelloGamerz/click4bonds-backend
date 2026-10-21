@@ -14,7 +14,7 @@ import lombok.Data;
  * {@code 400} naming the field.
  *
  * <p>
- * The normalized companions ({@code quantumInLacs}, {@code lotSize},
+ * The normalized companions ({@code quantum}, {@code lotSize},
  * {@code lotSizeType}, {@code maturityDate}, {@code maturityType},
  * {@code couponFrequency}) may also be sent explicitly, and then they win over
  * what the raw text would have produced.
@@ -192,8 +192,11 @@ public class UpdateBondRequest {
 
     /**
      * Optional explicit normalized value in lakhs.
+     *
+     * <p>The request speaks in lakhs, but the bond stores the full INR amount:
+     * {@code 50} is stored as {@code 5000000.00}.</p>
      */
-    private String quantumInLacs;
+    private String quantum;
 
     // =========================
     // LOT SIZE
@@ -221,21 +224,6 @@ public class UpdateBondRequest {
      * Optional explicit lot type.
      */
     private String lotSizeType;
-
-    // =========================
-    // INVENTORY
-    // =========================
-
-    /**
-     * Units available for purchase.
-     *
-     * <p>Optional. When supplied it REPLACES the current inventory — it is not a
-     * delta — so an admin restocking a bond sends the new total. Because every
-     * other field on this request is null-tolerant, a null here leaves the
-     * current inventory untouched.</p>
-     */
-    @Min(0)
-    private Long remainingQuantity;
 
     private Boolean isFlashNews;
 }

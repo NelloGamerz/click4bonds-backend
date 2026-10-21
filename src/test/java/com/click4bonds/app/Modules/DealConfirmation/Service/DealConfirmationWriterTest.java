@@ -108,7 +108,7 @@ class DealConfirmationWriterTest {
         assertEquals(500L, created.response().getTotalQuantity());
 
         // The quantity reserved is the server-calculated total, not a client value.
-        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 500L);
+        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), BigDecimal.valueOf(500));
 
         // 500 units at a price of 98.94 each.
         assertEquals(
@@ -151,7 +151,7 @@ class DealConfirmationWriterTest {
 
         writer.create(USER_ID, request(5L), null);
 
-        assertEquals(0L, reserved.getRemainingQuantity());
+        assertEquals(0, BigDecimal.ZERO.compareTo(reserved.getQuantum()));
         assertEquals(BondStatus.SOLD_OUT, reserved.getStatus());
 
         Mockito.verify(bondRepository).save(reserved);
@@ -260,7 +260,7 @@ class DealConfirmationWriterTest {
                 () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
     }
@@ -278,7 +278,7 @@ class DealConfirmationWriterTest {
                 () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
     }
@@ -296,7 +296,7 @@ class DealConfirmationWriterTest {
                 () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
     }
 
     @Test
@@ -312,7 +312,7 @@ class DealConfirmationWriterTest {
                 () -> writer.create(USER_ID, request(5L), null));
 
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
     }
@@ -335,7 +335,7 @@ class DealConfirmationWriterTest {
 
         // The row was never even asked to give up units.
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
     }
@@ -353,7 +353,7 @@ class DealConfirmationWriterTest {
 
         givenActiveCustomer();
         givenBond(bond);
-        Mockito.when(bondRepository.reserveQuantity(bond.getId(), 500L))
+        Mockito.when(bondRepository.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
                 .thenReturn(0);
 
         assertThrows(
@@ -384,7 +384,7 @@ class DealConfirmationWriterTest {
 
         InOrder order = Mockito.inOrder(bondRepository, dealConfirmationRepository);
 
-        order.verify(bondRepository).reserveQuantity(bond.getId(), 500L);
+        order.verify(bondRepository).reserveQuantity(bond.getId(), BigDecimal.valueOf(500));
         order.verify(dealConfirmationRepository).save(any());
     }
 
@@ -411,7 +411,7 @@ class DealConfirmationWriterTest {
          * the database's; with no embedded database in this project it is not
          * asserted here.
          */
-        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), 500L);
+        Mockito.verify(bondRepository).reserveQuantity(bond.getId(), BigDecimal.valueOf(500));
     }
 
     // ============================================================
@@ -454,7 +454,7 @@ class DealConfirmationWriterTest {
          * which is the whole point of the read-only path.
          */
         Mockito.verify(bondRepository, Mockito.never())
-                .reserveQuantity(any(), anyLong());
+                .reserveQuantity(any(), any());
         Mockito.verify(bondRepository, Mockito.never()).save(any());
         Mockito.verifyNoInteractions(dealConfirmationRepository);
         Mockito.verifyNoInteractions(dealReferenceGenerator);
@@ -513,14 +513,14 @@ class DealConfirmationWriterTest {
      * The lot size lived on the request until it moved onto the bond, so the
      * fixture carries it now: every quantity in this class is 100 units a lot.
      */
-    private Bond bond(BondStatus status, Long remainingQuantity) {
+    private Bond bond(BondStatus status, Long quantum) {
 
         return Bond.builder()
                 .id(UUID.randomUUID())
                 .name("Test Bond")
                 .isin(ISIN)
                 .status(status)
-                .remainingQuantity(remainingQuantity)
+                .quantum(quantum == null ? null : BigDecimal.valueOf(quantum))
                 .lotSize(new BigDecimal("100"))
                 .price(new BigDecimal("98.94"))
                 .build();
@@ -554,7 +554,7 @@ class DealConfirmationWriterTest {
      */
     private Bond givenReservationSucceeds(Bond bond, long remainingAfter) {
 
-        Mockito.when(bondRepository.reserveQuantity(bond.getId(), 500L))
+        Mockito.when(bondRepository.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
                 .thenReturn(1);
 
         Bond afterReservation = bond(bond.getStatus(), remainingAfter);

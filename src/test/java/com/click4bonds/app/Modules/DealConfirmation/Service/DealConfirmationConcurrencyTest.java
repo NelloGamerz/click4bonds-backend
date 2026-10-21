@@ -56,7 +56,7 @@ import com.click4bonds.app.Modules.User.Service.UserService;
  *
  * <p><strong>What this test does and does not prove.</strong> The real guarantee
  * is the SQL predicate in {@code BondRepository#reserveQuantity}
- * ({@code WHERE remaining_quantity >= :quantity}), which PostgreSQL evaluates
+ * ({@code WHERE quantum >= :quantity}), which PostgreSQL evaluates
  * while holding the row lock. That statement cannot run here: this project has
  * no embedded database and no Testcontainers, and its only Spring integration
  * tests point at the shared dev database, which a concurrency test must not
@@ -266,7 +266,7 @@ class DealConfirmationConcurrencyTest {
             this.remaining = new AtomicLong(remaining);
         }
 
-        /** Equivalent to {@code UPDATE ... WHERE remaining_quantity >= :quantity}. */
+        /** Equivalent to {@code UPDATE ... WHERE quantum >= :quantity}. */
         synchronized int reserve(long quantity) {
 
             if (remaining.get() < quantity) {
@@ -301,8 +301,9 @@ class DealConfirmationConcurrencyTest {
             lenient().when(repository.findById(any()))
                     .thenAnswer(invocation -> Optional.of(currentBond()));
 
-            lenient().when(repository.reserveQuantity(any(), anyLong()))
-                    .thenAnswer(invocation -> reserve(invocation.getArgument(1)));
+            lenient().when(repository.reserveQuantity(any(), any()))
+                    .thenAnswer(invocation -> reserve(
+                            ((BigDecimal) invocation.getArgument(1)).longValue()));
 
             lenient().when(repository.save(any(Bond.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
@@ -317,7 +318,7 @@ class DealConfirmationConcurrencyTest {
                     .name("Test Bond")
                     .isin(ISIN)
                     .status(BondStatus.ACTIVE)
-                    .remainingQuantity(remaining.get())
+                    .quantum(BigDecimal.valueOf(remaining.get()))
                     .lotSize(new BigDecimal("100"))
                     .price(new BigDecimal("98.94"))
                     .build();
