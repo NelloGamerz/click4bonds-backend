@@ -89,7 +89,7 @@ Fields are grouped by intent in the source. The load-bearing ones:
 | `maturityType` | `maturity_type` | Enum. **Stored but never read by the calculation engine** — see [§9](#9-what-is-not-wired-up). |
 | `price` | `price` | Nullable: Excel price can be blank. Clean price per 100 face. |
 | `semiYtm` / `annualYtm` / `ytc` / `ytmCalculatedAt` | | Supplied by an admin on create/update, otherwise calculated internally. Exposed on `BondResponse`. |
-| `quantumDescription` / `quantumInLacs` | | Original text and the normalized lakh value. |
+| `quantumDescription` / `quantumInLacs` / `maxNoOfBonds` | | Original text, normalized lakh value, and the integer number of bonds represented by `quantumInLacs × 100,000 ÷ lotSize`. `maxNoOfBonds` is `null` when either input is unavailable or the lot size is not positive. |
 | `lotSizeDescription` / `lotSize` / `lotSizeType` | | Original text, numeric value, and its kind. |
 | `remainingQuantity` | `remaining_quantity` | Inventory. Nullable — `NULL` means "not configured". |
 | `status` | `status` | `NOT NULL`, defaults to `DRAFT`. |
@@ -132,7 +132,7 @@ No `@PreAuthorize`. `SecurityConfig` permits `GET /api/bonds` and
 | Method | Path | Parameters | Returns |
 |---|---|---|---|
 | GET | `/api/bonds` | `search`, `isFlashNews`, pageable (default size 20, `createdAt` DESC) | `Page<BondResponse>` |
-| GET | `/api/bonds/{isin}` | | `BondResponse` |
+| GET | `/api/bonds/{isin}` | | `BondDetailResponse` (includes `maxNoOfBonds`) |
 | GET | `/api/bonds/{isin}/issuer` | | `IssuerResponse` |
 
 A `POST /{bondId}/calculate-ytm` endpoint is commented out in the source.

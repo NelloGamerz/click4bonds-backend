@@ -202,6 +202,14 @@ public class BondDetailResponse {
      */
     private BigDecimal quantumInLacs;
 
+    /**
+     * Maximum number of bonds represented by the configured quantum.
+     *
+     * <p>The quantum is stored in lakhs and the lot size in rupees, so this
+     * value is calculated as {@code quantumInLacs × 100,000 ÷ lotSize}.</p>
+     */
+    private Integer maxNoOfBonds;
+
     // =========================
     // LOT SIZE
     // =========================

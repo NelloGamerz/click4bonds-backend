@@ -1185,6 +1185,9 @@ public class BondService {
                 .quantumInLacs(
                         bond.getQuantumInLacs())
 
+                .maxNoOfBonds(
+                        maxNoOfBonds(bond))
+
                 // Lot
                 .lotSizeDescription(
                         bond.getLotSizeDescription())
@@ -1214,6 +1217,20 @@ public class BondService {
 
                 .updatedAt(
                         bond.getUpdatedAt());
+    }
+
+    private Integer maxNoOfBonds(Bond bond) {
+
+        if (bond.getQuantumInLacs() == null
+                || bond.getLotSize() == null
+                || bond.getLotSize().signum() <= 0) {
+            return null;
+        }
+
+        return bond.getQuantumInLacs()
+                .movePointRight(5)
+                .divideToIntegralValue(bond.getLotSize())
+                .intValueExact();
     }
 
     /**
