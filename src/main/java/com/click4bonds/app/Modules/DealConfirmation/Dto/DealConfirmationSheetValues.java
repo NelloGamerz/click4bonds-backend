@@ -26,6 +26,9 @@ import java.time.LocalDate;
  * @param securityName            the bond's name
  * @param maturityDate            the bond's maturity, or null when perpetual
  * @param ipDateDescription       the bond's raw interest-payment description
+ * @param putCallDescription      the bond's raw put/call description (a date or
+ *                                free text) as stored, or null when the bond has
+ *                                none; the letter prints "N.A" in that case
  * @param lastInterestPaymentDate last coupon date before the value date
  * @param couponRate              the bond's coupon as stored, a percentage:
  *                                8.80 prints as 8.80
@@ -91,6 +94,7 @@ public record DealConfirmationSheetValues(
         String securityName,
         LocalDate maturityDate,
         String ipDateDescription,
+        String putCallDescription,
         LocalDate lastInterestPaymentDate,
         BigDecimal couponRate,
         Long accruedDays,

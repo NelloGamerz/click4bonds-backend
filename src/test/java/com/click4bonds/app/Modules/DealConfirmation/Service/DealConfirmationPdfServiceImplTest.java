@@ -79,6 +79,7 @@ class DealConfirmationPdfServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         byte[] pdf = service.render(sparse);
@@ -126,6 +127,7 @@ class DealConfirmationPdfServiceImplTest {
                 "14.40% Monedo Fin Ser Pvt Ltd 2027",
                 LocalDate.of(2027, 10, 1),
                 "1st of every month",
+                null,
                 LocalDate.of(2026, 10, 1),
                 new BigDecimal("14.40"),
                 4L,

@@ -67,6 +67,9 @@ public record DealConfirmationDocumentData(
         /** The bond's raw interest-payment description, e.g. "23rd of every month". */
         String ipDateDescription,
 
+        /** The bond's raw put/call description, or null when it has none. */
+        String putCallDescription,
+
         /** Coupon date on or before the value date; null when unresolved. */
         LocalDate previousCouponDate,
 
@@ -135,6 +138,7 @@ public record DealConfirmationDocumentData(
                 bond == null ? null : bond.getCouponRate(),
                 bond == null ? null : bond.getMaturityDate(),
                 bond == null ? null : bond.getIpDateDescription(),
+                bond == null ? null : bond.getPutCallDescription(),
                 accrual == null ? null : accrual.previousCouponDate(),
                 accrual == null ? null : accrual.accruedDays(),
                 accrual == null ? null : accrual.accruedInterestPerHundredFace(),

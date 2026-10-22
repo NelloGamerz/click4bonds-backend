@@ -477,6 +477,7 @@ class DealConfirmationServiceTest {
                 null,
                 null,
                 null,
+                null,
                 500L,
                 null,
                 null,

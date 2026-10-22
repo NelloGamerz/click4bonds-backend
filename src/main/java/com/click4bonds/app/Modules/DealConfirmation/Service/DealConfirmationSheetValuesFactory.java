@@ -209,6 +209,7 @@ public class DealConfirmationSheetValuesFactory {
                 snapshot.bondName(),
                 snapshot.maturityDate(),
                 snapshot.ipDateDescription(),
+                snapshot.putCallDescription(),
                 snapshot.previousCouponDate(),
                 snapshot.couponRate(),
                 snapshot.accruedDays(),

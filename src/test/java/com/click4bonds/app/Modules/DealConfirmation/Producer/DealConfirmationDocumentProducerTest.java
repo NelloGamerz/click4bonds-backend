@@ -109,6 +109,7 @@ class DealConfirmationDocumentProducerTest {
                         new BigDecimal("13.70"),
                         LocalDate.of(2027, 8, 23),
                         "23rd Of Every Month",
+                        null,
                         LocalDate.of(2026, 7, 23),
                         64L,
                         new BigDecimal("2.401"),
