@@ -484,6 +484,7 @@ class DealConfirmationSheetValuesFactoryTest {
                     couponRate,
                     LocalDate.of(2027, 8, 23),
                     "23rd Of Every Month",
+                    null,
                     LocalDate.of(2026, 7, 23),
                     64L,
                     accruedInterestPerHundredFace,

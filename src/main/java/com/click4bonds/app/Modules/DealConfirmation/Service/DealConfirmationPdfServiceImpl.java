@@ -27,10 +27,12 @@ import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPCellEvent;
 import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 
 import lombok.RequiredArgsConstructor;
@@ -76,6 +78,31 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private static final String LETTERHEAD_RESOURCE = "/logo/alltime_header.png";
 
+    /*
+     * Page geometry. The masthead and the address bar belong to the page rather
+     * than to the content, so their heights are reserved out of the margins and
+     * a second page repeats them automatically.
+     */
+    private static final float LEFT_MARGIN = 28f;
+    private static final float RIGHT_MARGIN = 28f;
+
+    /** Clearance above the masthead at the top of each page. */
+    private static final float HEADER_TOP_GAP = 24f;
+
+    /** The gap between the masthead image and the blue/purple rule. */
+    private static final float MASTHEAD_BAND_GAP = 2f;
+
+    private static final float BAND_HEIGHT = 4f;
+
+    /** The gap between the header rule and the first line of body text. */
+    private static final float HEADER_CONTENT_GAP = 8f;
+
+    private static final float FOOTER_BOTTOM_GAP = 14f;
+    private static final float FOOTER_HEIGHT = 22f;
+
+    /** The address bar plus its clearance from the body text above it. */
+    private static final float BOTTOM_MARGIN = FOOTER_BOTTOM_GAP + FOOTER_HEIGHT + 8f;
+
     /** The registered entity, as printed in the letter's footer and metadata. */
     private static final String LEGAL_NAME = "All Time Securities Pvt. Ltd.";
 
@@ -109,7 +136,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private static final Color DIVIDER = new Color(0xED, 0xEF, 0xF4);
     private static final Color TOTAL_BG = new Color(0xEA, 0xF1, 0xFA);
-    private static final Color TOTAL_BORDER = new Color(0xC9, 0xDB, 0xF2);
     private static final Color FOOTER_TEXT = new Color(0xD5, 0xD9, 0xE4);
 
     /*
@@ -179,7 +205,22 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-        Document document = new Document(PageSize.A4, 28, 28, 24, 24);
+        /*
+         * The masthead and the address bar are drawn on every page by a page
+         * event rather than added once to the content, so a letter that runs to
+         * a second page still carries both. Their height is reserved out of the
+         * page margins, which is what keeps the body from printing over them.
+         */
+        float availableWidth = PageSize.A4.getWidth() - LEFT_MARGIN - RIGHT_MARGIN;
+
+        Image logo = letterheadImage(availableWidth);
+
+        float mastheadHeight = logo == null ? 0f : logo.getScaledHeight();
+        float topMargin = HEADER_TOP_GAP + mastheadHeight
+                + (logo == null ? 0f : MASTHEAD_BAND_GAP) + BAND_HEIGHT + HEADER_CONTENT_GAP;
+
+        Document document = new Document(
+                PageSize.A4, LEFT_MARGIN, RIGHT_MARGIN, topMargin, BOTTOM_MARGIN);
 
         document.addTitle("Deal Confirmation - " + values.dealReference());
         document.addAuthor(LEGAL_NAME);
@@ -187,18 +228,21 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         try {
 
-            PdfWriter.getInstance(document, out);
+            PdfWriter writer = PdfWriter.getInstance(document, out);
+
+            writer.setPageEvent(new LetterheadAndFooter(
+                    logo,
+                    availableWidth,
+                    REGULAR.at(8f, FOOTER_TEXT)));
 
             document.open();
 
-            addLetterhead(document);
             addCounterparty(document, values);
             addBondAndDealTerms(document, values);
             addOurDetails(document);
             addCustomerDetails(document, values);
-            addDisclaimer(document);
             addSignatures(document, values);
-            addFooter(document);
+            addDisclaimer(document);
 
             document.close();
 
@@ -233,44 +277,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     // SECTIONS
     // =========================================================
 
-    private void addLetterhead(Document document) throws DocumentException {
-
-        byte[] logo = letterhead();
-
-        if (logo != null) {
-
-            try {
-
-                Image image = Image.getInstance(logo);
-                float width = contentWidth(document);
-
-                image.scaleToFit(width, width * image.getHeight() / image.getWidth());
-                image.setAlignment(Element.ALIGN_CENTER);
-
-                document.add(image);
-
-            } catch (DocumentException | IOException failure) {
-
-                /*
-                 * A masthead that will not decode is not worth withholding a
-                 * confirmation over; the rest of the letter identifies the
-                 * issuer.
-                 */
-                log.warn("Could not place {}, the letter continues without it", LETTERHEAD_RESOURCE, failure);
-            }
-        }
-
-        PdfPTable band = new PdfPTable(new float[] { 60f, 40f });
-        band.setWidthPercentage(100f);
-        band.setSpacingBefore(2f);
-        band.setSpacingAfter(8f);
-
-        band.addCell(bandCell(BLUE));
-        band.addCell(bandCell(PURPLE));
-
-        document.add(band);
-    }
-
     private void addCounterparty(Document document, DealConfirmationSheetValues values)
             throws DocumentException {
 
@@ -296,7 +302,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         reference.setSpacingBefore(3f);
         right.addElement(reference);
 
-        Paragraph date = new Paragraph(date(values.dealDate()), REGULAR.at(10f, MUTED));
+        Paragraph date = new Paragraph(date(values.dealDate()), BOLD.at(8.5f, MUTED));
         date.setAlignment(Element.ALIGN_RIGHT);
         date.setSpacingBefore(1f);
         right.addElement(date);
@@ -332,14 +338,14 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPTable rows = keyValues();
 
         addKeyValue(rows, "Security name", text(values.securityName()), false);
-        addKeyValue(rows, "ISIN no.", text(values.isin()), true);
-        addKeyValue(rows, "Coupon rate", percent(values.couponRate()), true);
+        addKeyValue(rows, "ISIN no.", text(values.isin()), false);
+        addKeyValue(rows, "Coupon rate", percent(values.couponRate()), false);
         addKeyValue(rows, "Maturity date", date(values.maturityDate()), false);
-        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()), false);
         addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()), false);
-        addKeyValue(rows, "Principal amount", money(values.principalAmount()), true);
-        addKeyValue(rows, "Accrued interest", money(values.accruedInterest()), true);
-        addKeyValue(rows, "Stamp duty", money(values.stampDuty()), true);
+        addKeyValue(rows, "Type of transaction", text(values.transactionType()), false);
+        addKeyValue(rows, "Mode of delivery", text(values.modeOfDelivery()), false);
+        addKeyValue(rows, "Deal date", date(values.dealDate()), false);
+        addKeyValue(rows, "Value date", date(values.valueDate()), false);
 
         addBlock(block, rows);
 
@@ -355,14 +361,15 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable rows = keyValues();
 
-        addKeyValue(rows, "Type of transaction", text(values.transactionType()), false);
-        addKeyValue(rows, "Mode of delivery", text(values.modeOfDelivery()), false);
-        addKeyValue(rows, "Deal date", date(values.dealDate()), false);
-        addKeyValue(rows, "Value date", date(values.valueDate()), false);
-        addKeyValue(rows, "Price", price(values.price()), true);
-        addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()), true);
-        addKeyValue(rows, "Quantum", money(values.quantum()), true);
-        addKeyValue(rows, "No. of accrued days", count(values.accruedDays()), true);
+        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()), false);
+        addKeyValue(rows, "Price", price(values.price()), false);
+        addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()), false);
+        addKeyValue(rows, "Quantum", money(values.quantum()), false);
+        addKeyValue(rows, "Principal amount", money(values.principalAmount()), false);
+        addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()), false);
+        addKeyValue(rows, "No. of accrued days", count(values.accruedDays()), false);
+        addKeyValue(rows, "Accrued interest", money(values.accruedInterest()), false);
+        addKeyValue(rows, "Stamp duty", money(values.stampDuty()), false);
 
         addBlock(block, rows);
         addBlock(block, gap(6f));
@@ -381,10 +388,18 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         heading.setWidthPercentage(100f);
 
         PdfPCell beneficiary = borderless();
-        beneficiary.addElement(label("Our details · Beneficiary name"));
-        beneficiary.addElement(new Paragraph(
+        Paragraph beneficiaryLabel = label("Our details · Beneficiary name");
+        beneficiaryLabel.setFont(BOLD.at(7f, MUTED));
+        beneficiaryLabel.setSpacingBefore(0f);
+        beneficiaryLabel.setSpacingAfter(0f);
+        beneficiary.addElement(beneficiaryLabel);
+
+        Paragraph beneficiaryName = new Paragraph(
                 text(organisation.getBeneficiaryName()),
-                REGULAR.at(14f, INK)));
+                REGULAR.at(11.5f, INK));
+        beneficiaryName.setSpacingBefore(0f);
+        beneficiaryName.setSpacingAfter(0f);
+        beneficiary.addElement(beneficiaryName);
         heading.addCell(beneficiary);
 
         PdfPCell pan = borderless();
@@ -508,26 +523,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         document.add(signatures);
     }
 
-    private void addFooter(Document document) throws DocumentException {
-
-        PdfPTable footer = new PdfPTable(1);
-        footer.setWidthPercentage(100f);
-        footer.setSpacingBefore(10f);
-
-        PdfPCell cell = new PdfPCell(new Phrase(FOOTER_LINE, REGULAR.at(8f, FOOTER_TEXT)));
-
-        cell.setBackgroundColor(INK);
-        cell.setBorder(Rectangle.NO_BORDER);
-        cell.setPaddingTop(6f);
-        cell.setPaddingBottom(6f);
-        cell.setPaddingLeft(10f);
-        cell.setPaddingRight(10f);
-
-        footer.addCell(cell);
-
-        document.add(footer);
-    }
-
     // =========================================================
     // BUILDING BLOCKS
     // =========================================================
@@ -560,7 +555,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private Paragraph intro() {
 
         Paragraph paragraph = new Paragraph(
-                "Dear Sir, we hereby confirm the following transaction:",
+                "Respected Sir/Madam, we hereby confirm the following transaction:",
                 REGULAR.at(10.5f, MUTED));
 
         paragraph.setSpacingBefore(8f);
@@ -713,7 +708,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
      */
     private void addKeyValue(PdfPTable table, String key, String value, boolean mono) {
 
-        PdfPCell keyCell = new PdfPCell(new Phrase(key, BOLD.at(10f, MUTED)));
+        /*
+         * The keys are set in the regular face rather than the bold one: at this
+         * size the bold weight closes up and reads blurry in print, while the
+         * muted colour still keeps each key subordinate to its figure.
+         */
+        PdfPCell keyCell = new PdfPCell(new Phrase(key, REGULAR.at(10f, MUTED)));
         keyCell.setBorder(Rectangle.BOTTOM);
         keyCell.setBorderColor(DIVIDER);
         keyCell.setBorderWidth(0.75f);
@@ -788,14 +788,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPCell label = new PdfPCell(new Phrase("Total consideration", BOLD.at(10.5f, INK)));
         label.setBackgroundColor(TOTAL_BG);
-        label.setBorderColor(TOTAL_BORDER);
-        label.setBorderWidth(0.9f);
+        label.setBorder(Rectangle.NO_BORDER);
         label.setPadding(5f);
 
         PdfPCell value = new PdfPCell(new Phrase(CURRENCY + money(total), MONO.at(11f, INK)));
         value.setBackgroundColor(TOTAL_BG);
-        value.setBorderColor(TOTAL_BORDER);
-        value.setBorderWidth(0.9f);
+        value.setBorder(Rectangle.NO_BORDER);
         value.setPadding(5f);
         value.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
@@ -803,17 +801,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         table.addCell(value);
 
         return table;
-    }
-
-    private PdfPCell bandCell(Color color) {
-
-        PdfPCell cell = new PdfPCell(new Phrase(" ", FontFactory.getFont(
-                FontFactory.HELVETICA, 1f)));
-        cell.setBackgroundColor(color);
-        cell.setBorder(Rectangle.NO_BORDER);
-        cell.setFixedHeight(4f);
-
-        return cell;
     }
 
     private PdfPCell signatureText(String text) {
@@ -903,6 +890,75 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         }
     }
 
+    /**
+     * Paints the masthead and the address bar at the top and bottom of every
+     * page.
+     *
+     * <p>OpenPDF calls this as each page finishes, so the same header and footer
+     * appear on a letter that runs to two pages without any content having to be
+     * repeated. Both are drawn in the margins the document reserves for them
+     * (see {@link #HEADER_TOP_GAP} and {@link #BOTTOM_MARGIN}), so they never
+     * overlap the body.</p>
+     */
+    private static final class LetterheadAndFooter extends PdfPageEventHelper {
+
+        private final Image logo;
+        private final float contentWidth;
+        private final Font footerFont;
+
+        private LetterheadAndFooter(Image logo, float contentWidth, Font footerFont) {
+
+            this.logo = logo;
+            this.contentWidth = contentWidth;
+            this.footerFont = footerFont;
+        }
+
+        @Override
+        public void onEndPage(PdfWriter writer, Document document) {
+
+            Rectangle page = document.getPageSize();
+            PdfContentByte canvas = writer.getDirectContent();
+
+            float left = document.leftMargin();
+            float cursor = page.getTop() - HEADER_TOP_GAP;
+
+            if (logo != null) {
+
+                float height = logo.getScaledHeight();
+
+                canvas.addImage(logo, contentWidth, 0, 0, height, left, cursor - height);
+
+                cursor -= height + MASTHEAD_BAND_GAP;
+            }
+
+            float blueWidth = contentWidth * 0.6f;
+
+            canvas.setColorFill(BLUE);
+            canvas.rectangle(left, cursor - BAND_HEIGHT, blueWidth, BAND_HEIGHT);
+            canvas.fill();
+
+            canvas.setColorFill(PURPLE);
+            canvas.rectangle(
+                    left + blueWidth,
+                    cursor - BAND_HEIGHT,
+                    contentWidth - blueWidth,
+                    BAND_HEIGHT);
+            canvas.fill();
+
+            canvas.setColorFill(INK);
+            canvas.rectangle(left, FOOTER_BOTTOM_GAP, contentWidth, FOOTER_HEIGHT);
+            canvas.fill();
+
+            ColumnText.showTextAligned(
+                    canvas,
+                    Element.ALIGN_CENTER,
+                    new Phrase(FOOTER_LINE, footerFont),
+                    page.getWidth() / 2f,
+                    FOOTER_BOTTOM_GAP + (FOOTER_HEIGHT - footerFont.getSize()) / 2f + 1f,
+                    0f);
+        }
+    }
+
     // =========================================================
     // FORMATTING
     // =========================================================
@@ -915,6 +971,16 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private static String date(LocalDate value) {
 
         return value == null ? NONE : value.format(DATE);
+    }
+
+    /**
+     * The bond's put/call description as stored, which may be a date, "NA" or
+     * other free text. An absent one prints as {@code N.A} rather than the
+     * letter's usual em dash: the deal term is "not applicable", not "unknown".
+     */
+    private static String putCall(String value) {
+
+        return value == null || value.isBlank() ? "N.A" : value;
     }
 
     private static String money(BigDecimal value) {
@@ -943,11 +1009,38 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         return value == null ? NONE : RATE.get().format(value) + "%";
     }
 
-    private static float contentWidth(Document document) {
+    /**
+     * Loads the masthead and scales it to the content width.
+     *
+     * @return the image, or null when the resource is missing or will not decode
+     */
+    private static Image letterheadImage(float width) {
 
-        return document.getPageSize().getWidth()
-                - document.leftMargin()
-                - document.rightMargin();
+        byte[] bytes = letterhead();
+
+        if (bytes == null) {
+
+            return null;
+        }
+
+        try {
+
+            Image image = Image.getInstance(bytes);
+
+            image.scaleToFit(width, width * image.getHeight() / image.getWidth());
+
+            return image;
+
+        } catch (DocumentException | IOException failure) {
+
+            /*
+             * A masthead that will not decode is not worth withholding a
+             * confirmation over; the rest of the letter identifies the issuer.
+             */
+            log.warn("Could not place {}, the letter continues without it", LETTERHEAD_RESOURCE, failure);
+
+            return null;
+        }
     }
 
     /**
