@@ -20,7 +20,6 @@ import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateIssuerRequest;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.Issuer;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
@@ -40,7 +39,7 @@ import lombok.RequiredArgsConstructor;
 public class IssuerService {
 
     private final IssuerRepository issuerRepository;
-    private final BondRepository bondRepository;
+    private final BondService bondService;
     private final IssuerMapper issuerMapper;
     private final IssuerBulkWriter issuerBulkWriter;
     private final AnalyticsService analyticsService;
@@ -73,12 +72,12 @@ public class IssuerService {
 
         Issuer issuer = issuerMapper.apply(new Issuer(), request);
 
-        issuerMapper.validateUnique(issuer, null);
+        validateUnique(issuer, null);
 
         Issuer saved = issuerRepository.save(issuer);
 
         bond.setIssuer(saved);
-        bondRepository.save(bond);
+        bondService.saveBond(bond);
 
         return issuerMapper.toResponse(saved);
     }
@@ -103,7 +102,7 @@ public class IssuerService {
 
         issuerMapper.applyUpdate(issuer, request);
 
-        issuerMapper.validateUnique(issuer, issuer.getId());
+        validateUnique(issuer, issuer.getId());
 
         return issuerMapper.toResponse(
                 issuerRepository.save(issuer));
@@ -516,13 +515,73 @@ public class IssuerService {
      * variable still resolves.
      */
     private Bond getBondByIsin(String isin) {
+        return bondService.findBond(isin);
+    }
 
-        String normalizedIsin = isin == null
-                ? null
-                : isin.trim().toUpperCase();
+    // =========================================================
+    // PERSISTENCE AND UNIQUENESS
+    // =========================================================
 
-        return bondRepository.findByIsin(normalizedIsin)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + normalizedIsin));
+    /**
+     * Persists an issuer.
+     *
+     * <p>The single write path for callers outside this class — the bulk import
+     * and the logo mirror both come through here rather than touching the
+     * repository.</p>
+     *
+     * @param issuer issuer to persist
+     * @return the persisted issuer
+     */
+    public Issuer saveIssuer(Issuer issuer) {
+        return issuerRepository.save(issuer);
+    }
+
+    /**
+     * Refuses an issuer whose unique columns are already taken.
+     *
+     * <p>{@code issuer_code}, {@code cin} and {@code lei} are unique columns.
+     * Checking them here, where the write is decided, keeps the rule with the
+     * service that owns the store; the mapper is left as a pure
+     * entity/request mapper.</p>
+     *
+     * @param issuer    issuer carrying the values to check
+     * @param excludeId issuer being updated, so it does not conflict with
+     *                  itself; {@code null} when creating
+     * @throws ConflictException when another row already holds one of the values
+     */
+    public void validateUnique(Issuer issuer, UUID excludeId) {
+
+        String issuerCode = issuer.getIssuerCode();
+
+        if (issuerCode != null
+                && (excludeId == null
+                        ? issuerRepository.existsByIssuerCode(issuerCode)
+                        : issuerRepository.existsByIssuerCodeAndIdNot(issuerCode, excludeId))) {
+
+            throw new ConflictException(
+                    "Issuer with code already exists: " + issuerCode);
+        }
+
+        String cin = issuer.getCin();
+
+        if (cin != null
+                && (excludeId == null
+                        ? issuerRepository.existsByCin(cin)
+                        : issuerRepository.existsByCinAndIdNot(cin, excludeId))) {
+
+            throw new ConflictException(
+                    "Issuer with CIN already exists: " + cin);
+        }
+
+        String lei = issuer.getLei();
+
+        if (lei != null
+                && (excludeId == null
+                        ? issuerRepository.existsByLei(lei)
+                        : issuerRepository.existsByLeiAndIdNot(lei, excludeId))) {
+
+            throw new ConflictException(
+                    "Issuer with LEI already exists: " + lei);
+        }
     }
 }

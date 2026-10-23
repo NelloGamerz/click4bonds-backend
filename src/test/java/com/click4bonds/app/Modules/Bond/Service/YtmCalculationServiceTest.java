@@ -35,7 +35,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 
 @ExtendWith(MockitoExtension.class)
 class YtmCalculationServiceTest {
@@ -56,7 +55,7 @@ class YtmCalculationServiceTest {
     private XirrCalculator xirrCalculator;
 
     @Mock
-    private BondRepository bondRepository;
+    private BondService bondService;
 
     private YtmCalculationService ytmCalculationService;
 
@@ -70,12 +69,12 @@ class YtmCalculationServiceTest {
         ytmCalculationService = new YtmCalculationServiceImpl(
                 bondCashFlowService,
                 xirrCalculator,
-                bondRepository);
+                bondService);
 
         System.out.println("SETUP: YtmCalculationService initialized successfully");
         System.out.println("SETUP: BondCashFlowService mock = " + bondCashFlowService);
         System.out.println("SETUP: XirrCalculator mock = " + xirrCalculator);
-        System.out.println("SETUP: BondRepository mock = " + bondRepository);
+        System.out.println("SETUP: BondService mock = " + bondService);
         System.out.println("-------------------------------------------------------");
     }
 
@@ -184,11 +183,11 @@ class YtmCalculationServiceTest {
         System.out.println("  XirrCalculator.calculate()");
         System.out.println("  -> Returns XIRR: " + expectedXirr);
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         System.out.println("Mock configured:");
-        System.out.println("  BondRepository.save()");
+        System.out.println("  BondService.saveBond()");
         System.out.println("  -> Returns the same bond instance");
 
         System.out.println();
@@ -238,11 +237,11 @@ class YtmCalculationServiceTest {
         System.out.println("PASS: YTM calculation timestamp populated");
 
         System.out.println();
-        System.out.println("STEP 11: Verifying BondRepository.save()...");
+        System.out.println("STEP 11: Verifying BondService.saveBond()...");
 
-        verify(bondRepository, times(1)).save(bond);
+        verify(bondService, times(1)).saveBond(bond);
 
-        System.out.println("PASS: BondRepository.save() called exactly once");
+        System.out.println("PASS: BondService.saveBond() called exactly once");
 
         System.out.println();
         System.out.println("=======================================================");
@@ -306,10 +305,10 @@ class YtmCalculationServiceTest {
         System.out.println("XirrCalculator mock configured");
         System.out.println("Expected XIRR: " + expectedXirr);
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
-        System.out.println("BondRepository mock configured");
+        System.out.println("BondService mock configured");
 
         System.out.println();
         System.out.println("STEP 4: Executing YTM calculation...");
@@ -395,11 +394,11 @@ class YtmCalculationServiceTest {
         System.out.println(
                 "XirrCalculator.calculate() mock configured");
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         System.out.println(
-                "BondRepository.save() mock configured");
+                "BondService.saveBond() mock configured");
 
         System.out.println();
         System.out.println("STEP 4: Calling calculateYtm()...");
@@ -510,10 +509,10 @@ class YtmCalculationServiceTest {
         System.out.println("STEP 6: Verifying Bond was NOT saved...");
 
         verify(
-                bondRepository,
-                never()).save(any(Bond.class));
+                bondService,
+                never()).saveBond(any(Bond.class));
 
-        System.out.println("PASS: BondRepository.save() was never called");
+        System.out.println("PASS: BondService.saveBond() was never called");
 
         System.out.println();
         System.out.println("STEP 7: Verifying Bond YTM fields remain unchanged...");
@@ -605,14 +604,14 @@ class YtmCalculationServiceTest {
                 "PASS: XirrCalculator.calculate() was never called");
 
         System.out.println();
-        System.out.println("STEP 6: Verifying BondRepository was NOT called...");
+        System.out.println("STEP 6: Verifying BondService was NOT called...");
 
         verify(
-                bondRepository,
-                never()).save(any(Bond.class));
+                bondService,
+                never()).saveBond(any(Bond.class));
 
         System.out.println(
-                "PASS: BondRepository.save() was never called");
+                "PASS: BondService.saveBond() was never called");
 
         System.out.println();
         System.out.println("=======================================================");
@@ -679,11 +678,11 @@ class YtmCalculationServiceTest {
                 "PASS: XirrCalculator was never called");
 
         verify(
-                bondRepository,
-                never()).save(any());
+                bondService,
+                never()).saveBond(any());
 
         System.out.println(
-                "PASS: BondRepository was never called");
+                "PASS: BondService was never called");
 
         System.out.println();
         System.out.println("=======================================================");
@@ -758,11 +757,11 @@ class YtmCalculationServiceTest {
                 "XirrCalculator configured to return: "
                         + expectedXirr);
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         System.out.println(
-                "BondRepository configured successfully");
+                "BondService configured successfully");
 
         System.out.println();
         System.out.println("STEP 4: Calling calculateYtm()...");
@@ -883,11 +882,11 @@ class YtmCalculationServiceTest {
         System.out.println(
                 "  Expected XIRR: " + expectedXirr);
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         System.out.println(
-                "BondRepository.save() configured");
+                "BondService.saveBond() configured");
 
         System.out.println();
         System.out.println("STEP 5: Calling date-aware calculateYtm()...");
@@ -961,15 +960,15 @@ class YtmCalculationServiceTest {
 
         System.out.println();
         System.out.println(
-                "STEP 9: Verifying BondRepository.save()...");
+                "STEP 9: Verifying BondService.saveBond()...");
 
         verify(
-                bondRepository,
+                bondService,
                 times(1))
-                .save(bond);
+                .saveBond(bond);
 
         System.out.println(
-                "PASS: BondRepository.save() called exactly once");
+                "PASS: BondService.saveBond() called exactly once");
 
         System.out.println(
                 "Bond ID saved: " + bond.getId());
@@ -1821,7 +1820,7 @@ class YtmCalculationServiceTest {
      * Builds the full real dependency chain shared by every real test.
      *
      * <p>
-     * The {@code bondRepository} is stubbed to return the supplied bond so the
+     * The {@code bondService} is stubbed to return the supplied bond so the
      * production {@link YtmCalculationServiceImpl} can persist its result.
      */
     private RealCalcContext buildRealCalcContext(Bond bond) {
@@ -1863,9 +1862,9 @@ class YtmCalculationServiceTest {
         YtmCalculationService ytmService = new YtmCalculationServiceImpl(
                 bfs,
                 xirr,
-                bondRepository);
+                bondService);
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         return new RealCalcContext(
@@ -2201,8 +2200,8 @@ class YtmCalculationServiceTest {
      * Asserts the bond was persisted exactly once.
      */
     private void assertYtmPersisted(Bond bond) {
-        verify(bondRepository, times(1)).save(bond);
-        System.out.println("PASS: BondRepository.save() called exactly once");
+        verify(bondService, times(1)).saveBond(bond);
+        System.out.println("PASS: BondService.saveBond() called exactly once");
     }
 
     /**

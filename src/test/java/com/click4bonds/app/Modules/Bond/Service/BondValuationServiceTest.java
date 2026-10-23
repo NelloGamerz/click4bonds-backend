@@ -19,7 +19,6 @@ import com.click4bonds.app.Modules.Bond.Enums.CalculationType;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 
 /**
@@ -28,7 +27,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
  *
  * <p>
  * The real engines are wired in, so a derived figure is the one the platform
- * would store in production rather than a mock's echo. Only the bond repository
+ * would store in production rather than a mock's echo. Only the bond service
  * is mocked, because the yield engine writes through it.
  */
 @ExtendWith(MockitoExtension.class)
@@ -37,7 +36,7 @@ class BondValuationServiceTest {
     private static final LocalDate SETTLEMENT = LocalDate.of(2026, 1, 1);
 
     @Mock
-    private BondRepository bondRepository;
+    private BondService bondService;
 
     private final CouponDateGenerator couponDateGenerator = new CouponDateGenerator();
     private final MaturityDescriptionParser parser = new MaturityDescriptionParserImpl();
@@ -59,7 +58,7 @@ class BondValuationServiceTest {
     @BeforeEach
     void setUp() {
         valuationService = new BondValuationService(
-                new YtmCalculationServiceImpl(cashFlowService, xirrCalculator, bondRepository),
+                new YtmCalculationServiceImpl(cashFlowService, xirrCalculator, bondService),
                 new PriceCalculationServiceImpl(cashFlowService, accruedService, xirrCalculator));
     }
 

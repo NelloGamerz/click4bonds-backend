@@ -23,7 +23,7 @@ import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.AdminProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.AdminProfileRepository;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
+import com.click4bonds.app.Modules.User.Service.UserService;
 
 /**
  * What a member of staff may use, decided on its own without a Spring context.
@@ -37,12 +37,12 @@ import com.click4bonds.app.Modules.User.Repository.UserRepository;
  */
 class AdminPermissionServiceTest {
 
-    private final UserRepository userRepository = mock(UserRepository.class);
+    private final UserService userService = mock(UserService.class);
 
     private final AdminProfileRepository adminProfileRepository = mock(AdminProfileRepository.class);
 
     private final AdminPermissionService service =
-            new AdminPermissionService(userRepository, adminProfileRepository);
+            new AdminPermissionService(userService, adminProfileRepository);
 
     private static Authentication authenticationFor(UUID userId) {
 
@@ -63,7 +63,7 @@ class AdminPermissionServiceTest {
                 .role(role)
                 .build();
 
-        when(userRepository.findById(id)).thenReturn(Optional.of(user));
+        when(userService.findUser(id)).thenReturn(Optional.of(user));
 
         return user;
     }
@@ -179,7 +179,7 @@ class AdminPermissionServiceTest {
 
         UUID id = UUID.randomUUID();
 
-        // No stubbing: the repository finds nothing.
+        // No stubbing: the service finds nothing.
         assertFalse(service.hasModule(authenticationFor(id), "ANALYTICS"));
     }
 

@@ -6,21 +6,36 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
-
-import lombok.RequiredArgsConstructor;
 
 @Service
-@RequiredArgsConstructor
 public class YtmCalculationServiceImpl implements YtmCalculationService {
 
     private final BondCashFlowService bondCashFlowService;
     private final XirrCalculator xirrCalculator;
-    private final BondRepository bondRepository;
+    private final BondService bondService;
+
+    /**
+     * {@code bondService} is injected lazily to break a genuine cycle: this
+     * engine is used by {@link BondValuationService}, which {@link BondService}
+     * calls on create and update, and the calculated yield is persisted through
+     * {@code BondService} rather than by touching the repository directly. The
+     * proxy defers that dependency until first use, by which point both beans
+     * exist.
+     */
+    public YtmCalculationServiceImpl(
+            BondCashFlowService bondCashFlowService,
+            XirrCalculator xirrCalculator,
+            @Lazy BondService bondService) {
+
+        this.bondCashFlowService = bondCashFlowService;
+        this.xirrCalculator = xirrCalculator;
+        this.bondService = bondService;
+    }
 
     @Override
     @Transactional
@@ -40,7 +55,7 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
         bond.setYtmCalculatedAt(Instant.now());
 
         // Step 2: Persist the Bond
-        bondRepository.save(bond);
+        bondService.saveBond(bond);
 
         // Step 3: Return the YTM in decimal format (as per service contract)
         return annualYtmDecimal;

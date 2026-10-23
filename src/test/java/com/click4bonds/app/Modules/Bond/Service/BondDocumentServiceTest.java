@@ -33,8 +33,6 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.BondDocument;
 import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondDocumentRepository;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
-import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
@@ -87,10 +85,7 @@ class BondDocumentServiceTest {
     private BondDocumentRepository bondDocumentRepository;
 
     @Mock
-    private BondRepository bondRepository;
-
-    @Mock
-    private IssuerRepository issuerRepository;
+    private IssuerService issuerService;
 
     @Mock
     private BondService bondService;
@@ -115,8 +110,7 @@ class BondDocumentServiceTest {
 
         bondDocumentService = new BondDocumentService(
                 bondDocumentRepository,
-                bondRepository,
-                issuerRepository,
+                issuerService,
                 bondService,
                 userService,
                 uploadService,
@@ -362,7 +356,7 @@ class BondDocumentServiceTest {
 
         /* A document is not a logo, so the issuer's mirror is untouched. */
         assertThat(issuer.getLogoKey()).isNull();
-        verify(issuerRepository, never()).save(any(Issuer.class));
+        verify(issuerService, never()).saveIssuer(any(Issuer.class));
     }
 
     /* ------------------------------------------------------------------ *
@@ -416,7 +410,7 @@ class BondDocumentServiceTest {
         /* And the issuer now points at the new one — the promoted key, not the
          * pending one the upload was sent to. */
         assertThat(issuer.getLogoKey()).isEqualTo(LOGO_KEY);
-        verify(issuerRepository).save(issuer);
+        verify(issuerService).saveIssuer(issuer);
     }
 
     @Test
@@ -608,7 +602,7 @@ class BondDocumentServiceTest {
 
         /* A document is not a logo, so the issuer's mirror is untouched. */
         assertThat(issuer.getLogoKey()).isNull();
-        verify(issuerRepository, never()).save(any(Issuer.class));
+        verify(issuerService, never()).saveIssuer(any(Issuer.class));
     }
 
     @Test
@@ -638,7 +632,7 @@ class BondDocumentServiceTest {
          * and every card would show a broken image.
          */
         assertThat(issuer.getLogoKey()).isNull();
-        verify(issuerRepository).save(issuer);
+        verify(issuerService).saveIssuer(issuer);
     }
 
     private static ConfirmBondUploadRequest confirmRequest(

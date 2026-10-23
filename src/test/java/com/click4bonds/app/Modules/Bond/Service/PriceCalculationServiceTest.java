@@ -19,7 +19,6 @@ import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 
@@ -45,7 +44,7 @@ class PriceCalculationServiceTest {
     private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
 
     @Mock
-    private BondRepository bondRepository;
+    private BondService bondService;
 
     private final CouponDateGenerator couponDateGenerator = new CouponDateGenerator();
     private final MaturityDescriptionParser parser = new MaturityDescriptionParserImpl();
@@ -75,7 +74,7 @@ class PriceCalculationServiceTest {
         ytmCalculationService = new YtmCalculationServiceImpl(
                 cashFlowService,
                 xirrCalculator,
-                bondRepository);
+                bondService);
     }
 
     // ------------------------------------------------------------------

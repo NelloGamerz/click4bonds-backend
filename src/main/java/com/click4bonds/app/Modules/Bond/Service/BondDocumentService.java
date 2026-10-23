@@ -17,8 +17,6 @@ import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Models.BondDocument;
 import com.click4bonds.app.Modules.Bond.Models.Issuer;
 import com.click4bonds.app.Modules.Bond.Repository.BondDocumentRepository;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
-import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Storage.Model.ObjectMetadata;
@@ -96,8 +94,7 @@ public class BondDocumentService {
     private static final String LOGO = "logo";
 
     private final BondDocumentRepository bondDocumentRepository;
-    private final BondRepository bondRepository;
-    private final IssuerRepository issuerRepository;
+    private final IssuerService issuerService;
     private final BondService bondService;
     private final UserService userService;
     private final UploadService uploadService;
@@ -258,7 +255,7 @@ public class BondDocumentService {
              */
             issuer.setLogoKey(saved.getStorageKey());
 
-            issuerRepository.save(issuer);
+            issuerService.saveIssuer(issuer);
 
             /*
              * Every bond of this issuer embeds the logo URL in its cached
@@ -416,7 +413,7 @@ public class BondDocumentService {
 
                 issuer.setLogoKey(null);
 
-                issuerRepository.save(issuer);
+                issuerService.saveIssuer(issuer);
 
                 evictCachedBonds(issuer);
             }
@@ -572,7 +569,7 @@ public class BondDocumentService {
      */
     private void evictCachedBonds(Issuer issuer) {
 
-        bondRepository.findIsinsByIssuerId(issuer.getId())
+        bondService.findIsinsByIssuerId(issuer.getId())
                 .forEach(bondService::evictCachedBond);
     }
 

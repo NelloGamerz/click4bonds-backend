@@ -10,7 +10,7 @@ import com.click4bonds.app.Modules.User.Enums.AdminModule;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.AdminProfileRepository;
-import com.click4bonds.app.Modules.User.Repository.UserRepository;
+import com.click4bonds.app.Modules.User.Service.UserService;
 
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -51,7 +51,7 @@ import lombok.extern.slf4j.Slf4j;
 @Transactional
 public class AdminPermissionService {
 
-    private final UserRepository userRepository;
+    private final UserService userService;
     private final AdminProfileRepository adminProfileRepository;
 
     /**
@@ -77,7 +77,7 @@ public class AdminPermissionService {
             return false;
         }
 
-        User user = userRepository.findById(userId).orElse(null);
+        User user = userService.findUser(userId).orElse(null);
 
         if (user == null) {
             return false;

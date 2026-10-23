@@ -1,29 +1,25 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
-import java.util.UUID;
-
 import org.springframework.stereotype.Component;
 
 import com.click4bonds.app.Modules.Bond.Dto.CreateIssuerRequest;
 import com.click4bonds.app.Modules.Bond.Dto.IssuerResponse;
 import com.click4bonds.app.Modules.Bond.Dto.UpdateIssuerRequest;
 import com.click4bonds.app.Modules.Bond.Models.Issuer;
-import com.click4bonds.app.Modules.Bond.Repository.IssuerRepository;
-import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 
 import lombok.RequiredArgsConstructor;
 
 /**
- * Mapping and uniqueness rules for {@link Issuer}.
+ * Mapping for {@link Issuer}.
  *
  * Shared by {@link IssuerService} (single bond) and
- * {@link IssuerBulkWriter} (bulk import).
+ * {@link IssuerBulkWriter} (bulk import). Uniqueness is decided by
+ * {@link IssuerService#validateUnique}, since that is the class that owns the
+ * issuer store.
  */
 @Component
 @RequiredArgsConstructor
 public class IssuerMapper {
-
-    private final IssuerRepository issuerRepository;
 
     // =========================================================
     // CREATE / BULK UPSERT
@@ -192,52 +188,6 @@ public class IssuerMapper {
 
         if (request.getContactPhone() != null) {
             issuer.setContactPhone(normalize(request.getContactPhone()));
-        }
-    }
-
-    // =========================================================
-    // UNIQUENESS
-    // =========================================================
-
-    /**
-     * issuer_code, cin and lei are unique columns.
-     *
-     * @param excludeId issuer being updated, so that it does not
-     *                  conflict with itself. NULL when creating.
-     */
-    public void validateUnique(Issuer issuer, UUID excludeId) {
-
-        String issuerCode = issuer.getIssuerCode();
-
-        if (issuerCode != null
-                && (excludeId == null
-                        ? issuerRepository.existsByIssuerCode(issuerCode)
-                        : issuerRepository.existsByIssuerCodeAndIdNot(issuerCode, excludeId))) {
-
-            throw new ConflictException(
-                    "Issuer with code already exists: " + issuerCode);
-        }
-
-        String cin = issuer.getCin();
-
-        if (cin != null
-                && (excludeId == null
-                        ? issuerRepository.existsByCin(cin)
-                        : issuerRepository.existsByCinAndIdNot(cin, excludeId))) {
-
-            throw new ConflictException(
-                    "Issuer with CIN already exists: " + cin);
-        }
-
-        String lei = issuer.getLei();
-
-        if (lei != null
-                && (excludeId == null
-                        ? issuerRepository.existsByLei(lei)
-                        : issuerRepository.existsByLeiAndIdNot(lei, excludeId))) {
-
-            throw new ConflictException(
-                    "Issuer with LEI already exists: " + lei);
         }
     }
 

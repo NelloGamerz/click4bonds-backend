@@ -201,6 +201,21 @@ public class UserService {
     }
 
     /**
+     * Looks up an account without treating its absence as an error.
+     *
+     * <p>Callers that ask whether an account exists — a permission check, for
+     * one — decide for themselves what an absent account means, and for most of
+     * them the answer is "refuse", not "throw". This is the sole way to reach
+     * the account store from outside this class.</p>
+     *
+     * @param userId account identifier
+     * @return the account, or an empty {@link Optional} when no such account exists
+     */
+    public Optional<User> findUser(UUID userId) {
+        return userRepository.findById(userId);
+    }
+
+    /**
      * Pages through accounts for the admin listing.
      *
      * <p>A blank search term is not a filter that matches everything — it means
