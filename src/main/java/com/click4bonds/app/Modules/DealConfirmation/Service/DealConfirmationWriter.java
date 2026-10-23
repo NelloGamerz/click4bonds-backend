@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
@@ -57,7 +57,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DealConfirmationWriter {
 
     private final DealConfirmationRepository dealConfirmationRepository;
-    private final BondRepository bondRepository;
+    private final BondService bondService;
     private final UserService userService;
     private final DealReferenceGenerator dealReferenceGenerator;
     private final DealConfirmationMapper mapper;
@@ -117,7 +117,7 @@ public class DealConfirmationWriter {
          * while it holds the row lock: if another buyer got there first and took
          * the remaining units, this matches zero rows.
          */
-        int reserved = bondRepository.reserveQuantity(
+        int reserved = bondService.reserveQuantity(
                 bond.getId(),
                 BigDecimal.valueOf(context.totalQuantity()));
 
@@ -138,9 +138,7 @@ public class DealConfirmationWriter {
          * clears the persistence context for exactly this reason; reload to get
          * the post-reservation value.
          */
-        Bond reservedBond = bondRepository.findById(bond.getId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + context.isin()));
+        Bond reservedBond = bondService.findBondById(bond.getId());
 
         markSoldOutIfExhausted(reservedBond);
 
@@ -302,9 +300,7 @@ public class DealConfirmationWriter {
          */
         User customer = getPurchasableCustomer(userId);
 
-        Bond bond = bondRepository.findByIsin(isin)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Bond not found with ISIN: " + isin));
+        Bond bond = bondService.findBond(isin);
 
         /*
          * The units in a lot are a property of the bond, not of the request, so
@@ -527,7 +523,7 @@ public class DealConfirmationWriter {
 
             bond.setStatus(BondStatus.SOLD_OUT);
 
-            bondRepository.save(bond);
+            bondService.saveBond(bond);
         }
     }
 

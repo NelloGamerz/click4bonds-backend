@@ -20,7 +20,6 @@ import com.click4bonds.app.Modules.Bond.Enums.CalculationType;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 
 /**
@@ -44,9 +43,6 @@ class BondCalculationServiceTest {
     @Mock
     private BondService bondService;
 
-    @Mock
-    private BondRepository bondRepository;
-
     private final CouponDateGenerator couponDateGenerator = new CouponDateGenerator();
     private final MaturityDescriptionParser parser = new MaturityDescriptionParserImpl();
     private final PrincipalRepaymentService principalService =
@@ -68,7 +64,7 @@ class BondCalculationServiceTest {
     void setUp() {
         calculationService = new BondCalculationService(
                 bondService,
-                new YtmCalculationServiceImpl(cashFlowService, xirrCalculator, bondRepository),
+                new YtmCalculationServiceImpl(cashFlowService, xirrCalculator, bondService),
                 new PriceCalculationServiceImpl(cashFlowService, accruedService, xirrCalculator),
                 accruedService);
     }

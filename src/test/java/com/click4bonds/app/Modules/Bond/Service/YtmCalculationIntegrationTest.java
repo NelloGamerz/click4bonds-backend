@@ -17,13 +17,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 
 /**
  * Integration test using real BondCashFlowService, CouponDateGenerator,
  * PrincipalRepaymentService, CouponCalculationService, and XirrCalculator.
  *
- * Only the BondRepository is mocked to avoid database dependencies.
+ * Only the BondService is mocked to avoid database dependencies.
  */
 @ExtendWith(MockitoExtension.class)
 class YtmCalculationIntegrationTest {
@@ -31,7 +30,7 @@ class YtmCalculationIntegrationTest {
     private static final LocalDate CALCULATION_DATE = LocalDate.of(2026, 9, 3);
 
     @Mock
-    private BondRepository bondRepository;
+    private BondService bondService;
 
     @Test
     void calculatesYtmUsingRealServicesForStagedAmortizationBond() {
@@ -60,14 +59,14 @@ class YtmCalculationIntegrationTest {
 
         XirrCalculator xirrCalculator = new XirrCalculator();
 
-        when(bondRepository.save(any(Bond.class)))
+        when(bondService.saveBond(any(Bond.class)))
                 .thenReturn(bond);
 
         // Create YTM service with real dependencies
         YtmCalculationService ytmService = new YtmCalculationServiceImpl(
                 bondCashFlowService,
                 xirrCalculator,
-                bondRepository);
+                bondService);
 
         // Calculate YTM deterministically on the fixed 2026-09-03 date so the
         // expected 10.04% holds on any execution day.

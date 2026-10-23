@@ -30,7 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
+import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
@@ -55,7 +55,7 @@ import com.click4bonds.app.Modules.User.Service.UserService;
  * quantity.</p>
  *
  * <p><strong>What this test does and does not prove.</strong> The real guarantee
- * is the SQL predicate in {@code BondRepository#reserveQuantity}
+ * is the SQL predicate in {@code BondService#reserveQuantity}
  * ({@code WHERE quantum >= :quantity}), which PostgreSQL evaluates
  * while holding the row lock. That statement cannot run here: this project has
  * no embedded database and no Testcontainers, and its only Spring integration
@@ -98,7 +98,7 @@ class DealConfirmationConcurrencyTest {
 
         AtomicBondInventory inventory = new AtomicBondInventory(1000L);
 
-        DealConfirmationWriter writer = writerFor(inventory.bondRepository());
+        DealConfirmationWriter writer = writerFor(inventory.bondService());
 
         stubCustomer();
         stubUniqueReferences();
@@ -157,7 +157,7 @@ class DealConfirmationConcurrencyTest {
 
         AtomicBondInventory inventory = new AtomicBondInventory(1000L);
 
-        DealConfirmationWriter writer = writerFor(inventory.bondRepository());
+        DealConfirmationWriter writer = writerFor(inventory.bondService());
 
         stubCustomer();
 
@@ -175,11 +175,11 @@ class DealConfirmationConcurrencyTest {
     // FIXTURES
     // ============================================================
 
-    private DealConfirmationWriter writerFor(BondRepository bondRepository) {
+    private DealConfirmationWriter writerFor(BondService bondService) {
 
         return new DealConfirmationWriter(
                 dealConfirmationRepository,
-                bondRepository,
+                bondService,
                 userService,
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
@@ -291,24 +291,24 @@ class DealConfirmationConcurrencyTest {
          * A repository whose reservation is the real thing and whose reads return
          * the current state, so the writer sees what a reload would show it.
          */
-        BondRepository bondRepository() {
+        BondService bondService() {
 
-            BondRepository repository = mock(BondRepository.class);
+            BondService service = mock(BondService.class);
 
-            lenient().when(repository.findByIsin(ISIN))
-                    .thenAnswer(invocation -> Optional.of(currentBond()));
+            lenient().when(service.findBond(ISIN))
+                    .thenAnswer(invocation -> currentBond());
 
-            lenient().when(repository.findById(any()))
-                    .thenAnswer(invocation -> Optional.of(currentBond()));
+            lenient().when(service.findBondById(any()))
+                    .thenAnswer(invocation -> currentBond());
 
-            lenient().when(repository.reserveQuantity(any(), any()))
+            lenient().when(service.reserveQuantity(any(), any()))
                     .thenAnswer(invocation -> reserve(
                             ((BigDecimal) invocation.getArgument(1)).longValue()));
 
-            lenient().when(repository.save(any(Bond.class)))
+            lenient().when(service.saveBond(any(Bond.class)))
                     .thenAnswer(invocation -> invocation.getArgument(0));
 
-            return repository;
+            return service;
         }
 
         private Bond currentBond() {

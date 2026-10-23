@@ -902,6 +902,70 @@ public class BondService {
     }
 
     /**
+     * Looks a bond up by its identifier.
+     *
+     * <p>Used where the caller already holds the id — typically to reload after
+     * a write that went straight to the database, where the entity in memory is
+     * known to be stale.</p>
+     *
+     * @param bondId bond identifier
+     * @return the bond
+     * @throws ResourceNotFoundException when no such bond exists
+     */
+    public Bond findBondById(UUID bondId) {
+
+        return bondRepository.findById(bondId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Bond not found with id: " + bondId));
+    }
+
+    /**
+     * Persists a bond and drops its cached read.
+     *
+     * <p>The single write path for callers outside this class. Eviction happens
+     * first, as it does for every write here: a failed eviction should leave the
+     * transaction rolled back and the cache still describing the row that
+     * survived, rather than pairing a committed change with a stale entry.</p>
+     *
+     * @param bond bond to persist
+     * @return the persisted bond
+     */
+    public Bond saveBond(Bond bond) {
+
+        evictCachedBond(bond.getIsin());
+
+        return bondRepository.save(bond);
+    }
+
+    /**
+     * Reserves units from a bond's quantum — the oversell guard.
+     *
+     * <p>Delegates to the repository's single conditional UPDATE, which is what
+     * makes two concurrent buyers serialise in the database instead of both
+     * reading the same quantity and then overwriting each other.</p>
+     *
+     * @param bondId   bond whose quantum is being reserved
+     * @param quantity amount to deduct
+     * @return 1 when the units were reserved, 0 when the bond had fewer left
+     */
+    public int reserveQuantity(UUID bondId, BigDecimal quantity) {
+        return bondRepository.reserveQuantity(bondId, quantity);
+    }
+
+    /**
+     * The ISINs of every bond belonging to an issuer.
+     *
+     * <p>Needed when something the bond responses embed changes per issuer — a
+     * logo, for instance — so every affected cached bond can be evicted.</p>
+     *
+     * @param issuerId issuer identifier
+     * @return the ISINs of that issuer's bonds
+     */
+    public List<String> findIsinsByIssuerId(UUID issuerId) {
+        return bondRepository.findIsinsByIssuerId(issuerId);
+    }
+
+    /**
      * Looks a bond up by its ISIN.
      * <p>
      * ISINs are stored upper-cased, so the input is normalized

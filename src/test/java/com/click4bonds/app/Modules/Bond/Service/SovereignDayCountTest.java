@@ -20,7 +20,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
-import com.click4bonds.app.Modules.Bond.Repository.BondRepository;
 
 /**
  * The year a Sovereign's yield is measured in.
@@ -44,7 +43,7 @@ class SovereignDayCountTest {
     private XirrCalculator mockedXirrCalculator;
 
     @Mock
-    private BondRepository bondRepository;
+    private BondService bondService;
 
     // ======================
     // The basis itself
@@ -191,12 +190,12 @@ class SovereignDayCountTest {
                     .thenReturn(expectedYtm);
         }
 
-        when(bondRepository.save(any(Bond.class))).thenReturn(bond);
+        when(bondService.saveBond(any(Bond.class))).thenReturn(bond);
 
         YtmCalculationService service = new YtmCalculationServiceImpl(
                 bondCashFlowService,
                 mockedXirrCalculator,
-                bondRepository);
+                bondService);
 
         System.out.println("Rating            : " + bond.getRating());
         System.out.println("Basis expected    : "
