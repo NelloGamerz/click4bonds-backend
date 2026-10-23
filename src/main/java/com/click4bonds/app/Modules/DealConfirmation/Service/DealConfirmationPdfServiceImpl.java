@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
+import com.lowagie.text.Chunk;
 import com.lowagie.text.Document;
 import com.lowagie.text.DocumentException;
 import com.lowagie.text.Element;
@@ -26,7 +27,6 @@ import com.lowagie.text.PageSize;
 import com.lowagie.text.Paragraph;
 import com.lowagie.text.Phrase;
 import com.lowagie.text.Rectangle;
-import com.lowagie.text.pdf.BaseFont;
 import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
@@ -41,20 +41,11 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * Draws the corporate deal confirmation letter as a PDF.
  *
- * <p>The layout follows {@code deal-confirmation.html} — the letterhead image,
- * the counterparty block, bond details beside deal terms, our particulars and
- * the customer's, the disclaimer, the signature block and the address bar — so
- * the PDF and the reference design read the same. It is drawn with OpenPDF row
- * by row rather than converted from the HTML, exactly as
- * {@code BondCashFlowPdfServiceImpl} draws the cash-flow statement, because this
- * application already carries OpenPDF and a browser-grade HTML renderer would be
- * a second, much heavier dependency for one document.</p>
- *
- * <p><strong>Typefaces.</strong> Text is set in Manrope and the figures, IDs and
- * PANs in IBM Plex Mono, as in the reference design. The four font files travel
- * inside the artifact (see {@link Typeface}) so the letter renders the same on a
- * developer's machine and on the server; a file that is missing degrades to
- * Helvetica rather than failing the letter.</p>
+ * <p>The letter is set on a clean white page with navy and cyan accents, soft
+ * light-blue section panels, hairline borders and a faint Click4Bonds watermark.
+ * The masthead and the address bar belong to the page and are drawn on every
+ * page; the rest is laid out row by row with OpenPDF. The letterhead image is
+ * reused exactly as supplied.</p>
  *
  * <p><strong>This class computes nothing.</strong> Every figure arrives already
  * calculated and rounded on {@link DealConfirmationSheetValues}; the renderer
@@ -83,27 +74,28 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
      * than to the content, so their heights are reserved out of the margins and
      * a second page repeats them automatically.
      */
-    private static final float LEFT_MARGIN = 28f;
-    private static final float RIGHT_MARGIN = 28f;
+    private static final float LEFT_MARGIN = 30f;
+    private static final float RIGHT_MARGIN = 30f;
 
     /** Clearance above the masthead at the top of each page. */
-    private static final float HEADER_TOP_GAP = 24f;
+    private static final float HEADER_TOP_GAP = 17f;
 
-    /** The gap between the masthead image and the blue/purple rule. */
-    private static final float MASTHEAD_BAND_GAP = 2f;
+    /** The gap between the masthead image and the navy/cyan rule. */
+    private static final float MASTHEAD_BAND_GAP = 5f;
 
-    private static final float BAND_HEIGHT = 4f;
+    private static final float BAND_HEIGHT = 2.5f;
 
     /** The gap between the header rule and the first line of body text. */
-    private static final float HEADER_CONTENT_GAP = 8f;
+    private static final float HEADER_CONTENT_GAP = 9f;
 
-    private static final float FOOTER_BOTTOM_GAP = 14f;
-    private static final float FOOTER_HEIGHT = 22f;
+    /** Zero: the address bar is anchored flush to the bottom edge of the page. */
+    private static final float FOOTER_BOTTOM_GAP = 0f;
+    private static final float FOOTER_HEIGHT = 26f;
 
     /** The address bar plus its clearance from the body text above it. */
-    private static final float BOTTOM_MARGIN = FOOTER_BOTTOM_GAP + FOOTER_HEIGHT + 8f;
+    private static final float BOTTOM_MARGIN = FOOTER_BOTTOM_GAP + FOOTER_HEIGHT + 10f;
 
-    /** The registered entity, as printed in the letter's footer and metadata. */
+    /** The registered entity, as printed in the letter and its metadata. */
     private static final String LEGAL_NAME = "All Time Securities Pvt. Ltd.";
 
     private static final String FOOTER_LINE =
@@ -113,63 +105,55 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     + "   ·   www.alltime.co.in";
 
     /*
-     * The palette is taken from deal-confirmation.html. The two brand colours
-     * make up the rule under the masthead and the eyebrow above the reference;
-     * the rest are the card, divider and total-bar tints the HTML uses.
+     * The palette: deep navy for emphasis, cyan for accents, very light blue for
+     * the section panels, and a cool grey for secondary text. Every tint is pale
+     * enough to print legibly on monochrome office printers.
      */
-    private static final Color BLUE = new Color(0x4F, 0x8F, 0xD0);
-    private static final Color PURPLE = new Color(0x4B, 0x2A, 0x8A);
+    private static final Color NAVY = new Color(0x0B, 0x24, 0x47);
+    private static final Color NAVY_SOFT = new Color(0x1B, 0x3E, 0x6B);
+    private static final Color CYAN = new Color(0x0E, 0x9F, 0xC6);
     private static final Color INK = new Color(0x25, 0x26, 0x2D);
-    private static final Color MUTED = new Color(0x5A, 0x61, 0x72);
-    private static final Color CARD_BORDER = new Color(0xE1, 0xE4, 0xEC);
+    private static final Color MUTED = new Color(0x5A, 0x68, 0x7A);
+    private static final Color WHITE = Color.WHITE;
 
-    /**
-     * A whisper of grey so the cards read as panels on the page rather than
-     * merging into it. Far lighter than the divider tint, so it never competes
-     * with the rules inside a card.
+    private static final Color CARD_BG = new Color(0xE8, 0xF2, 0xFC);
+    private static final Color CARD_BORDER = new Color(0xC7, 0xDB, 0xEF);
+    private static final Color DIVIDER = new Color(0xD6, 0xE4, 0xF3);
+
+    /*
+     * The page washes: a pale blue at the head and foot of the page, each
+     * fading to white where the body text sits. The corner rings and watermark
+     * are set a shade deeper than the washes so the page has depth without
+     * competing with the type.
      */
-    private static final Color CARD_BG = new Color(0xF7, 0xF8, 0xFA);
+    private static final Color PAGE_TOP_TINT = new Color(0xE5, 0xF0, 0xFB);
+    private static final Color PAGE_BOTTOM_TINT = new Color(0xEB, 0xF4, 0xFC);
+    private static final Color CORNER_PATTERN = new Color(0xD4, 0xE5, 0xF5);
+    private static final Color WATERMARK = new Color(0xDD, 0xEA, 0xF7);
+
+    /** The highlighted total row: pale cyan behind navy type. */
+    private static final Color TOTAL_BG = new Color(0xD9, 0xEF, 0xF9);
+
+    private static final Color FOOTER_BG = new Color(0xF3, 0xF8, 0xFD);
+    private static final Color FOOTER_TEXT = new Color(0x3B, 0x55, 0x73);
 
     /** How far a card's corners are rounded, and how heavy its outline is. */
     private static final float CARD_RADIUS = 8f;
-    private static final float CARD_BORDER_WIDTH = 0.9f;
-
-    private static final Color DIVIDER = new Color(0xED, 0xEF, 0xF4);
-    private static final Color TOTAL_BG = new Color(0xEA, 0xF1, 0xFA);
-    private static final Color FOOTER_TEXT = new Color(0xD5, 0xD9, 0xE4);
-
-    /*
-     * The typefaces. Static files, not the variable font: OpenPDF cannot pick a
-     * weight out of a variable font, so each weight is its own file. Google
-     * Fonts ships them in the "static" folder of the download.
-     *
-     *   src/main/resources/fonts/Manrope-Regular.ttf
-     *   src/main/resources/fonts/Manrope-Bold.ttf
-     *   src/main/resources/fonts/Manrope-ExtraBold.ttf
-     *   src/main/resources/fonts/IBMPlexMono-Regular.ttf
-     *   src/main/resources/fonts/IBMPlexMono-SemiBold.ttf
-     */
-    private static final Typeface REGULAR =
-            new Typeface("/fonts/Manrope-Regular.ttf", FontFactory.HELVETICA, Font.NORMAL);
-    private static final Typeface BOLD =
-            new Typeface("/fonts/Manrope-Bold.ttf", FontFactory.HELVETICA_BOLD, Font.BOLD);
-    private static final Typeface EXTRA_BOLD =
-            new Typeface("/fonts/Manrope-ExtraBold.ttf", FontFactory.HELVETICA_BOLD, Font.BOLD);
-    private static final Typeface MONO =
-            new Typeface("/fonts/IBMPlexMono-SemiBold.ttf", FontFactory.COURIER_BOLD, Font.BOLD);
+    private static final float CARD_BORDER_WIDTH = 0.8f;
 
     /**
-     * The same monospaced face at its book weight. Figures that are computed
-     * (amounts, ISINs, codes) are set in this rather than {@link #MONO}: the
-     * label beside a value carries the emphasis, the value itself is plain.
+     * The typefaces. Helvetica is one of the fourteen fonts every PDF reader
+     * carries, so the letter renders identically without embedding a font file
+     * or depending on a font being installed on the server.
      */
-    private static final Typeface MONO_PLAIN =
-            new Typeface("/fonts/IBMPlexMono-Regular.ttf", FontFactory.COURIER, Font.NORMAL);
+    private static final Typeface REGULAR = new Typeface(FontFactory.HELVETICA, Font.NORMAL);
+    private static final Typeface BOLD = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
+    private static final Typeface EXTRA_BOLD = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
+    private static final Typeface MONO = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
 
     /**
      * The currency printed before the total. "INR" is safe in every font; switch
-     * to "₹ " once you have confirmed the bundled IBM Plex Mono file draws the
-     * rupee sign.
+     * to "₹ " once the rupee sign has been verified in the generated PDF.
      */
     private static final String CURRENCY = "INR ";
 
@@ -230,10 +214,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
             PdfWriter writer = PdfWriter.getInstance(document, out);
 
-            writer.setPageEvent(new LetterheadAndFooter(
-                    logo,
-                    availableWidth,
-                    REGULAR.at(8f, FOOTER_TEXT)));
+            writer.setPageEvent(new LetterheadAndFooter(logo, availableWidth));
 
             document.open();
 
@@ -241,8 +222,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             addBondAndDealTerms(document, values);
             addOurDetails(document);
             addCustomerDetails(document, values);
-            addSignatures(document, values);
             addDisclaimer(document);
+            addSignatures(document, values);
 
             document.close();
 
@@ -286,23 +267,23 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPCell left = borderless();
         left.addElement(label("Counterparty"));
         left.addElement(name(values.counterpartyName()));
-        left.addElement(muted("Address: " + NONE, 10f));
+        left.addElement(muted("Address: " + NONE, 9.2f));
         layout.addCell(left);
 
         PdfPCell right = borderless();
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
-        Paragraph eyebrow = new Paragraph("DEAL CONFIRMATION", BOLD.at(8.5f, PURPLE));
+        Paragraph eyebrow = new Paragraph("DEAL CONFIRMATION", BOLD.at(8f, CYAN));
         eyebrow.setAlignment(Element.ALIGN_RIGHT);
-        eyebrow.setSpacingBefore(1f);
+        eyebrow.setSpacingBefore(0f);
         right.addElement(eyebrow);
 
-        Paragraph reference = new Paragraph(text(values.dealReference()), MONO.at(11f, INK));
+        Paragraph reference = new Paragraph(text(values.dealReference()), BOLD.at(10.5f, NAVY));
         reference.setAlignment(Element.ALIGN_RIGHT);
-        reference.setSpacingBefore(3f);
+        reference.setSpacingBefore(2f);
         right.addElement(reference);
 
-        Paragraph date = new Paragraph(date(values.dealDate()), BOLD.at(8.5f, MUTED));
+        Paragraph date = new Paragraph(date(values.dealDate()), REGULAR.at(8.5f, MUTED));
         date.setAlignment(Element.ALIGN_RIGHT);
         date.setSpacingBefore(1f);
         right.addElement(date);
@@ -318,7 +299,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable cards = new PdfPTable(new float[] { 49f, 2f, 49f });
         cards.setWidthPercentage(100f);
-        cards.setSpacingBefore(6f);
+        cards.setSpacingBefore(4f);
 
         cards.addCell(cardCell(bondDetails(values)));
         cards.addCell(empty());
@@ -337,15 +318,15 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable rows = keyValues();
 
-        addKeyValue(rows, "Security name", text(values.securityName()), false);
-        addKeyValue(rows, "ISIN no.", text(values.isin()), false);
-        addKeyValue(rows, "Coupon rate", percent(values.couponRate()), false);
-        addKeyValue(rows, "Maturity date", date(values.maturityDate()), false);
-        addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()), false);
-        addKeyValue(rows, "Type of transaction", text(values.transactionType()), false);
-        addKeyValue(rows, "Mode of delivery", text(values.modeOfDelivery()), false);
-        addKeyValue(rows, "Deal date", date(values.dealDate()), false);
-        addKeyValue(rows, "Value date", date(values.valueDate()), false);
+        addKeyValue(rows, "Type of transaction", text(values.transactionType()));
+        addKeyValue(rows, "Mode of delivery", text(values.modeOfDelivery()));
+        addKeyValue(rows, "Deal date", date(values.dealDate()));
+        addKeyValue(rows, "Value date", date(values.valueDate()));
+        addKeyValue(rows, "Security name", text(values.securityName()));
+        addKeyValue(rows, "ISIN no.", text(values.isin()));
+        addKeyValue(rows, "Coupon rate", percent(values.couponRate()));
+        addKeyValue(rows, "Maturity date", date(values.maturityDate()));
+        addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()));
 
         addBlock(block, rows);
 
@@ -361,18 +342,18 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable rows = keyValues();
 
-        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()), false);
-        addKeyValue(rows, "Price", price(values.price()), false);
-        addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()), false);
-        addKeyValue(rows, "Quantum", money(values.quantum()), false);
-        addKeyValue(rows, "Principal amount", money(values.principalAmount()), false);
-        addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()), false);
-        addKeyValue(rows, "No. of accrued days", count(values.accruedDays()), false);
-        addKeyValue(rows, "Accrued interest", money(values.accruedInterest()), false);
-        addKeyValue(rows, "Stamp duty", money(values.stampDuty()), false);
+        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()));
+        addKeyValue(rows, "Price", price(values.price()));
+        addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()));
+        addKeyValue(rows, "Quantum", money(values.quantum()));
+        addKeyValue(rows, "Principal amount", money(values.principalAmount()));
+        addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()));
+        addKeyValue(rows, "No. of accrued days", count(values.accruedDays()));
+        addKeyValue(rows, "Accrued interest", money(values.accruedInterest()));
+        addKeyValue(rows, "Stamp duty", money(values.stampDuty()));
 
         addBlock(block, rows);
-        addBlock(block, gap(6f));
+        addBlock(block, gap(5f));
         addBlock(block, totalConsideration(values.totalConsideration()));
 
         return block;
@@ -388,16 +369,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         heading.setWidthPercentage(100f);
 
         PdfPCell beneficiary = borderless();
-        Paragraph beneficiaryLabel = label("Our details · Beneficiary name");
-        beneficiaryLabel.setFont(BOLD.at(7f, MUTED));
-        beneficiaryLabel.setSpacingBefore(0f);
-        beneficiaryLabel.setSpacingAfter(0f);
-        beneficiary.addElement(beneficiaryLabel);
+        beneficiary.addElement(label("Our details · Beneficiary name"));
 
         Paragraph beneficiaryName = new Paragraph(
                 text(organisation.getBeneficiaryName()),
-                REGULAR.at(11.5f, INK));
-        beneficiaryName.setSpacingBefore(0f);
+                BOLD.at(11.5f, NAVY));
+        beneficiaryName.setSpacingBefore(1f);
         beneficiaryName.setSpacingAfter(0f);
         beneficiary.addElement(beneficiaryName);
         heading.addCell(beneficiary);
@@ -407,13 +384,14 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph panLabel = label("Our PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
-        Paragraph panValue = new Paragraph(text(organisation.getPan()), MONO_PLAIN.at(12f, INK));
+        Paragraph panValue = new Paragraph(text(organisation.getPan()), MONO.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
+        panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
         heading.addCell(pan);
 
         addBlock(block, heading);
-        addBlock(block, gap(4f));
+        addBlock(block, gap(3f));
         addBlock(block, divider());
 
         PdfPTable stats = stats(4);
@@ -421,18 +399,18 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "Settlement no.");
         addStatValues(
                 stats,
-                Stat.mono(text(organisation.getCmBpId())),
-                Stat.plain(text(organisation.getCmName())),
-                Stat.plain(text(organisation.getMarketType())),
-                Stat.plain(text(organisation.getSettlementNumber())));
+                text(organisation.getCmBpId()),
+                text(organisation.getCmName()),
+                text(organisation.getMarketType()),
+                text(organisation.getSettlementNumber()));
 
         addStatLabels(stats, "IFSC code", "Banker", "", "");
         addStatValues(
                 stats,
-                Stat.mono(text(organisation.getIfscCode())),
-                Stat.plain(text(organisation.getBanker())),
-                Stat.plain(""),
-                Stat.plain(""));
+                text(organisation.getIfscCode()),
+                text(organisation.getBanker()),
+                "",
+                "");
 
         addBlock(block, stats);
 
@@ -449,9 +427,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPCell name = borderless();
         name.addElement(label("Customer details · Name"));
-        name.addElement(new Paragraph(
+
+        Paragraph customerName = new Paragraph(
                 text(values.counterpartyName()),
-                REGULAR.at(14f, INK)));
+                BOLD.at(12f, NAVY));
+        customerName.setSpacingBefore(1f);
+        name.addElement(customerName);
         heading.addCell(name);
 
         PdfPCell pan = borderless();
@@ -459,24 +440,20 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph panLabel = label("Your PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
-        Paragraph panValue = new Paragraph(NONE, MONO_PLAIN.at(12f, INK));
+        Paragraph panValue = new Paragraph(NONE, MONO.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
+        panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
         heading.addCell(pan);
 
         addBlock(block, heading);
-        addBlock(block, gap(4f));
+        addBlock(block, gap(3f));
         addBlock(block, divider());
 
         PdfPTable stats = stats(4);
 
         addStatLabels(stats, "Your DP name", "DP ID", "Client ID", "HDFC Bank Limited");
-        addStatValues(
-                stats,
-                Stat.plain(NONE),
-                Stat.mono(NONE),
-                Stat.mono(NONE),
-                Stat.mono(NONE));
+        addStatValues(stats, NONE, NONE, NONE, NONE);
 
         addBlock(block, stats);
 
@@ -485,40 +462,45 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private void addDisclaimer(Document document) throws DocumentException {
 
-        document.add(gap(8f));
+        document.add(gap(6f));
         document.add(divider());
 
-        Paragraph disclaimer = new Paragraph(DISCLAIMER, REGULAR.at(7.5f, MUTED));
+        Paragraph disclaimer = new Paragraph(DISCLAIMER, REGULAR.at(7.2f, MUTED));
 
-        disclaimer.setLeading(10.5f);
-        disclaimer.setSpacingBefore(6f);
+        disclaimer.setLeading(9.4f);
+        disclaimer.setAlignment(Element.ALIGN_JUSTIFIED);
+        disclaimer.setSpacingBefore(5f);
 
         document.add(disclaimer);
     }
 
+    /**
+     * The signature block is deliberately only captions and clear space.
+     *
+     * <p>The letter is signed by hand, so there are no signature graphics,
+     * rules or "Authorised Signatory" labels: the customer and the company each
+     * get an unbroken area in which to sign. The counterparty's name remains
+     * beneath their space so the signed letter still identifies them.</p>
+     */
     private void addSignatures(Document document, DealConfirmationSheetValues values)
             throws DocumentException {
 
         PdfPTable signatures = new PdfPTable(new float[] { 48f, 4f, 48f });
         signatures.setWidthPercentage(100f);
-        signatures.setSpacingBefore(10f);
+        signatures.setSpacingBefore(9f);
 
         signatures.addCell(signatureText("for " + LEGAL_NAME));
         signatures.addCell(empty());
         signatures.addCell(signatureText("We Confirm the transaction as specified above"));
 
-        signatures.addCell(signatureLine());
+        signatures.addCell(signatureSpace());
         signatures.addCell(empty());
-        signatures.addCell(signatureLine());
+        signatures.addCell(signatureSpace());
 
         signatures.addCell(empty());
         signatures.addCell(empty());
         signatures.addCell(signatureText(
                 "Counterparty Name- " + text(values.counterpartyName())));
-
-        signatures.addCell(signatureText("Authorised Signatory"));
-        signatures.addCell(empty());
-        signatures.addCell(signatureText("Authorised Signatory"));
 
         document.add(signatures);
     }
@@ -528,7 +510,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     // =========================================================
 
     /**
-     * The disclaimer, carried over from {@code deal-confirmation.html}.
+     * The disclaimer, carried over unchanged from the existing letter.
      *
      * <p>It is the customer's acknowledgement that the transaction was entered
      * into freely and that this application's letter does not replace the offer
@@ -556,33 +538,33 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Paragraph paragraph = new Paragraph(
                 "Respected Sir/Madam, we hereby confirm the following transaction:",
-                REGULAR.at(10.5f, MUTED));
+                REGULAR.at(10f, MUTED));
 
-        paragraph.setSpacingBefore(8f);
+        paragraph.setSpacingBefore(7f);
         paragraph.setSpacingAfter(0f);
 
         return paragraph;
     }
 
-    /** A card's eyebrow: the small upper-case heading above its content. */
+    /** A section's small upper-case heading. */
     private Paragraph label(String text) {
 
         Paragraph paragraph = new Paragraph(
                 text.toUpperCase(Locale.ENGLISH),
-                BOLD.at(7.5f, MUTED));
+                BOLD.at(7f, NAVY_SOFT));
 
-        paragraph.setSpacingBefore(1f);
-        paragraph.setSpacingAfter(1f);
+        paragraph.setSpacingBefore(0f);
+        paragraph.setSpacingAfter(0f);
 
         return paragraph;
     }
 
     private Paragraph name(String text) {
 
-        Paragraph paragraph = new Paragraph(text(text), EXTRA_BOLD.at(19f, INK));
+        Paragraph paragraph = new Paragraph(text(text), EXTRA_BOLD.at(17f, NAVY));
 
-        paragraph.setSpacingBefore(2f);
-        paragraph.setSpacingAfter(2f);
+        paragraph.setSpacingBefore(1f);
+        paragraph.setSpacingAfter(1f);
 
         return paragraph;
     }
@@ -592,18 +574,29 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         return new Paragraph(text, REGULAR.at(size, MUTED));
     }
 
-    /** The short blue rule under a card's heading. */
+    /** The short cyan rule under a section heading. */
     private PdfPTable rule() {
 
         PdfPTable rule = new PdfPTable(1);
-        rule.setTotalWidth(24f);
+        rule.setTotalWidth(26f);
         rule.setLockedWidth(true);
-        rule.setSpacingBefore(1f);
-        rule.setSpacingAfter(3f);
+        rule.setHorizontalAlignment(Element.ALIGN_LEFT);
+        rule.setSpacingAfter(2f);
+
+        /*
+         * An explicit spacer row rather than spacingBefore: spacing set on a
+         * table nested in a cell is not applied, and without the gap the rule
+         * lands on the heading's baseline.
+         */
+        PdfPCell spacer = new PdfPCell(new Phrase(" ", FontFactory.getFont(
+                FontFactory.HELVETICA, 1f)));
+        spacer.setBorder(Rectangle.NO_BORDER);
+        spacer.setFixedHeight(3f);
+        rule.addCell(spacer);
 
         PdfPCell cell = new PdfPCell(new Phrase(" ", FontFactory.getFont(
                 FontFactory.HELVETICA, 1f)));
-        cell.setBackgroundColor(BLUE);
+        cell.setBackgroundColor(CYAN);
         cell.setBorder(Rectangle.NO_BORDER);
         cell.setFixedHeight(2f);
 
@@ -616,13 +609,13 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable divider = new PdfPTable(1);
         divider.setWidthPercentage(100f);
-        divider.setSpacingAfter(4f);
+        divider.setSpacingAfter(2f);
 
         PdfPCell cell = new PdfPCell(new Phrase(" ", FontFactory.getFont(
                 FontFactory.HELVETICA, 1f)));
-        cell.setBackgroundColor(CARD_BORDER);
+        cell.setBackgroundColor(DIVIDER);
         cell.setBorder(Rectangle.NO_BORDER);
-        cell.setFixedHeight(0.75f);
+        cell.setFixedHeight(0.6f);
 
         divider.addCell(cell);
 
@@ -663,12 +656,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         column.addCell(cell);
     }
 
-    /** Wraps content in the rounded, faintly grey card the letter uses. */
+    /** Wraps content in the rounded, faintly blue card the letter uses. */
     private PdfPTable fullWidthCard(PdfPTable content) {
 
         PdfPTable card = new PdfPTable(1);
         card.setWidthPercentage(100f);
-        card.setSpacingBefore(6f);
+        card.setSpacingBefore(4f);
 
         card.addCell(cardCell(content));
 
@@ -678,14 +671,17 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private PdfPCell cardCell(PdfPTable content) {
 
         /*
-         * OpenPDF's cells draw square borders only, so the card's fill and
-         * outline are painted by a cell event instead: a rounded rectangle laid
-         * down on the background canvas leaves the nested table's own text and
-         * rules untouched.
+         * OpenPDF's cells fill square only, so the card's fill and outline are
+         * painted by a cell event instead. The event draws on the table's
+         * BACKGROUNDCANVAS, which {@code PdfPTable.endWritingRows} composites
+         * beneath the cell's text and nested tables, so the rounded fill cannot
+         * cover them. Filling here rather than through setBackgroundColor is
+         * what leaves the corners genuinely rounded on top of the page instead
+         * of being squared off and painted over.
          */
         PdfPCell cell = new PdfPCell();
         cell.setBorder(Rectangle.NO_BORDER);
-        cell.setPadding(9f);
+        cell.setPadding(8f);
         cell.setCellEvent(new RoundedCard());
         cell.addElement(content);
 
@@ -701,35 +697,28 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     }
 
     /**
-     * One label/value row. The column name carries the emphasis and the value is
-     * set plain, so the eye lands on what each figure means before the figure
-     * itself. Figures, IDs and codes are set in the monospaced face
-     * ({@code mono}), words and dates in Manrope, as in the reference design.
+     * One label/value row. The term is set in navy and the figure in plain ink,
+     * so the emphasis sits on what is being described rather than on the figure
+     * beside it. Every row is closed by a hairline divider rather than a full
+     * grid.
      */
-    private void addKeyValue(PdfPTable table, String key, String value, boolean mono) {
+    private void addKeyValue(PdfPTable table, String key, String value) {
 
-        /*
-         * The keys are set in the regular face rather than the bold one: at this
-         * size the bold weight closes up and reads blurry in print, while the
-         * muted colour still keeps each key subordinate to its figure.
-         */
-        PdfPCell keyCell = new PdfPCell(new Phrase(key, REGULAR.at(10f, MUTED)));
+        PdfPCell keyCell = new PdfPCell(new Phrase(key, REGULAR.at(9.2f, NAVY)));
         keyCell.setBorder(Rectangle.BOTTOM);
         keyCell.setBorderColor(DIVIDER);
-        keyCell.setBorderWidth(0.75f);
-        keyCell.setPaddingTop(3.5f);
-        keyCell.setPaddingBottom(3.5f);
+        keyCell.setBorderWidth(0.6f);
+        keyCell.setPaddingTop(2.7f);
+        keyCell.setPaddingBottom(2.7f);
         keyCell.setPaddingLeft(0f);
         keyCell.setPaddingRight(3f);
 
-        Font valueFont = mono ? MONO_PLAIN.at(9.5f, INK) : REGULAR.at(10f, INK);
-
-        PdfPCell valueCell = new PdfPCell(new Phrase(value, valueFont));
+        PdfPCell valueCell = new PdfPCell(new Phrase(value, REGULAR.at(9.2f, INK)));
         valueCell.setBorder(Rectangle.BOTTOM);
         valueCell.setBorderColor(DIVIDER);
-        valueCell.setBorderWidth(0.75f);
-        valueCell.setPaddingTop(3.5f);
-        valueCell.setPaddingBottom(3.5f);
+        valueCell.setBorderWidth(0.6f);
+        valueCell.setPaddingTop(2.7f);
+        valueCell.setPaddingBottom(2.7f);
         valueCell.setPaddingLeft(3f);
         valueCell.setPaddingRight(0f);
         valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -762,19 +751,17 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         }
     }
 
-    private void addStatValues(PdfPTable table, Stat... stats) {
+    private void addStatValues(PdfPTable table, String... values) {
 
-        for (Stat stat : stats) {
+        for (String value : values) {
 
-            PdfPCell cell = stat.text().isEmpty() ? empty() : borderless();
+            PdfPCell cell = value.isEmpty() ? empty() : borderless();
             cell.setPaddingTop(1f);
-            cell.setPaddingBottom(3f);
+            cell.setPaddingBottom(2f);
 
-            if (!stat.text().isEmpty()) {
+            if (!value.isEmpty()) {
 
-                Font font = stat.mono() ? MONO_PLAIN.at(11f, INK) : REGULAR.at(11.5f, INK);
-
-                cell.addElement(new Paragraph(stat.text(), font));
+                cell.addElement(new Paragraph(value, REGULAR.at(10.2f, INK)));
             }
 
             table.addCell(cell);
@@ -786,15 +773,34 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPTable table = new PdfPTable(new float[] { 50f, 50f });
         table.setWidthPercentage(100f);
 
-        PdfPCell label = new PdfPCell(new Phrase("Total consideration", BOLD.at(10.5f, INK)));
+        /*
+         * The total is the strongest element of the deal terms: a pale cyan
+         * band, a cyan bar marking where it starts, and navy bold type a little
+         * larger than the rows above it. The amount keeps right padding of its
+         * own so a large figure stays inside the band rather than running off
+         * the card.
+         */
+        PdfPCell label = new PdfPCell(new Phrase("Total consideration", BOLD.at(10.5f, NAVY)));
         label.setBackgroundColor(TOTAL_BG);
-        label.setBorder(Rectangle.NO_BORDER);
-        label.setPadding(5f);
+        label.setBorder(Rectangle.LEFT);
+        label.setBorderColor(CYAN);
+        label.setBorderWidthLeft(2.5f);
+        label.setPaddingTop(8f);
+        label.setPaddingBottom(8f);
+        label.setPaddingLeft(9f);
+        label.setPaddingRight(6f);
 
-        PdfPCell value = new PdfPCell(new Phrase(CURRENCY + money(total), MONO.at(11f, INK)));
+        Phrase amount = new Phrase();
+        amount.add(new Chunk(CURRENCY, BOLD.at(9.5f, NAVY_SOFT)));
+        amount.add(new Chunk(money(total), BOLD.at(11.5f, NAVY)));
+
+        PdfPCell value = new PdfPCell(amount);
         value.setBackgroundColor(TOTAL_BG);
         value.setBorder(Rectangle.NO_BORDER);
-        value.setPadding(5f);
+        value.setPaddingTop(8f);
+        value.setPaddingBottom(8f);
+        value.setPaddingLeft(6f);
+        value.setPaddingRight(9f);
         value.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
         table.addCell(label);
@@ -806,9 +812,9 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private PdfPCell signatureText(String text) {
 
         PdfPCell cell = borderless();
-        cell.setPaddingTop(4f);
+        cell.setPaddingTop(2f);
 
-        Paragraph paragraph = new Paragraph(text, BOLD.at(10f, INK));
+        Paragraph paragraph = new Paragraph(text, BOLD.at(9.2f, NAVY));
         paragraph.setSpacingBefore(0f);
 
         cell.addElement(paragraph);
@@ -816,14 +822,13 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         return cell;
     }
 
-    private PdfPCell signatureLine() {
+    /** Clear, unbordered space in which a signature is written by hand. */
+    private PdfPCell signatureSpace() {
 
         PdfPCell cell = new PdfPCell(new Phrase(" ", FontFactory.getFont(
                 FontFactory.HELVETICA, 1f)));
-        cell.setBorder(Rectangle.BOTTOM);
-        cell.setBorderColor(INK);
-        cell.setBorderWidth(0.9f);
-        cell.setFixedHeight(32f);
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setFixedHeight(34f);
 
         return cell;
     }
@@ -854,12 +859,13 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     }
 
     /**
-     * Paints a card: the faint grey fill and hairline outline, both with rounded
-     * corners.
+     * Fills a card with its panel colour and strokes its hairline outline, both
+     * as one rounded rectangle.
      *
-     * <p>Drawn on the cell's background canvas so it sits behind the card's
-     * contents. The rectangle is inset by half the stroke width, otherwise the
-     * outer half of the outline would be clipped at the cell's edge.</p>
+     * <p>Drawing on the background canvas rather than the cell's fill is what
+     * makes the corners genuinely rounded: the page behind the card — its wash,
+     * rings and watermark — shows through the four arcs instead of being painted
+     * over with a white square.</p>
      */
     private static final class RoundedCard implements PdfPCellEvent {
 
@@ -891,35 +897,36 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     }
 
     /**
-     * Paints the masthead and the address bar at the top and bottom of every
-     * page.
+     * Paints the page furniture: the white page, the subtle corner rings, the
+     * Click4Bonds watermark, the masthead and the address bar.
      *
-     * <p>OpenPDF calls this as each page finishes, so the same header and footer
-     * appear on a letter that runs to two pages without any content having to be
-     * repeated. Both are drawn in the margins the document reserves for them
-     * (see {@link #HEADER_TOP_GAP} and {@link #BOTTOM_MARGIN}), so they never
-     * overlap the body.</p>
+     * <p>The background pieces are drawn on the under-content canvas so the
+     * letter's text and cards sit on top of them; the masthead and footer are
+     * drawn on the normal canvas in the margins the document reserves for them,
+     * so they never overlap the body.</p>
      */
     private static final class LetterheadAndFooter extends PdfPageEventHelper {
 
+        private static final String WATERMARK_TEXT = "Click4Bonds";
+
         private final Image logo;
         private final float contentWidth;
-        private final Font footerFont;
 
-        private LetterheadAndFooter(Image logo, float contentWidth, Font footerFont) {
+        private LetterheadAndFooter(Image logo, float contentWidth) {
 
             this.logo = logo;
             this.contentWidth = contentWidth;
-            this.footerFont = footerFont;
         }
 
         @Override
         public void onEndPage(PdfWriter writer, Document document) {
 
             Rectangle page = document.getPageSize();
-            PdfContentByte canvas = writer.getDirectContent();
-
             float left = document.leftMargin();
+
+            drawBackground(writer.getDirectContentUnder(), page);
+
+            PdfContentByte canvas = writer.getDirectContent();
             float cursor = page.getTop() - HEADER_TOP_GAP;
 
             if (logo != null) {
@@ -931,30 +938,130 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                 cursor -= height + MASTHEAD_BAND_GAP;
             }
 
-            float blueWidth = contentWidth * 0.6f;
+            /*
+             * A navy rule with a cyan tail: the one strong horizontal accent in
+             * the design, sitting directly below the masthead image.
+             */
+            float cyanWidth = contentWidth * 0.28f;
 
-            canvas.setColorFill(BLUE);
-            canvas.rectangle(left, cursor - BAND_HEIGHT, blueWidth, BAND_HEIGHT);
+            canvas.setColorFill(NAVY);
+            canvas.rectangle(
+                    left, cursor - BAND_HEIGHT, contentWidth - cyanWidth, BAND_HEIGHT);
             canvas.fill();
 
-            canvas.setColorFill(PURPLE);
+            canvas.setColorFill(CYAN);
             canvas.rectangle(
-                    left + blueWidth,
+                    left + contentWidth - cyanWidth,
                     cursor - BAND_HEIGHT,
-                    contentWidth - blueWidth,
+                    cyanWidth,
                     BAND_HEIGHT);
             canvas.fill();
 
-            canvas.setColorFill(INK);
-            canvas.rectangle(left, FOOTER_BOTTOM_GAP, contentWidth, FOOTER_HEIGHT);
+            drawFooter(canvas, page);
+        }
+
+        /** White page, two pale blue washes, corner rings and the watermark. */
+        private static void drawBackground(PdfContentByte canvas, Rectangle page) {
+
+            float width = page.getWidth();
+            float height = page.getHeight();
+
+            canvas.saveState();
+
+            canvas.setColorFill(WHITE);
+            canvas.rectangle(0f, 0f, width, height);
+            canvas.fill();
+
+            /*
+             * A wash under the masthead and another rising from the address
+             * bar, each fading to white before it reaches the body text. Drawn
+             * as hairline bands rather than a PDF shading pattern, so the
+             * letter needs no shading extension and every viewer agrees.
+             */
+            wash(canvas, width, height * 0.58f, height * 0.42f, WHITE, PAGE_TOP_TINT);
+            wash(canvas, width, 0f, height * 0.24f, PAGE_BOTTOM_TINT, WHITE);
+
+            canvas.setColorStroke(CORNER_PATTERN);
+            canvas.setLineWidth(0.9f);
+
+            for (float radius = 46f; radius <= 150f; radius += 13f) {
+
+                canvas.circle(width + 4f, height + 4f, radius);
+                canvas.stroke();
+
+                canvas.circle(-4f, -4f, radius);
+                canvas.stroke();
+            }
+
+            canvas.restoreState();
+
+            ColumnText.showTextAligned(
+                    canvas,
+                    Element.ALIGN_CENTER,
+                    new Phrase(WATERMARK_TEXT, FontFactory.getFont(
+                            FontFactory.HELVETICA_BOLD, 62f, Font.NORMAL, WATERMARK)),
+                    width / 2f,
+                    height * 0.30f,
+                    32f);
+        }
+
+        /**
+         * Paints a vertical blue wash as a stack of hairline bands.
+         *
+         * <p>{@code bottom} is where the wash begins and {@code height} how far
+         * it rises; {@code from} is the colour at the bottom and {@code to} the
+         * colour at the top. The 0.4f overlap on each band closes the hairline
+         * seam that antialiasing would otherwise leave between fills.</p>
+         */
+        private static void wash(
+                PdfContentByte canvas, float width,
+                float bottom, float height, Color from, Color to) {
+
+            int bands = 64;
+            float bandHeight = height / bands;
+
+            for (int band = 0; band < bands; band++) {
+
+                canvas.setColorFill(blend(from, to, (band + 0.5f) / bands));
+                canvas.rectangle(
+                        0f, bottom + band * bandHeight, width, bandHeight + 0.4f);
+                canvas.fill();
+            }
+        }
+
+        /** A colour part of the way from {@code from} to {@code to}. */
+        private static Color blend(Color from, Color to, float ratio) {
+
+            return new Color(
+                    Math.round(from.getRed() + (to.getRed() - from.getRed()) * ratio),
+                    Math.round(from.getGreen() + (to.getGreen() - from.getGreen()) * ratio),
+                    Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * ratio));
+        }
+
+        /** The address bar: a pale blue band under a navy/cyan rule. */
+        private static void drawFooter(PdfContentByte canvas, Rectangle page) {
+
+            float width = page.getWidth();
+
+            canvas.setColorFill(FOOTER_BG);
+            canvas.rectangle(0f, FOOTER_BOTTOM_GAP, width, FOOTER_HEIGHT);
+            canvas.fill();
+
+            canvas.setColorFill(NAVY);
+            canvas.rectangle(0f, FOOTER_BOTTOM_GAP + FOOTER_HEIGHT - 1f, width, 1f);
+            canvas.fill();
+
+            canvas.setColorFill(CYAN);
+            canvas.rectangle(
+                    0f, FOOTER_BOTTOM_GAP + FOOTER_HEIGHT - 1f, width * 0.28f, 1f);
             canvas.fill();
 
             ColumnText.showTextAligned(
                     canvas,
                     Element.ALIGN_CENTER,
-                    new Phrase(FOOTER_LINE, footerFont),
-                    page.getWidth() / 2f,
-                    FOOTER_BOTTOM_GAP + (FOOTER_HEIGHT - footerFont.getSize()) / 2f + 1f,
+                    new Phrase(FOOTER_LINE, REGULAR.at(7.5f, FOOTER_TEXT)),
+                    width / 2f,
+                    FOOTER_BOTTOM_GAP + (FOOTER_HEIGHT - 7.5f) / 2f + 1f,
                     0f);
         }
     }
@@ -1076,74 +1183,26 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     // TYPEFACES
     // =========================================================
 
-    /** A value in a stat grid, and whether it is set in the monospaced face. */
-    private record Stat(String text, boolean mono) {
-
-        static Stat plain(String text) {
-            return new Stat(text, false);
-        }
-
-        static Stat mono(String text) {
-            return new Stat(text, true);
-        }
-    }
-
     /**
-     * One weight of a bundled typeface.
+     * One family and weight of a base-14 typeface.
      *
-     * <p>The font is read from the classpath as bytes and embedded, so the weight
-     * survives on a machine that has neither Manrope nor IBM Plex Mono
-     * installed. Loading is deliberately forgiving: a file that is missing or
-     * unreadable degrades to the fallback base-14 font and logs the reason,
-     * because a letter set in Helvetica still reads correctly whereas one that
-     * fails to render is a confirmation the customer cannot get.</p>
+     * <p>Using a base-14 font means every PDF reader already has the glyphs, so
+     * the letter carries no font file and renders the same on every machine.</p>
      */
     private static final class Typeface {
 
-        private final BaseFont base;
-        private final String fallbackFamily;
-        private final int fallbackStyle;
+        private final String family;
+        private final int style;
 
-        private Typeface(String resource, String fallbackFamily, int fallbackStyle) {
+        private Typeface(String family, int style) {
 
-            this.fallbackFamily = fallbackFamily;
-            this.fallbackStyle = fallbackStyle;
-            this.base = load(resource);
+            this.family = family;
+            this.style = style;
         }
 
         Font at(float size, Color color) {
 
-            return base == null
-                    ? FontFactory.getFont(fallbackFamily, size, fallbackStyle, color)
-                    : new Font(base, size, Font.NORMAL, color);
-        }
-
-        private static BaseFont load(String resource) {
-
-            try (InputStream stream = DealConfirmationPdfServiceImpl.class.getResourceAsStream(resource)) {
-
-                if (stream == null) {
-
-                    log.warn("{} is not on the classpath, falling back to a base-14 font", resource);
-                    return null;
-                }
-
-                String fileName = resource.substring(resource.lastIndexOf('/') + 1);
-
-                // IDENTITY_H is required for a Unicode face; EMBEDDED keeps it in the PDF.
-                return BaseFont.createFont(
-                        fileName,
-                        BaseFont.IDENTITY_H,
-                        BaseFont.EMBEDDED,
-                        true,
-                        stream.readAllBytes(),
-                        null);
-
-            } catch (DocumentException | IOException failure) {
-
-                log.warn("Could not load {}, falling back to a base-14 font", resource, failure);
-                return null;
-            }
+            return FontFactory.getFont(family, size, style, color);
         }
     }
 }
