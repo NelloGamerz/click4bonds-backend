@@ -49,8 +49,9 @@ public interface DealConfirmationSheetStrategy {
      *
      * <p>The corporate letter is drawn from
      * {@link DealConfirmationPdfService}, which needs no spreadsheet and no
-     * LibreOffice: the same values are laid out in code. The G-Sec letter keeps
-     * the template path, so it returns {@code false} through this default.</p>
+     * LibreOffice: the same values are laid out in code. The G-Sec letter is
+     * drawn the same way. The template route remains as the degraded mode when
+     * PDF rendering is switched off, and for any future layout that chooses it.</p>
      *
      * <p>This is a property of the layout, not of the deal, which is why it
      * travels with the strategy: a future third layout decides for itself how it
@@ -62,6 +63,28 @@ public interface DealConfirmationSheetStrategy {
     default boolean rendersDirectly() {
 
         return false;
+    }
+
+    /**
+     * Which letter this layout draws when rendered directly.
+     *
+     * <p>Both letters share one PDF renderer, so it needs to know which figures
+     * and particulars to print. The template route ignores this.</p>
+     */
+    default DealConfirmationLayout layout() {
+
+        return DealConfirmationLayout.CORPORATE;
+    }
+
+    /**
+     * Refuses a deal whose figures this layout cannot print.
+     *
+     * <p>Empty by default. The direct route renders from the values without
+     * calling {@link #toCells}, so a layout that requires figures the shared
+     * values may lack overrides this to refuse before a blank letter is
+     * drawn.</p>
+     */
+    default void requireFigures(DealConfirmationSheetValues values) {
     }
 
     /**

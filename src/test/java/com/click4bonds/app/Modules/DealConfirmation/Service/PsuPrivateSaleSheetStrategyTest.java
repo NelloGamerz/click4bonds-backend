@@ -216,6 +216,7 @@ class PsuPrivateSaleSheetStrategyTest {
                 new BigDecimal("1100.00"),
                 new BigDecimal("1100.00"),
                 new BigDecimal("26.41"),
+                new BigDecimal("1126.41"),
                 new BigDecimal("0.00"),
                 new BigDecimal("1126.41"),
                 null,

@@ -50,6 +50,24 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
 
     private final DocumentProperties documentProperties;
 
+    /**
+     * Drawn directly from the values, like the corporate letter.
+     *
+     * <p>The PDF renderer reproduces this sheet's design from the same values,
+     * so the workbook is only filled when PDF rendering is switched off.</p>
+     */
+    @Override
+    public boolean rendersDirectly() {
+
+        return true;
+    }
+
+    @Override
+    public DealConfirmationLayout layout() {
+
+        return DealConfirmationLayout.GSEC;
+    }
+
     @Override
     public String sheetName() {
 
@@ -69,7 +87,7 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
     @Override
     public Map<String, Object> toCells(DealConfirmationSheetValues values) {
 
-        requireGsecFigures(values);
+        requireFigures(values);
 
         DocumentProperties.Organisation organisation =
                 documentProperties.getOrganisation();
@@ -204,7 +222,7 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
      * through untouched.</p>
      *
      * <p>Null when the deal has no coupon rate, which
-     * {@link #requireGsecFigures} has already refused by the time this is called,
+     * {@link #requireFigures} has already refused by the time this is called,
      * so the null only guards the compiler.</p>
      */
     private Double couponFraction(DealConfirmationSheetValues values) {
@@ -228,7 +246,8 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
      * module's existing failure mode: the purchase stands and the letter is
      * retryable.</p>
      */
-    private void requireGsecFigures(DealConfirmationSheetValues values) {
+    @Override
+    public void requireFigures(DealConfirmationSheetValues values) {
 
         if (values.gsecAccruedDays() == null
                 || values.gsecAccruedInterest() == null

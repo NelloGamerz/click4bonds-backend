@@ -188,32 +188,23 @@ public class DocumentProperties {
          */
         private String gsecModeOfDelivery = "Demat";
 
-        /** Left blank: no source for it, and a guess would be a wrong number. */
-        private String accountNumber = "";
+        /** Our settlement bank account, as confirmed with the business. */
+        private String accountNumber = "13472320000772";
 
         /** Left blank: settlement numbers are issued per deal by the clearing house. */
         private String settlementNumber = "";
 
         /*
          * The three below exist only on the G-Sec letter, which asks for the
-         * bank-side particulars the corporate letter does not. They default to
-         * blank on purpose.
-         *
-         * The committed G-Sec sheet is *sample-filled* — it holds a branch
-         * address, a bank name and a bank IFSC that belong to whichever letter it
-         * was saved from, and the same two strings appear as "DP ID" and
-         * "CLIENT ID" in an older workbook. None of them is verifiable from this
-         * repository, so they are cleared rather than reprinted: writing the
-         * configured (blank) value clears the cell, which is why the G-Sec
-         * strategy puts them in the map even when empty. A blank on the letter is
-         * recoverable; a wrong bank account on a contract is not.
+         * bank-side particulars the corporate letter does not. They are the bank
+         * account we settle through, now confirmed with the business.
          */
 
-        /** G-Sec letter only. Cleared until a real value is configured. */
-        private String branchLocation = "";
+        /** G-Sec letter only. */
+        private String branchLocation = "North Ex Mall Sec-9 Rohini Delhi -110085";
 
-        /** G-Sec letter only. Cleared until a real value is configured. */
-        private String bankName = "";
+        /** G-Sec letter only. */
+        private String bankName = "HDFC BANK LTD";
 
         /**
          * G-Sec letter only, and deliberately <em>not</em> {@link #ifscCode}.
@@ -224,6 +215,6 @@ public class DocumentProperties {
          * bank IFSC, a different thing. Sharing one key between them would print
          * the clearing corporation's code wherever a bank's belongs.</p>
          */
-        private String bankIfsc = "";
+        private String bankIfsc = "HDFC0001347";
     }
 }
