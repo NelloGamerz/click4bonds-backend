@@ -223,6 +223,8 @@ class PsuPrivateSaleSheetStrategyTest {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
     }
 }

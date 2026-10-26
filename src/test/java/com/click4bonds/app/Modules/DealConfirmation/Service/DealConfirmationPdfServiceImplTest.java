@@ -100,6 +100,8 @@ class DealConfirmationPdfServiceImplTest {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
 
         byte[] pdf = service.render(sparse, DealConfirmationLayout.CORPORATE);
@@ -164,7 +166,9 @@ class DealConfirmationPdfServiceImplTest {
                 new BigDecimal("12800.00"),
                 new BigDecimal("7940002.88"),
                 new BigDecimal("1280.00"),
-                new BigDecimal("7938722.88"));
+                new BigDecimal("7938722.88"),
+                null,
+                new BigDecimal("12.50"));
     }
 
     private DealConfirmationSheetValues gsecValues() {
@@ -198,6 +202,8 @@ class DealConfirmationPdfServiceImplTest {
                 new BigDecimal("35.66"),
                 new BigDecimal("1135.66"),
                 new BigDecimal("3.57"),
-                new BigDecimal("1132.09"));
+                new BigDecimal("1132.09"),
+                new BigDecimal("7.07"),
+                new BigDecimal("7.20"));
     }
 }

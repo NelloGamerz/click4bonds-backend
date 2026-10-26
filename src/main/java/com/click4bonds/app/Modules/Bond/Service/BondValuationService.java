@@ -161,6 +161,8 @@ public class BondValuationService {
                 bond.getAnnualYtm().divide(HUNDRED));
 
         bond.setPrice(price.price());
+        // The yield was the input here, so its semi-annual reading follows it.
+        bond.setSemiYtm(YtmCalculationService.semiYtmPercentage(bond.getAnnualYtm()));
 
         log.info(
                 "Derived price from yield: isin={} annualYtm={}% price={}",
