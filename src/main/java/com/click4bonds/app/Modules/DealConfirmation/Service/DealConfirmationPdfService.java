@@ -21,9 +21,10 @@ public interface DealConfirmationPdfService {
      * Renders one deal confirmation letter.
      *
      * @param values the letter's values, already computed and rounded
+     * @param layout which letter to draw — the two share their design
      * @return the PDF bytes, never empty
      * @throws com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException
      *         when the document cannot be rendered
      */
-    byte[] render(DealConfirmationSheetValues values);
+    byte[] render(DealConfirmationSheetValues values, DealConfirmationLayout layout);
 }

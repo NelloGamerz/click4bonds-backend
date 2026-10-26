@@ -100,6 +100,14 @@ public class DealConfirmationSheetValuesFactory {
      */
     private static final BigDecimal TDS_RATE = new BigDecimal("0.10");
 
+    /**
+     * TDS is deducted only when the consideration reaches ₹50 lakh.
+     *
+     * <p>Below the threshold the sheet shows a nil deduction rather than a
+     * charge the customer does not owe.</p>
+     */
+    private static final BigDecimal TDS_THRESHOLD = new BigDecimal("5000000");
+
     private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     /**
@@ -217,6 +225,7 @@ public class DealConfirmationSheetValuesFactory {
                 quantum,
                 principalAmount,
                 accruedInterest,
+                subtotal,
                 stampDuty,
                 totalConsideration,
                 gsec == null ? null : gsec.accruedDays(),
@@ -273,9 +282,12 @@ public class DealConfirmationSheetValuesFactory {
 
         /*
          * TDS comes off here where the corporate sheet's stamp duty goes on, and
-         * it is levied on the interest rather than on the consideration.
+         * it is levied on the interest rather than on the consideration — but
+         * only once the consideration reaches the threshold.
          */
-        BigDecimal gsecTds = money(gsecAccruedInterest.multiply(TDS_RATE));
+        BigDecimal gsecTds = gsecConsideration.compareTo(TDS_THRESHOLD) >= 0
+                ? money(gsecAccruedInterest.multiply(TDS_RATE))
+                : money(BigDecimal.ZERO);
 
         BigDecimal gsecTotal = money(gsecConsideration.subtract(gsecTds));
 

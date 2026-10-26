@@ -21,10 +21,10 @@ import lombok.RequiredArgsConstructor;
  * to the bond's rating does not re-letter an old deal, which is how every other
  * field on that record already behaves.</p>
  *
- * <p><strong>The G-Sec side is a TODO that fails loudly.</strong>
- * {@link GsecSellSheetStrategy#toCells} throws, so a Sovereign deal currently
- * produces no letter and is left retryable. See that class for why an empty map
- * would be the worse failure.</p>
+ * <p><strong>Both layouts are drawn directly as PDFs.</strong>
+ * {@link GsecSellSheetStrategy} and {@link PsuPrivateSaleSheetStrategy} differ in
+ * the figures and particulars they print, not in how the letter is produced; the
+ * workbook is only filled when PDF rendering is switched off.</p>
  */
 @Component
 @RequiredArgsConstructor

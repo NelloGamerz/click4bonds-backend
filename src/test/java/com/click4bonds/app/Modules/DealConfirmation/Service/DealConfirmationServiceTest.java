@@ -488,6 +488,7 @@ class DealConfirmationServiceTest {
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 

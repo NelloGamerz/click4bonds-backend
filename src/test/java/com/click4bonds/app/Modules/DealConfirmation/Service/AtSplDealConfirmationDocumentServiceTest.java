@@ -8,7 +8,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -105,7 +104,7 @@ class AtSplDealConfirmationDocumentServiceTest {
          * drawn from the values and stored as a PDF, so neither the template
          * writer nor the LibreOffice converter is touched.
          */
-        verify(pdfService).render(any());
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
         verifyNoInteractions(templateWriter, pdfConverter);
 
         verify(storage).store(
@@ -122,31 +121,25 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void storesBothArtefactsUnderOneStemForTheGsecLetter() {
+    void drawsTheGsecLetterDirectlyAndStoresOnlyThePdf() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         DealConfirmationDocument document = service.generate(snapshot("Sovereign"));
 
         /*
-         * The G-Sec letter keeps the template route unchanged: one stem for
-         * both formats, so regenerating a deal replaces a matched pair rather
-         * than leaving the previous spreadsheet beside the new PDF.
+         * Same design, different figures: the G-Sec layout is now drawn from
+         * the values like the corporate letter, with no spreadsheet and no
+         * LibreOffice in the path.
          */
-        verify(storage).store(
-                eq("2026/09/" + REFERENCE + ".xlsx"),
-                eq(REFERENCE + ".xlsx"),
-                eq(DocumentFormat.XLSX.contentType()),
-                eq(XLSX));
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.GSEC));
+        verifyNoInteractions(templateWriter, pdfConverter);
 
         verify(storage).store(
                 eq("2026/09/" + REFERENCE + ".pdf"),
                 eq(REFERENCE + ".pdf"),
                 eq(DocumentFormat.PDF.contentType()),
                 eq(PDF));
-
-        verifyNoInteractions(pdfService);
 
         assertEquals(REFERENCE + ".pdf", document.fileName());
         assertArrayEquals(PDF, document.content());
@@ -170,10 +163,11 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void fillsTheSheetTheTemplateConfigNamesForTheGsecLetter() {
+    void fillsTheGsecSheetWhenPdfRenderingIsDisabled() {
+
+        properties.getPdf().setEnabled(false);
 
         givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
 
         service.generate(snapshot("Sovereign"));
 
@@ -204,35 +198,29 @@ class AtSplDealConfirmationDocumentServiceTest {
          * The corporate letter is now drawn directly, so the layout is selected
          * by proving the renderer was used and the G-Sec sheet was not.
          */
-        verify(pdfService).render(any());
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
         verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     @Test
-    void printsASovereignBondOnTheGsecSheet() {
+    void printsASovereignBondOnTheGsecLetter() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         service.generate(snapshot("Sovereign"));
 
         /*
-         * The whole point of the routing: a government security is confirmed on
-         * the G-Sec layout, not the corporate one. Asserting the sheet name is
-         * what proves the strategy was selected — the cells themselves are pinned
-         * in GsecSellSheetStrategyTest.
+         * The whole point of the routing: a government security is drawn on the
+         * G-Sec layout, not the corporate one. The figures that layout prints
+         * are pinned in GsecSellSheetStrategyTest.
          */
-        verify(templateWriter).fill(
-                eq(properties.getTemplate().getGsecSheetName()),
-                anyMap(),
-                anyMap());
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.GSEC));
     }
 
     @Test
     void matchesTheSovereignRatingRegardlessOfCaseOrSurroundingSpace() {
 
-        givenTheSpreadsheetIsFilled();
-        givenThePdfRenders();
+        givenThePdfIsDrawn();
 
         /*
          * The rating is free text typed into an admin form, so it arrives in
@@ -240,10 +228,7 @@ class AtSplDealConfirmationDocumentServiceTest {
          */
         service.generate(snapshot(" sovereign "));
 
-        verify(templateWriter).fill(
-                eq(properties.getTemplate().getGsecSheetName()),
-                anyMap(),
-                anyMap());
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.GSEC));
     }
 
     @Test
@@ -258,7 +243,7 @@ class AtSplDealConfirmationDocumentServiceTest {
          */
         service.generate(snapshot(null));
 
-        verify(pdfService).render(any());
+        verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
         verifyNoInteractions(templateWriter, pdfConverter);
     }
 
@@ -299,6 +284,8 @@ class AtSplDealConfirmationDocumentServiceTest {
     @Test
     void storesNothingWhenTheSpreadsheetCannotBeFilled() {
 
+        properties.getPdf().setEnabled(false);
+
         when(templateWriter.fill(anyString(), any(), any()))
                 .thenThrow(new DocumentGenerationException("template is missing"));
 
@@ -317,7 +304,7 @@ class AtSplDealConfirmationDocumentServiceTest {
     @Test
     void storesNothingWhenTheLetterCannotBeDrawn() {
 
-        when(pdfService.render(any()))
+        when(pdfService.render(any(), any()))
                 .thenThrow(new DocumentGenerationException("the letter cannot be drawn"));
 
         assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
@@ -331,34 +318,28 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void keepsTheSpreadsheetWhenRenderingFails() {
+    void keepsTheSpreadsheetWhenRenderingFailsInTheDegradedMode() {
+
+        /*
+         * With PDF rendering switched off there is no render step, so a stored
+         * spreadsheet is the whole document. This pins that the degraded path
+         * still stores rather than silently producing nothing.
+         */
+        properties.getPdf().setEnabled(false);
 
         givenTheSpreadsheetIsFilled();
 
-        when(pdfConverter.toPdf(any(), anyString()))
-                .thenThrow(new DocumentGenerationException("soffice is not installed"));
+        assertEquals(
+                DocumentFormat.XLSX.contentType(),
+                service.generate(snapshot("Sovereign")).contentType());
 
-        assertThrows(
-                DocumentGenerationException.class,
-                () -> service.generate(snapshot("Sovereign")));
-
-        /*
-         * The spreadsheet is stored before rendering is attempted, so a render
-         * failure still leaves an operator something to convert by hand. Only
-         * the PDF is missing, and the caller records nothing, so the deal stays
-         * retryable.
-         */
         verify(storage).store(
                 eq("2026/09/" + REFERENCE + ".xlsx"),
                 anyString(),
                 anyString(),
                 any());
 
-        verify(storage, never()).store(
-                eq("2026/09/" + REFERENCE + ".pdf"),
-                anyString(),
-                anyString(),
-                any());
+        verifyNoInteractions(pdfService, pdfConverter);
     }
 
     @Test
@@ -466,16 +447,9 @@ class AtSplDealConfirmationDocumentServiceTest {
         when(templateWriter.fill(anyString(), any(), any())).thenReturn(XLSX);
     }
 
-    private void givenThePdfRenders() {
-
-        when(pdfConverter.toPdf(any(), anyString())).thenReturn(PDF);
-
-        givenDocumentsAreStored();
-    }
-
     private void givenThePdfIsDrawn() {
 
-        when(pdfService.render(any())).thenReturn(PDF);
+        when(pdfService.render(any(), any())).thenReturn(PDF);
 
         givenDocumentsAreStored();
     }

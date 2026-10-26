@@ -41,6 +41,7 @@ import java.time.LocalDate;
  *                                projection's clean-price leg, per lot, times
  *                                the lots bought
  * @param accruedInterest         interest component of the consideration
+ * @param considerationAmount     principal + accrued interest, before any charge
  * @param stampDuty               corporate sheet only. Stamp duty on the
  *                                consideration, whole rupees, <em>added</em>
  * @param totalConsideration      corporate sheet only: principal + accrued
@@ -53,7 +54,8 @@ import java.time.LocalDate;
  * @param gsecConsiderationAmount G-Sec sheet only: principal + that accrued
  *                                interest
  * @param gsecTds                 G-Sec sheet only: 10% of that accrued interest,
- *                                <em>deducted</em>
+ *                                <em>deducted</em>, and only when the
+ *                                consideration is at least ₹50 lakh
  * @param gsecTotalConsiderationAmount G-Sec sheet only: consideration − TDS
  *
  * <p><strong>The two sheets do not share their accrued interest.</strong> The
@@ -67,8 +69,9 @@ import java.time.LocalDate;
  * template computes.</strong> The committed G-Sec sheet holds {@code =C28*0.1%} —
  * 0.10% of the <em>consideration</em> — under a label reading "Tds ( 0.10%)". The
  * agreed rule is <strong>10% of the accrued-interest component</strong>, a different
- * base and a different rate, roughly three times the amount. This application's
- * figure wins and is what prints.</p>
+ * base and a different rate, roughly three times the amount — and it is withheld
+ * only when the consideration reaches ₹50 lakh. This application's figure wins
+ * and is what prints.</p>
  *
  * <p>The label on that cell still reads "0.10%" while the figure beside it is 10%
  * of the interest. That discrepancy is on the letter and is a
@@ -102,6 +105,7 @@ public record DealConfirmationSheetValues(
         BigDecimal quantum,
         BigDecimal principalAmount,
         BigDecimal accruedInterest,
+        BigDecimal considerationAmount,
         BigDecimal stampDuty,
         BigDecimal totalConsideration,
         Long gsecAccruedDays,

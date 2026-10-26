@@ -25,8 +25,8 @@ import lombok.extern.slf4j.Slf4j;
  *
  * <p>The real implementation behind {@link DealConfirmationDocumentService}. It
  * produces the letter by one of two routes, chosen by the layout:
- * {@link DealConfirmationPdfService} draws the corporate letter directly from
- * the computed values, while the G-Sec letter fills
+ * {@link DealConfirmationPdfService} draws the letter directly from the
+ * computed values, while the template route fills
  * {@code ATSPL Deal Format.xlsx} and converts it. It knows nothing about how a
  * deal is created — the snapshot it is handed is complete.</p>
  *
@@ -101,18 +101,24 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
                 values.valueDate());
 
         /*
-         * A layout that draws itself is rendered from the values alone. The
-         * corporate letter takes this path on the normal configuration, which
-         * is why its production no longer waits on LibreOffice; the G-Sec
-         * letter does not, and keeps the template route below unchanged.
+         * A layout that draws itself is rendered from the values alone, with no
+         * spreadsheet and no LibreOffice: the letters are laid out in code.
          *
-         * When PDF rendering is switched off the corporate letter falls back to
-         * the spreadsheet, because that is the degraded mode this setting has
-         * always selected: a usable document rather than none.
+         * When PDF rendering is switched off every layout falls back to the
+         * spreadsheet, because that is the degraded mode this setting has
+         * always selected: a usable document rather than none. That is why the
+         * G-Sec letter's cell map is still maintained.
          */
         if (strategy.rendersDirectly() && properties.getPdf().isEnabled()) {
 
-            return generateDirectly(values, stem);
+            /*
+             * A layout can name figures it cannot print without. The template
+             * route checks them inside toCells; the direct route does not call
+             * it, so it is checked here instead of printing a blank letter.
+             */
+            strategy.requireFigures(values);
+
+            return generateDirectly(values, stem, strategy.layout());
         }
 
         Map<String, Object> cells = strategy.toCells(values);
@@ -219,10 +225,11 @@ public class AtSplDealConfirmationDocumentService implements DealConfirmationDoc
      */
     private DealConfirmationDocument generateDirectly(
             DealConfirmationSheetValues values,
-            String stem) {
+            String stem,
+            DealConfirmationLayout layout) {
 
         byte[] pdf = await(CompletableFuture.supplyAsync(
-                () -> pdfService.render(values),
+                () -> pdfService.render(values, layout),
                 documentExecutor));
 
         String pdfKey = stem + "." + DocumentFormat.PDF.extension();

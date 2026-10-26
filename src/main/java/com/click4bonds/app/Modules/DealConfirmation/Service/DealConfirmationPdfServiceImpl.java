@@ -145,11 +145,14 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
      * The typefaces. Helvetica is one of the fourteen fonts every PDF reader
      * carries, so the letter renders identically without embedding a font file
      * or depending on a font being installed on the server.
+     *
+     * <p>Bold is used only where the eye needs an anchor — names, the total and
+     * the reference — not for every heading: bold Helvetica smears into a blur
+     * at small sizes when the letter is zoomed out. Section labels and table
+     * rows stay regular and are distinguished by size and colour instead.</p>
      */
     private static final Typeface REGULAR = new Typeface(FontFactory.HELVETICA, Font.NORMAL);
-    private static final Typeface BOLD = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
-    private static final Typeface EXTRA_BOLD = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
-    private static final Typeface MONO = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
+    private static final Typeface EMPHASIS = new Typeface(FontFactory.HELVETICA_BOLD, Font.BOLD);
 
     /**
      * The currency printed before the total. "INR" is safe in every font; switch
@@ -180,7 +183,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private final DocumentProperties properties;
 
     @Override
-    public byte[] render(DealConfirmationSheetValues values) {
+    public byte[] render(DealConfirmationSheetValues values, DealConfirmationLayout layout) {
 
         if (values == null) {
             throw new DocumentGenerationException(
@@ -219,8 +222,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             document.open();
 
             addCounterparty(document, values);
-            addBondAndDealTerms(document, values);
-            addOurDetails(document);
+            addBondAndDealTerms(document, values, layout);
+            addOurDetails(document, layout);
             addCustomerDetails(document, values);
             addDisclaimer(document);
             addSignatures(document, values);
@@ -273,12 +276,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPCell right = borderless();
         right.setHorizontalAlignment(Element.ALIGN_RIGHT);
 
-        Paragraph eyebrow = new Paragraph("DEAL CONFIRMATION", BOLD.at(8f, CYAN));
+        Paragraph eyebrow = new Paragraph("DEAL CONFIRMATION", EMPHASIS.at(8f, CYAN));
         eyebrow.setAlignment(Element.ALIGN_RIGHT);
         eyebrow.setSpacingBefore(0f);
         right.addElement(eyebrow);
 
-        Paragraph reference = new Paragraph(text(values.dealReference()), BOLD.at(10.5f, NAVY));
+        Paragraph reference = new Paragraph(text(values.dealReference()), EMPHASIS.at(10.5f, NAVY));
         reference.setAlignment(Element.ALIGN_RIGHT);
         reference.setSpacingBefore(2f);
         right.addElement(reference);
@@ -294,22 +297,24 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         document.add(intro());
     }
 
-    private void addBondAndDealTerms(Document document, DealConfirmationSheetValues values)
+    private void addBondAndDealTerms(
+            Document document, DealConfirmationSheetValues values, DealConfirmationLayout layout)
             throws DocumentException {
 
         PdfPTable cards = new PdfPTable(new float[] { 49f, 2f, 49f });
         cards.setWidthPercentage(100f);
         cards.setSpacingBefore(4f);
 
-        cards.addCell(cardCell(bondDetails(values)));
+        cards.addCell(cardCell(bondDetails(values, layout)));
         cards.addCell(empty());
 
-        cards.addCell(cardCell(dealTerms(values)));
+        cards.addCell(cardCell(dealTerms(values, layout)));
 
         document.add(cards);
     }
 
-    private PdfPTable bondDetails(DealConfirmationSheetValues values) {
+    private PdfPTable bondDetails(
+            DealConfirmationSheetValues values, DealConfirmationLayout layout) {
 
         PdfPTable block = column();
 
@@ -319,21 +324,34 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPTable rows = keyValues();
 
         addKeyValue(rows, "Type of transaction", text(values.transactionType()));
-        addKeyValue(rows, "Mode of delivery", text(values.modeOfDelivery()));
+
+        /*
+         * A government security settles in demat form, not through the clearing
+         * corporation the corporate letter names.
+         */
+        String modeOfDelivery = layout == DealConfirmationLayout.GSEC
+                ? properties.getOrganisation().getGsecModeOfDelivery()
+                : values.modeOfDelivery();
+
+        addKeyValue(rows, "Mode of delivery", text(modeOfDelivery));
         addKeyValue(rows, "Deal date", date(values.dealDate()));
         addKeyValue(rows, "Value date", date(values.valueDate()));
         addKeyValue(rows, "Security name", text(values.securityName()));
         addKeyValue(rows, "ISIN no.", text(values.isin()));
         addKeyValue(rows, "Coupon rate", percent(values.couponRate()));
         addKeyValue(rows, "Maturity date", date(values.maturityDate()));
-        addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()));
+        addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()));
+        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()));
 
         addBlock(block, rows);
 
         return block;
     }
 
-    private PdfPTable dealTerms(DealConfirmationSheetValues values) {
+    private PdfPTable dealTerms(
+            DealConfirmationSheetValues values, DealConfirmationLayout layout) {
+
+        boolean gsec = layout == DealConfirmationLayout.GSEC;
 
         PdfPTable block = column();
 
@@ -342,24 +360,44 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable rows = keyValues();
 
-        addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()));
+        addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()));
         addKeyValue(rows, "Price", price(values.price()));
         addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()));
         addKeyValue(rows, "Quantum", money(values.quantum()));
         addKeyValue(rows, "Principal amount", money(values.principalAmount()));
-        addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()));
-        addKeyValue(rows, "No. of accrued days", count(values.accruedDays()));
-        addKeyValue(rows, "Accrued interest", money(values.accruedInterest()));
-        addKeyValue(rows, "Stamp duty", money(values.stampDuty()));
+
+        /*
+         * The two letters accrue on different conventions, so each has its own
+         * pair of days and interest figures on the values record.
+         */
+        addKeyValue(rows, "No. of accrued days",
+                count(gsec ? values.gsecAccruedDays() : values.accruedDays()));
+        addKeyValue(rows, "Accrued interest",
+                money(gsec ? values.gsecAccruedInterest() : values.accruedInterest()));
+
+        addKeyValue(rows, "Consideration amount",
+                money(gsec ? values.gsecConsiderationAmount() : values.considerationAmount()));
+
+        /*
+         * The corporate letter adds stamp duty to reach its total; the G-Sec
+         * letter deducts TDS from it.
+         */
+        if (gsec) {
+            addKeyValue(rows, "TDS (10%)", money(values.gsecTds()));
+        } else {
+            addKeyValue(rows, "Stamp duty", money(values.stampDuty()));
+        }
 
         addBlock(block, rows);
         addBlock(block, gap(5f));
-        addBlock(block, totalConsideration(values.totalConsideration()));
+        addBlock(block, totalConsideration(
+                gsec ? values.gsecTotalConsiderationAmount() : values.totalConsideration()));
 
         return block;
     }
 
-    private void addOurDetails(Document document) throws DocumentException {
+    private void addOurDetails(Document document, DealConfirmationLayout layout)
+            throws DocumentException {
 
         DocumentProperties.Organisation organisation = properties.getOrganisation();
 
@@ -373,7 +411,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Paragraph beneficiaryName = new Paragraph(
                 text(organisation.getBeneficiaryName()),
-                BOLD.at(11.5f, NAVY));
+                EMPHASIS.at(11.5f, NAVY));
         beneficiaryName.setSpacingBefore(1f);
         beneficiaryName.setSpacingAfter(0f);
         beneficiary.addElement(beneficiaryName);
@@ -384,7 +422,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph panLabel = label("Our PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
-        Paragraph panValue = new Paragraph(text(organisation.getPan()), MONO.at(10.5f, NAVY));
+        Paragraph panValue = new Paragraph(text(organisation.getPan()), EMPHASIS.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
         panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
@@ -396,21 +434,39 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable stats = stats(4);
 
-        addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "Settlement no.");
-        addStatValues(
-                stats,
-                text(organisation.getCmBpId()),
-                text(organisation.getCmName()),
-                text(organisation.getMarketType()),
-                text(organisation.getSettlementNumber()));
+        if (layout == DealConfirmationLayout.GSEC) {
 
-        addStatLabels(stats, "IFSC code", "Banker", "", "");
-        addStatValues(
-                stats,
-                text(organisation.getIfscCode()),
-                text(organisation.getBanker()),
-                "",
-                "");
+            /*
+             * The G-Sec letter asks for bank-side particulars rather than the
+             * clearing corporation's. The IFSC here is the bank's own, not the
+             * clearing corporation's printed on the corporate letter.
+             */
+            addStatLabels(stats, "Branch Location", "Our Bank Name", "IFSC Code", "Account No.");
+            addStatValues(
+                    stats,
+                    text(organisation.getBranchLocation()),
+                    text(organisation.getBankName()),
+                    text(organisation.getBankIfsc()),
+                    text(organisation.getAccountNumber()));
+
+        } else {
+
+            addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "Settlement no.");
+            addStatValues(
+                    stats,
+                    text(organisation.getCmBpId()),
+                    text(organisation.getCmName()),
+                    text(organisation.getMarketType()),
+                    text(organisation.getSettlementNumber()));
+
+            addStatLabels(stats, "IFSC code", "Banker", "", "");
+            addStatValues(
+                    stats,
+                    text(organisation.getIfscCode()),
+                    text(organisation.getBanker()),
+                    "",
+                    "");
+        }
 
         addBlock(block, stats);
 
@@ -430,7 +486,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Paragraph customerName = new Paragraph(
                 text(values.counterpartyName()),
-                BOLD.at(12f, NAVY));
+                EMPHASIS.at(12f, NAVY));
         customerName.setSpacingBefore(1f);
         name.addElement(customerName);
         heading.addCell(name);
@@ -440,7 +496,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph panLabel = label("Your PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
-        Paragraph panValue = new Paragraph(NONE, MONO.at(10.5f, NAVY));
+        Paragraph panValue = new Paragraph(NONE, REGULAR.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
         panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
@@ -537,7 +593,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private Paragraph intro() {
 
         Paragraph paragraph = new Paragraph(
-                "Respected Sir/Madam, we hereby confirm the following transaction:",
+                "Respected Madam/Sir, we hereby confirm the following transaction:",
                 REGULAR.at(10f, MUTED));
 
         paragraph.setSpacingBefore(7f);
@@ -551,7 +607,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Paragraph paragraph = new Paragraph(
                 text.toUpperCase(Locale.ENGLISH),
-                BOLD.at(7f, NAVY_SOFT));
+                REGULAR.at(7f, NAVY_SOFT));
 
         paragraph.setSpacingBefore(0f);
         paragraph.setSpacingAfter(0f);
@@ -561,7 +617,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private Paragraph name(String text) {
 
-        Paragraph paragraph = new Paragraph(text(text), EXTRA_BOLD.at(17f, NAVY));
+        Paragraph paragraph = new Paragraph(text(text), EMPHASIS.at(17f, NAVY));
 
         paragraph.setSpacingBefore(1f);
         paragraph.setSpacingAfter(1f);
@@ -780,7 +836,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
          * own so a large figure stays inside the band rather than running off
          * the card.
          */
-        PdfPCell label = new PdfPCell(new Phrase("Total consideration", BOLD.at(10.5f, NAVY)));
+        PdfPCell label = new PdfPCell(new Phrase("Total consideration", EMPHASIS.at(10.5f, NAVY)));
         label.setBackgroundColor(TOTAL_BG);
         label.setBorder(Rectangle.LEFT);
         label.setBorderColor(CYAN);
@@ -791,8 +847,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         label.setPaddingRight(6f);
 
         Phrase amount = new Phrase();
-        amount.add(new Chunk(CURRENCY, BOLD.at(9.5f, NAVY_SOFT)));
-        amount.add(new Chunk(money(total), BOLD.at(11.5f, NAVY)));
+        amount.add(new Chunk(CURRENCY, EMPHASIS.at(9.5f, NAVY_SOFT)));
+        amount.add(new Chunk(money(total), EMPHASIS.at(11.5f, NAVY)));
 
         PdfPCell value = new PdfPCell(amount);
         value.setBackgroundColor(TOTAL_BG);
@@ -814,7 +870,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPCell cell = borderless();
         cell.setPaddingTop(2f);
 
-        Paragraph paragraph = new Paragraph(text, BOLD.at(9.2f, NAVY));
+        Paragraph paragraph = new Paragraph(text, EMPHASIS.at(9.2f, NAVY));
         paragraph.setSpacingBefore(0f);
 
         cell.addElement(paragraph);
@@ -999,7 +1055,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     canvas,
                     Element.ALIGN_CENTER,
                     new Phrase(WATERMARK_TEXT, FontFactory.getFont(
-                            FontFactory.HELVETICA_BOLD, 62f, Font.NORMAL, WATERMARK)),
+                            FontFactory.HELVETICA, 62f, Font.NORMAL, WATERMARK)),
                     width / 2f,
                     height * 0.30f,
                     32f);

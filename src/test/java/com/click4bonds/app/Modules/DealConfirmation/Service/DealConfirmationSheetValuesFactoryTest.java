@@ -200,28 +200,33 @@ class DealConfirmationSheetValuesFactoryTest {
     }
 
     @Test
-    void deductsTdsFromTheGsecConsiderationForItsTotal() {
+    void chargesNoTdsBelowTheFiftyLakhThreshold() {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
 
         /*
-         * The G-Sec sheet runs the other way from the corporate one: TDS comes OFF
-         * rather than stamp duty going on. 10% of the 6.09 accrued interest is
-         * 0.61, so the consideration is 500.00 + 6.09 = 506.09 and the customer
-         * pays 505.48.
+         * TDS is withheld only once the consideration reaches ₹50 lakh. This
+         * deal is 500.00 + 6.09 = 506.09, well below it, so the customer pays the
+         * consideration in full and the letter shows a nil deduction.
          */
         assertEquals(new BigDecimal("506.09"), values.gsecConsiderationAmount());
-        assertEquals(new BigDecimal("0.61"), values.gsecTds());
-        assertEquals(new BigDecimal("505.48"), values.gsecTotalConsiderationAmount());
+        assertEquals(new BigDecimal("0.00"), values.gsecTds());
+        assertEquals(new BigDecimal("506.09"), values.gsecTotalConsiderationAmount());
     }
 
     @Test
     void chargesGsecTdsOnTheInterestRatherThanTheConsideration() {
 
+        /*
+         * Above the ₹50 lakh threshold, so the deduction applies. Principal is
+         * 100 x 50,000 lots = 50,00,000, and the quantum 50,000 of face value
+         * accrues ~608.89 of interest on the sheet's rule.
+         */
         DealConfirmationSheetValues values = factory.build(
                 snapshotWith(builder -> builder
-                        .totalQuantity(100_000L)
-                        .totalAmount(new BigDecimal("10000000.0000"))));
+                        .numberOfLots(50_000L)
+                        .totalQuantity(50_000L)
+                        .totalAmount(new BigDecimal("5000000.0000"))));
 
         /*
          * A crore-scale deal, where the two candidate bases are far apart. On the
