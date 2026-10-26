@@ -13,12 +13,12 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 /**
- * Daily counter behind {@code DealConfirmation.dealReference}.
+ * Monthly counter behind {@code DealConfirmation.dealReference}.
  *
- * <p>One row per day that has issued at least one reference; {@code lastValue}
- * is the most recent sequence number handed out for {@link #sequenceDate}. It
- * exists so the reference number comes from a persisted counter rather than an
- * in-memory one, which would restart at 1 on every deploy and collide.</p>
+ * <p>One row per month that has issued at least one reference; {@code lastValue}
+ * is the most recent sequence number handed out for that month. It exists so the
+ * reference number comes from a persisted counter rather than an in-memory one,
+ * which would restart at 1 on every deploy and collide.</p>
  *
  * <p>The row is never read and modified separately: the repository increments it
  * with a single {@code INSERT ... ON CONFLICT DO UPDATE} statement, which is
@@ -33,7 +33,10 @@ import lombok.Setter;
 @Builder
 public class DealReferenceSequence {
 
-    /** The day whose references this counter issues; also the primary key. */
+    /**
+     * The month whose references this counter issues, stored as its first day;
+     * also the primary key.
+     */
     @Id
     @Column(name = "sequence_date", nullable = false, updatable = false)
     private LocalDate sequenceDate;

@@ -42,7 +42,7 @@ two values and a persisted deal is always `CREATED` first.
 | `DealConfirmationService` | `...DealConfirmation.Service` | Idempotent retry handling, letter values on the response, then publishes a document request. Not transactional. |
 | `DealConfirmationWriter` | `...DealConfirmation.Service` | The transactional half: validate, allocate the reference, persist. Touches no inventory. |
 | `DealConfirmationMapper` | `...DealConfirmation.Service` | Entity → response DTO, entity → document snapshot. |
-| `DealReferenceGenerator` / `DealReferenceGeneratorImpl` | `...DealConfirmation.Service` | Issues `DC-YYYYMMDD-000001`. |
+| `DealReferenceGenerator` / `DealReferenceGeneratorImpl` | `...DealConfirmation.Service` | Issues `2026/S/SEP/121`. |
 | `DealConfirmationDocumentProducer` | `...DealConfirmation.Producer` | Publishes the document request to Kafka. Async; never fails a purchase. |
 | `DealConfirmationDocumentConsumer` | `...DealConfirmation.Consumer` | The listener: renders the letter and records where it landed. |
 | `DealConfirmationDocumentKafkaConfig` | `...DealConfirmation.Config` | The topic, the consumer group, and the container factory pinned to the deal payload type. |
@@ -65,7 +65,7 @@ two values and a persisted deal is always `CREATED` first.
 | `R2DocumentStorage` | `...Document.Service` | The only `DocumentStorage`: keeps letters in the shared object store. |
 | `Modules/Storage/*` | `...Modules.Storage` | The shared object store: `ObjectStore` and its Cloudflare R2 implementation. Used by anything that keeps a file, not just deals. |
 | `DealConfirmation` | `...DealConfirmation.Model` | The `deal_confirmations` table. |
-| `DealReferenceSequence` | `...DealConfirmation.Model` | The `deal_reference_sequences` daily counter. |
+| `DealReferenceSequence` | `...DealConfirmation.Model` | The `deal_reference_sequences` monthly counter. |
 | `DealConfirmationRepository` | `...DealConfirmation.Repository` | Idempotency lookup, `dealReference` lookup. |
 | `DealReferenceSequenceRepository` | `...DealConfirmation.Repository` | The atomic counter increment. |
 | `CreateDealConfirmationRequest` | `...DealConfirmation.Dto` | Request body. |
@@ -164,7 +164,7 @@ The three rules that shape this split:
   something to show and there is no read endpoint (§8). The deal's `status` is
   still `CREATED` on the wire — it only becomes `CONFIRMATION_GENERATED` once the
   consumer has stored the letter.
-- **The reference and the insert share one transaction.** The daily counter is
+- **The reference and the insert share one transaction.** The monthly counter is
   incremented inside the writer's transaction, so a failed insert returns the
   number and leaves no deal behind ([§6](#6-deal-references)). Nothing on the
   bond needs rolling back, because nothing on the bond changed.
@@ -209,7 +209,7 @@ could disagree with the parts it is made of.
 ```json
 {
   "dealConfirmationId": "3f2b…",
-  "dealReference": "DC-20260922-000001",
+  "dealReference": "2026/S/SEP/121",
   "bondId": "…",
   "bondName": "…",
   "isin": "INE123A07012",
@@ -391,13 +391,17 @@ returned in `DealConfirmationResponse`.
 
 ## 6. Deal references
 
-Format: `DC-YYYYMMDD-000001`. The zero-padded sequence means references sort in
-issue order as text.
+Format: `2026/S/OCT/144` — year, side of the trade (`S` for our sale), month,
+and the deal's number within that month.
 
 The sequence comes from the `deal_reference_sequences` table, not a timestamp and
 not an in-memory counter: a timestamp can repeat within the same millisecond, and
 an in-memory counter restarts at 1 on every deploy. Both would hand two customers
 the same reference (`DealReferenceGeneratorImpl.java:13-25`).
+
+The counter is keyed by the first day of the month, because the reference carries
+a month and no day. A daily counter would issue `2026/S/SEP/1` on two different
+days of September.
 
 The increment is one statement, because a read-then-write in Java lets two
 concurrent deals read the same counter (`DealReferenceSequenceRepository.java:15-41`):
@@ -409,7 +413,7 @@ ON CONFLICT (sequence_date)
 DO UPDATE SET last_value = deal_reference_sequences.last_value + 1
 ```
 
-`ON CONFLICT DO UPDATE` takes the row lock (creating the row on the day's first
+`ON CONFLICT DO UPDATE` takes the row lock (creating the row on the month's first
 deal), so a second transaction blocks until the first commits and then increments
 on top of it. The value is then read back with `findLastValue` inside the same
 transaction — the lock guarantees it is the value this call produced.
@@ -666,9 +670,8 @@ survives the fill anywhere in the sheet.
 > formula would have produced, and "No. of Accrued Days" shows actual days rather
 > than `COUPDAYBS` days. This is a contractual number, not a formatting choice.
 > Related questions still outstanding: the `Quantum` multiplier (the two sale
-> sheets disagree on it by 100x), the reference format (`2026/S/SEP/121` in the
-> template versus `DC-YYYYMMDD-nnnnnn` here), and `Settlement NO.`, which the
-> clearing house issues per deal.
+> sheets disagree on it by 100x) and `Settlement NO.`, which the clearing house
+> issues per deal.
 
 ### Stamp duty (corporate sheet only)
 
@@ -757,9 +760,13 @@ store that resolves it is configuration rather than schema. Recording an address
 Two different strings name the same object, and the distinction matters:
 
 ```
-key      2026/09/DC-20260929-000001.pdf
-address  https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/DC-20260929-000001.pdf
+key      2026/09/2026_S_SEP_121.pdf
+address  https://<account-id>.r2.cloudflarestorage.com/<bucket>/2026/09/2026_S_SEP_121.pdf
 ```
+
+The reference's slashes are replaced with underscores in the key by
+`DocumentKeys.safeSegment`, so a reference can never introduce a path segment of
+its own.
 
 `deal_confirmations.document_r2_path` holds the **address**. It is readable and
 pasteable: an operator looking at a row can find the letter without being told how

@@ -24,6 +24,9 @@ class DealReferenceGeneratorImplTest {
 
     private static final LocalDate DAY = LocalDate.of(2026, 9, 22);
 
+    /** The counter is keyed by the month, because the reference has no day. */
+    private static final LocalDate MONTH = LocalDate.of(2026, 9, 1);
+
     @Mock
     private DealReferenceSequenceRepository sequenceRepository;
 
@@ -31,25 +34,28 @@ class DealReferenceGeneratorImplTest {
     private DealReferenceGeneratorImpl generator;
 
     @Test
-    void formatsTheReferenceAsDayThenSequence() {
+    void formatsTheReferenceAsYearSaleMonthAndSequence() {
 
         givenCounterReads(1L);
 
-        assertEquals("DC-20260922-000001", generator.next(DAY));
+        assertEquals("2026/S/SEP/1", generator.next(DAY));
     }
 
     @Test
-    void padsTheSequenceSoReferencesSortAsText() {
+    void takesTheSequenceForTheWholeMonthRatherThanTheDay() {
 
         givenCounterReads(42L);
 
         String reference = generator.next(DAY);
 
-        assertEquals("DC-20260922-000042", reference);
+        assertEquals("2026/S/SEP/42", reference);
 
-        // Text ordering must match issue ordering, or a sorted list would be wrong.
-        givenCounterReads(1000L);
-        assertEquals("DC-20260922-001000", generator.next(DAY));
+        /*
+         * The reference carries no day, so every deal in September must draw on
+         * the same counter — otherwise two deals on different days of the month
+         * could be issued the same year/S/SEP/number.
+         */
+        assertEquals("2026/S/SEP/42", generator.next(LocalDate.of(2026, 9, 30)));
     }
 
     @Test
@@ -61,11 +67,11 @@ class DealReferenceGeneratorImplTest {
 
         /*
          * The counter must be incremented before it is read, and both must happen
-         * for the same day — that pair is what makes the reference unique under
+         * for the same month — that pair is what makes the reference unique under
          * concurrent deals.
          */
-        verify(sequenceRepository).increment(DAY);
-        verify(sequenceRepository).findLastValue(DAY);
+        verify(sequenceRepository).increment(MONTH);
+        verify(sequenceRepository).findLastValue(MONTH);
     }
 
     @Test
@@ -79,6 +85,6 @@ class DealReferenceGeneratorImplTest {
     }
 
     private void givenCounterReads(long value) {
-        when(sequenceRepository.findLastValue(DAY)).thenReturn(value);
+        when(sequenceRepository.findLastValue(MONTH)).thenReturn(value);
     }
 }

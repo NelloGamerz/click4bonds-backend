@@ -34,7 +34,7 @@ public final class DocumentKeys {
      * deal sit under one stem. Deriving the PDF's key by stripping the
      * spreadsheet's extension would work and be one more thing to get wrong.</p>
      *
-     * @return a relative stem such as {@code 2026/09/DC-20260923-000001}
+     * @return a relative stem such as {@code 2026/09/2026_S_SEP_121}
      */
     public static String stemForDeal(String dealReference, LocalDate dealDate) {
 
@@ -47,10 +47,10 @@ public final class DocumentKeys {
      * Builds the storage key for one format of a deal's document.
      *
      * @param dealReference the deal's customer-facing reference, e.g.
-     *                      {@code DC-20260923-000001}
+     *                      {@code 2026/S/SEP/121}
      * @param dealDate      date the key is filed under
      * @param format        format being stored
-     * @return a relative key such as {@code 2026/09/DC-20260923-000001.pdf}
+     * @return a relative key such as {@code 2026/09/2026_S_SEP_121.pdf}
      */
     public static String forDeal(
             String dealReference,

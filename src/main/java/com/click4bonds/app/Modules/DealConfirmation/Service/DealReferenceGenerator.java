@@ -18,7 +18,7 @@ public interface DealReferenceGenerator {
      * on the underlying counter and relies on the transaction to release it.</p>
      *
      * @param sequenceDate day the reference belongs to (normally "today")
-     * @return a reference that no other deal holds, e.g. {@code DC-20260922-000001}
+     * @return a reference that no other deal holds, e.g. {@code 2026/S/SEP/121}
      */
     String next(LocalDate sequenceDate);
 }
