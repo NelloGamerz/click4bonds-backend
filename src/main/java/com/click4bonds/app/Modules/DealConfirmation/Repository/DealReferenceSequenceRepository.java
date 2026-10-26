@@ -19,7 +19,7 @@ public interface DealReferenceSequenceRepository
      * <p>Written as raw SQL because the increment has to be one statement: a
      * read-then-write in Java lets two concurrent deals read the same counter
      * and issue the same reference. {@code ON CONFLICT DO UPDATE} takes the row
-     * lock (creating the row on the day's first deal), so a second transaction
+     * lock (creating the row on the month's first deal), so a second transaction
      * calling this blocks until the first one commits and then increments on
      * top of it.</p>
      *
@@ -28,7 +28,8 @@ public interface DealReferenceSequenceRepository
      * lock, the value read back is the one this call produced — no other
      * transaction can have incremented in between.</p>
      *
-     * @param sequenceDate day whose counter is being incremented
+     * @param sequenceDate first day of the month whose counter is being
+     *                     incremented
      * @return number of rows affected — always 1
      */
     @Modifying(flushAutomatically = true)

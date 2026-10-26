@@ -116,6 +116,31 @@ public class DealConfirmationController {
             @PathVariable String dealReference,
             @AuthenticationPrincipal Jwt jwt) {
 
+        return download(dealReference, jwt);
+    }
+
+    /**
+     * Downloads a letter whose reference carries slashes, e.g.
+     * {@code 2026/S/OCT/144}.
+     *
+     * <p>A reference containing {@code /} arrives as several path segments, so
+     * the single-variable mapping above cannot match it. This one reassembles the
+     * four segments the generator currently emits; the older one-segment form is
+     * kept so references issued before the format change still resolve.</p>
+     */
+    @GetMapping("/{year}/{side}/{month}/{sequence}/document")
+    public ResponseEntity<byte[]> downloadNestedReferenceDocument(
+            @PathVariable String year,
+            @PathVariable String side,
+            @PathVariable String month,
+            @PathVariable String sequence,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return download(year + "/" + side + "/" + month + "/" + sequence, jwt);
+    }
+
+    private ResponseEntity<byte[]> download(String dealReference, Jwt jwt) {
+
         DealConfirmationDocumentReader.DownloadedDocument document =
                 documentReader.read(UUID.fromString(jwt.getSubject()), dealReference);
 

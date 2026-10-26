@@ -86,7 +86,7 @@ public class DealConfirmation {
     /**
      * Customer-facing reference, unique across all deals.
      *
-     * <p>Format: {@code DC-YYYYMMDD-000001}, where the last part is a daily
+     * <p>Format: {@code 2026/S/OCT/144}, where the last part is a monthly
      * sequence allocated from the database by {@code DealReferenceGenerator}.
      * The unique index above is what actually guarantees it.</p>
      */
