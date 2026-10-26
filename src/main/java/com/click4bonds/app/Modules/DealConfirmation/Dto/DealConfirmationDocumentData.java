@@ -59,6 +59,12 @@ public record DealConfirmationDocumentData(
          */
         String rating,
 
+        /** The bond's semi-annual yield as a percentage, or null when not computed. */
+        BigDecimal semiYtm,
+
+        /** The bond's annual yield as a percentage, or null when not computed. */
+        BigDecimal annualYtm,
+
         /** The bond's coupon as stored, a percentage: 8.80 means 8.80%. */
         BigDecimal couponRate,
 
@@ -135,6 +141,8 @@ public record DealConfirmationDocumentData(
                         ? null
                         : bond.getSecurityType().name(),
                 bond == null ? null : bond.getRating(),
+                bond == null ? null : bond.getSemiYtm(),
+                bond == null ? null : bond.getAnnualYtm(),
                 bond == null ? null : bond.getCouponRate(),
                 bond == null ? null : bond.getMaturityDate(),
                 bond == null ? null : bond.getIpDateDescription(),

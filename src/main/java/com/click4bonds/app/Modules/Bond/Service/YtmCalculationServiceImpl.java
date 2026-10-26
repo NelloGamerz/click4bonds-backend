@@ -51,7 +51,11 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
         BigDecimal annualYtmDecimal = annualYtmDecimal(bond, calculationDate);
 
         // Step 1: Update Bond with the calculated YTM
-        bond.setAnnualYtm(toAnnualYtmPercentage(annualYtmDecimal));
+        BigDecimal annualYtmPercentage = toAnnualYtmPercentage(annualYtmDecimal);
+
+        bond.setAnnualYtm(annualYtmPercentage);
+        // Derived from the annual figure, so the two readings cannot disagree.
+        bond.setSemiYtm(YtmCalculationService.semiYtmPercentage(annualYtmPercentage));
         bond.setYtmCalculatedAt(Instant.now());
 
         // Step 2: Persist the Bond

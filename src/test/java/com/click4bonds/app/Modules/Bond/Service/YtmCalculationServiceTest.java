@@ -12,6 +12,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -2597,5 +2598,17 @@ class YtmCalculationServiceTest {
         return bond;
     }
 
+    @Test
+    void convertsAnnualYtmToItsSemiAnnualEquivalent() {
+
+        assertEquals(
+                0,
+                new BigDecimal("7.0749").compareTo(
+                        YtmCalculationService.semiYtmPercentage(new BigDecimal("7.20"))),
+                "7.20% annual compounds to 7.0749% semi-annual");
+
+        assertNull(YtmCalculationService.semiYtmPercentage(null),
+                "A missing annual yield has no semi-annual reading");
+    }
 
 }

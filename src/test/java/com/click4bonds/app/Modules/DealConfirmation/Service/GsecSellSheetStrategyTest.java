@@ -154,6 +154,8 @@ class GsecSellSheetStrategyTest {
                 null,
                 null,
                 null,
+                null,
+                null,
                 null);
 
         DocumentGenerationException failure = assertThrows(
@@ -341,6 +343,8 @@ class GsecSellSheetStrategyTest {
                 new BigDecimal("35.66"),
                 new BigDecimal("1135.66"),
                 new BigDecimal("3.57"),
-                new BigDecimal("1132.09"));
+                new BigDecimal("1132.09"),
+                new BigDecimal("7.07"),
+                new BigDecimal("7.20"));
     }
 }

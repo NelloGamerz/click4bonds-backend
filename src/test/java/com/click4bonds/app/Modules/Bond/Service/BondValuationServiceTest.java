@@ -80,6 +80,11 @@ class BondValuationServiceTest {
                 0,
                 new BigDecimal("100.00").compareTo(bond.getPrice()),
                 "Expected a 10% yield on a 110 payment one year out to price at 100, got " + bond.getPrice());
+
+        assertEquals(
+                0,
+                new BigDecimal("9.7618").compareTo(bond.getSemiYtm()),
+                "10% annual is 9.7618% semi-annual, got " + bond.getSemiYtm());
     }
 
     /** The other direction: the same bond, priced at 100, yielding 10%. */
@@ -96,6 +101,11 @@ class BondValuationServiceTest {
                 0,
                 new BigDecimal("10.0000").compareTo(bond.getAnnualYtm()),
                 "Expected a price of 100 on a 110 payment one year out to yield 10%, got " + bond.getAnnualYtm());
+
+        assertEquals(
+                0,
+                new BigDecimal("9.7618").compareTo(bond.getSemiYtm()),
+                "The yield derived from the price should carry its semi-annual reading too");
 
         assertNotNull(bond.getYtmCalculatedAt(), "A calculated yield should be stamped");
     }

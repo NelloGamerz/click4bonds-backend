@@ -239,13 +239,13 @@ public class Bond {
     // =========================
 
     /**
-     * IMPORTANT:
+     * The semi-annual equivalent of {@link #annualYtm}: the rate that, compounded
+     * twice a year, gives the same annual growth. Imported when the source states
+     * it, otherwise derived from the yield — see
+     * {@link com.click4bonds.app.Modules.Bond.Service.YtmCalculationService#semiYtmPercentage}.
      * <p>
-     * These are NOT imported from Excel.
-     * They are calculated internally.
-     * <p>
-     * Do not expose them in public APIs unless
-     * explicitly required by the organization.
+     * Do not expose these yields in public APIs unless explicitly required by the
+     * organization.
      */
     @Column(precision = 10, scale = 4)
     private BigDecimal semiYtm;
@@ -255,9 +255,8 @@ public class Bond {
      * <p>
      * Four decimal places, because that is what the calculation produces and a
      * basis point is the fourth: two would round away real differences between
-     * bonds that quote to a hundredth of a percent. {@code semiYtm} and
-     * {@code ytc} stay at two — they are imported, not calculated, and the
-     * source states them that way.
+     * bonds that quote to a hundredth of a percent. {@code ytc} stays at two —
+     * it is imported, not calculated, and the source states it that way.
      */
     @Column(precision = 10, scale = 4)
     private BigDecimal annualYtm;

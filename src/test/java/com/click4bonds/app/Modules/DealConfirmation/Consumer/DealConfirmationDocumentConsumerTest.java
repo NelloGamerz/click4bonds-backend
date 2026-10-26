@@ -326,6 +326,8 @@ class DealConfirmationDocumentConsumerTest {
                         "INE123A07012",
                         "SECURED",
                         null,
+                        null,
+                        null,
                         new BigDecimal("13.70"),
                         LocalDate.of(2027, 8, 23),
                         "23rd Of Every Month",

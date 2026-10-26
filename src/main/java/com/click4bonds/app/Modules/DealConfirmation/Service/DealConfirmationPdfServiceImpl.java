@@ -362,6 +362,19 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         addKeyValue(rows, "Last interest payment", date(values.lastInterestPaymentDate()));
         addKeyValue(rows, "Price", price(values.price()));
+
+        /*
+         * The yield the deal was struck at. A government security is quoted
+         * semi-annually, so its letter shows both conventions; the corporate
+         * letter shows the annual figure alone.
+         */
+        if (gsec) {
+            addKeyValue(rows, "Semi-YTM / YTM",
+                    semiAndAnnual(values.semiYtm(), values.annualYtm()));
+        } else {
+            addKeyValue(rows, "YTM", percent(values.annualYtm()));
+        }
+
         addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()));
         addKeyValue(rows, "Quantum", money(values.quantum()));
         addKeyValue(rows, "Principal amount", money(values.principalAmount()));
@@ -1170,6 +1183,24 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private static String percent(BigDecimal value) {
 
         return value == null ? NONE : RATE.get().format(value) + "%";
+    }
+
+    /** The semi-annual and annual yields as one figure; a missing one is omitted. */
+    private static String semiAndAnnual(BigDecimal semi, BigDecimal annual) {
+
+        if (semi == null && annual == null) {
+            return NONE;
+        }
+
+        if (semi == null) {
+            return percent(annual);
+        }
+
+        if (annual == null) {
+            return percent(semi);
+        }
+
+        return percent(semi) + " / " + percent(annual);
     }
 
     /**

@@ -232,7 +232,9 @@ public class DealConfirmationSheetValuesFactory {
                 gsec == null ? null : gsec.accruedInterest(),
                 gsec == null ? null : gsec.considerationAmount(),
                 gsec == null ? null : gsec.tds(),
-                gsec == null ? null : gsec.totalConsiderationAmount());
+                gsec == null ? null : gsec.totalConsiderationAmount(),
+                snapshot.semiYtm(),
+                snapshot.annualYtm());
     }
 
     /**

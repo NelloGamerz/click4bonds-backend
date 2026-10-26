@@ -57,6 +57,10 @@ import java.time.LocalDate;
  *                                <em>deducted</em>, and only when the
  *                                consideration is at least ₹50 lakh
  * @param gsecTotalConsiderationAmount G-Sec sheet only: consideration − TDS
+ * @param semiYtm                 the bond's semi-annual yield as a percentage,
+ *                                as stored; null when never computed
+ * @param annualYtm               the bond's annual yield as a percentage, as
+ *                                stored; null when never computed
  *
  * <p><strong>The two sheets do not share their accrued interest.</strong> The
  * corporate letter's {@link #accruedInterest} comes from the bond's own schedule on
@@ -112,6 +116,8 @@ public record DealConfirmationSheetValues(
         BigDecimal gsecAccruedInterest,
         BigDecimal gsecConsiderationAmount,
         BigDecimal gsecTds,
-        BigDecimal gsecTotalConsiderationAmount
+        BigDecimal gsecTotalConsiderationAmount,
+        BigDecimal semiYtm,
+        BigDecimal annualYtm
 ) {
 }

@@ -1,6 +1,8 @@
 package com.click4bonds.app.Modules.Bond.Service;
 
 import java.math.BigDecimal;
+import java.math.MathContext;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
@@ -75,4 +77,29 @@ public interface YtmCalculationService {
      * @throws IllegalStateException    if XIRR calculation fails
      */
     BigDecimal previewAnnualYtm(Bond bond, LocalDate calculationDate);
+
+    /**
+     * The semi-annual equivalent of an annual yield: the rate that, compounded
+     * twice a year, produces the same annual growth.
+     *
+     * <p>{@code semi = 2 × (√(1 + annual) − 1)}, so 7.20% annual is 7.0749%
+     * semi-annual. Both inputs and the result are percentages, to 4 decimals.
+     *
+     * @param annualYtmPercentage the annual YTM as a percentage, e.g. 7.20
+     * @return the semi-annual YTM as a percentage, or {@code null} when the
+     *         annual yield is {@code null}
+     */
+    static BigDecimal semiYtmPercentage(BigDecimal annualYtmPercentage) {
+
+        if (annualYtmPercentage == null) {
+            return null;
+        }
+
+        return BigDecimal.ONE
+                .add(annualYtmPercentage.movePointLeft(2))
+                .sqrt(new MathContext(15))
+                .subtract(BigDecimal.ONE)
+                .multiply(BigDecimal.valueOf(200))
+                .setScale(4, RoundingMode.HALF_UP);
+    }
 }

@@ -486,6 +486,8 @@ class DealConfirmationSheetValuesFactoryTest {
                     "INE123A07012",
                     "SECURED",
                     null,
+                    null,
+                    null,
                     couponRate,
                     LocalDate.of(2027, 8, 23),
                     "23rd Of Every Month",
