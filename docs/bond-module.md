@@ -130,11 +130,15 @@ No `@PreAuthorize`. `SecurityConfig` permits `GET /api/bonds` and
 
 | Method | Path | Parameters | Returns |
 |---|---|---|---|
-| GET | `/api/bonds` | `search`, `isFlashNews`, pageable (default size 20, `createdAt` DESC) | `Page<BondResponse>` |
+| GET | `/api/bonds` | `search`, `isFlashNews`, `securityType`, `couponFrequency`, `rating`, pageable (default size 20, `createdAt` DESC) | `Page<BondResponse>` |
 | GET | `/api/bonds/{isin}` | | `BondDetailResponse` (includes `maxNoOfBonds`) |
 | GET | `/api/bonds/{isin}/issuer` | | `IssuerResponse` |
 
 A `POST /{bondId}/calculate-ytm` endpoint is commented out in the source.
+
+Each bond in the public list includes `securityType` (`SECURED` or
+`UNSECURED`) along with its pricing, yield, maturity, rating, investment minimum,
+and logo fields.
 
 ### 3.2 Admin — `AdminBondController` (`/api/admin`)
 

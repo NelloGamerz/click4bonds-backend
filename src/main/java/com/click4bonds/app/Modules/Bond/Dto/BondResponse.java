@@ -5,6 +5,7 @@ import java.time.LocalDate;
 
 import com.click4bonds.app.Modules.Bond.Enums.CouponFrequency;
 import com.click4bonds.app.Modules.Bond.Enums.MaturityType;
+import com.click4bonds.app.Modules.Bond.Enums.SecurityType;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -30,6 +31,8 @@ public class BondResponse {
     private String name;
 
     private String isin;
+
+    private SecurityType securityType;
 
     /**
      * Example:
