@@ -3,6 +3,7 @@ package com.click4bonds.app.Modules.Admin.Service;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -64,6 +65,14 @@ public class AdminClientService {
     public void delete(UUID id) {
 
         clientRepository.delete(require(id));
+    }
+
+    public List<ClientResponse> getAll() {
+
+        return clientRepository.findAll(Sort.by(Sort.Direction.ASC, "name"))
+                .stream()
+                .map(ClientResponse::from)
+                .toList();
     }
 
     public List<ClientResponse> search(String name) {

@@ -51,6 +51,13 @@ public class AdminClientController {
                 .body(adminClientService.create(request));
     }
 
+    @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'CLIENT_MANAGEMENT')")
+    public ResponseEntity<List<ClientResponse>> getClients() {
+
+        return ResponseEntity.ok(adminClientService.getAll());
+    }
+
     /**
      * Clients matching a name, for the picker on the deal-creation form.
      *
