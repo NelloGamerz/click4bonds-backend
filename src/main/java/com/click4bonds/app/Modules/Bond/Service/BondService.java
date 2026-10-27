@@ -1021,6 +1021,9 @@ public class BondService {
                 .isin(
                         bond.getIsin())
 
+                .securityType(
+                        bond.getSecurityType())
+
                 .couponRate(
                         bond.getCouponRate())
 
