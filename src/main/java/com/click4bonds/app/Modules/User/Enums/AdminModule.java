@@ -48,7 +48,17 @@ public enum AdminModule {
     /**
      * The contact inquiries customers send in.
      */
-    CONTACT_INQUIRY;
+    CONTACT_INQUIRY,
+
+    /**
+     * The client records the back office maintains.
+     */
+    CLIENT_MANAGEMENT,
+
+    /**
+     * Creating deals on a client's behalf from the back office.
+     */
+    DEAL_CREATION;
 
     /**
      * Resolves a stored or declared module name.

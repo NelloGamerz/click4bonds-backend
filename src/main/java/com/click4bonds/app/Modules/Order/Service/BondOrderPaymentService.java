@@ -166,7 +166,8 @@ public class BondOrderPaymentService {
 
             documentProducer.publish(new DealConfirmationDocumentEvent(
                     result.dealId(),
-                    result.documentData()));
+                    result.documentData(),
+                    true));
 
         } catch (RuntimeException failure) {
 

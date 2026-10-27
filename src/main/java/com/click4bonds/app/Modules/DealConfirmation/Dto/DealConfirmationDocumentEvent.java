@@ -33,8 +33,12 @@ import java.util.UUID;
  *                     record where the letter landed
  * @param documentData everything the letter prints, captured inside the deal's
  *                     transaction so it does not follow later edits to the bond
+ * @param sendEmail    whether the rendered letter is emailed to the counterparty.
+ *                     Always true for a customer purchase; a back-office deal
+ *                     carries the employee's choice from the request.
  */
 public record DealConfirmationDocumentEvent(
         UUID dealId,
-        DealConfirmationDocumentData documentData) {
+        DealConfirmationDocumentData documentData,
+        boolean sendEmail) {
 }

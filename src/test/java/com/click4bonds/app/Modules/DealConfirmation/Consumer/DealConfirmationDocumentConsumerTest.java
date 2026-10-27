@@ -125,6 +125,25 @@ class DealConfirmationDocumentConsumerTest {
     }
 
     @Test
+    void skipsTheEmailWhenTheEmployeeChoseNotToSendIt() {
+
+        DealConfirmationDocumentEvent emailed = event();
+
+        DealConfirmationDocumentEvent notEmailed = new DealConfirmationDocumentEvent(
+                emailed.dealId(),
+                emailed.documentData(),
+                false);
+
+        when(documentService.generate(notEmailed.documentData())).thenReturn(pdf());
+
+        consumer.onDealConfirmationDocument(notEmailed);
+
+        // The letter is still produced and recorded; only its delivery is skipped.
+        verify(documentRecorder).record(notEmailed.dealId(), STORAGE_KEY);
+        verifyNoInteractions(emailService);
+    }
+
+    @Test
     void skipsTheEmailWhenTheCustomerHasNoAddress() {
 
         DealConfirmationDocumentEvent event = eventWithCustomerEmail(null);
@@ -233,7 +252,8 @@ class DealConfirmationDocumentConsumerTest {
         consumer.onDealConfirmationDocument(null);
         consumer.onDealConfirmationDocument(new DealConfirmationDocumentEvent(
                 UUID.randomUUID(),
-                null));
+                null,
+                true));
 
         verifyNoInteractions(documentService);
         verifyNoInteractions(documentRecorder);
@@ -341,6 +361,7 @@ class DealConfirmationDocumentConsumerTest {
                         11L,
                         new BigDecimal("100.00"),
                         new BigDecimal("1100.00"),
-                        DealConfirmationStatus.CREATED));
+                        DealConfirmationStatus.CREATED),
+                true);
     }
 }

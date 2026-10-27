@@ -30,7 +30,9 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Repository.ClientRepository;
 import com.click4bonds.app.Modules.User.Service.UserService;
 
 /**
@@ -58,6 +60,9 @@ class DealConfirmationWriterTest {
     private UserService userService;
 
     @Mock
+    private ClientRepository clientRepository;
+
+    @Mock
     private DealReferenceGenerator dealReferenceGenerator;
 
     /*
@@ -77,6 +82,7 @@ class DealConfirmationWriterTest {
                 dealConfirmationRepository,
                 bondService,
                 userService,
+                clientRepository,
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
@@ -239,8 +245,10 @@ class DealConfirmationWriterTest {
                 BadRequestException.class,
                 () -> writer.create(USER_ID, request(2L), null));
 
-        // Nothing was read, reserved or written.
-        Mockito.verifyNoInteractions(bondService);
+        // The bond is read to learn its lot size, but nothing was reserved or
+        // written.
+        Mockito.verify(bondService, Mockito.never())
+                .reserveQuantity(any(), any());
         Mockito.verifyNoInteractions(dealConfirmationRepository);
     }
 
@@ -315,6 +323,47 @@ class DealConfirmationWriterTest {
                 .reserveQuantity(any(), any());
         Mockito.verify(dealConfirmationRepository, Mockito.never())
                 .save(any());
+    }
+
+    // ============================================================
+    // BACK-OFFICE DEALS
+    // ============================================================
+
+    @Test
+    void createsDealForAClientAndRecordsTheChosenDate() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        Client client = Client.builder()
+                .id(UUID.randomUUID())
+                .name("Acme Ltd")
+                .email("ops@acme.example")
+                .build();
+
+        LocalDate dealDate = LocalDate.of(2026, 10, 1);
+
+        Mockito.when(clientRepository.findById(client.getId()))
+                .thenReturn(Optional.of(client));
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(bond);
+        Mockito.when(bondService.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
+                .thenReturn(1);
+        givenReference("2026/S/OCT/1");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.createForClient(client.getId(), bond.getId(), 5L, dealDate, null);
+
+        // The deal belongs to the client, not to any account.
+        Mockito.verify(dealConfirmationRepository).save(
+                Mockito.argThat(deal -> deal.getClient() == client
+                        && deal.getCustomer() == null
+                        && dealDate.equals(deal.getDealDate())));
+
+        // The letter prints the client and the date the employee chose.
+        assertEquals("Acme Ltd", created.documentData().customerName());
+        assertEquals("ops@acme.example", created.documentData().customerEmail());
+        assertEquals(dealDate, created.documentData().dealDate());
     }
 
     // ============================================================

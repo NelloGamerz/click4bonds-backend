@@ -16,6 +16,7 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 /**
@@ -129,6 +130,44 @@ public class DealConfirmationService {
             return new Result(mapper.toResponse(existing), true);
         }
 
+        DealConfirmationResponse response = complete(created, true);
+
+        return new Result(response, false);
+    }
+
+    /**
+     * Creates a deal on a client's behalf, from the back office.
+     *
+     * <p>Same figures, reservation and letter as a customer purchase. The
+     * employee's request already names the client and bond, so there is no
+     * idempotency key: a retry is a fresh deal the employee asked for, not a
+     * duplicate of one the system inferred.</p>
+     *
+     * @param dealDate  the date the deal is struck, or null for today
+     * @param sendEmail whether the confirmation letter is emailed to the client
+     */
+    public Result createDealForClient(
+            UUID clientId,
+            UUID bondId,
+            Long numberOfLots,
+            LocalDate dealDate,
+            boolean sendEmail) {
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.createForClient(clientId, bondId, numberOfLots, dealDate, null);
+
+        return new Result(complete(created, sendEmail), false);
+    }
+
+    /**
+     * Attaches the letter's figures to the response and asks for the letter.
+     * Shared by both create paths so a back-office deal is answered exactly as a
+     * customer purchase is.
+     */
+    private DealConfirmationResponse complete(
+            DealConfirmationWriter.CreatedDeal created,
+            boolean sendEmail) {
+
         DealConfirmationResponse response = created.response();
 
         /*
@@ -138,9 +177,12 @@ public class DealConfirmationService {
          */
         response.setLetterValues(letterValues(created.documentData()));
 
-        requestDocument(created.response().getDealConfirmationId(), created.documentData());
+        requestDocument(
+                created.response().getDealConfirmationId(),
+                created.documentData(),
+                sendEmail);
 
-        return new Result(response, false);
+        return response;
     }
 
     /**
@@ -227,7 +269,10 @@ public class DealConfirmationService {
      * stays {@code CREATED} with no document, which is what a failed generation
      * left behind before this moved to Kafka.</p>
      */
-    private void requestDocument(UUID dealId, DealConfirmationDocumentData dealData) {
+    private void requestDocument(
+            UUID dealId,
+            DealConfirmationDocumentData dealData,
+            boolean sendEmail) {
 
         /*
          * With documents switched off there is no letter to ask for, and
@@ -245,7 +290,8 @@ public class DealConfirmationService {
 
         try {
 
-            documentProducer.publish(new DealConfirmationDocumentEvent(dealId, dealData));
+            documentProducer.publish(
+                    new DealConfirmationDocumentEvent(dealId, dealData, sendEmail));
 
         } catch (RuntimeException failure) {
 
