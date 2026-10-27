@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Admin.Dto.ClientResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientRequest;
+import com.click4bonds.app.Modules.Admin.Dto.UpdateClientRequest;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Repository.ClientRepository;
@@ -35,18 +36,27 @@ public class AdminClientService {
     }
 
     /**
-     * Replaces the editable details of a client. Fields left absent are cleared,
-     * which is the difference between this and a patch.
+     * Applies the supplied changes to a client. Null fields are left unchanged.
      */
-    public ClientResponse update(UUID id, CreateClientRequest request) {
+    public ClientResponse patch(UUID id, UpdateClientRequest request) {
 
         Client client = require(id);
 
-        client.setName(request.name());
-        client.setContactPerson(request.contactPerson());
-        client.setEmail(request.email());
-        client.setMobileNumber(request.mobileNumber());
-        client.setAddress(request.address());
+        if (request.name() != null) {
+            client.setName(request.name());
+        }
+        if (request.contactPerson() != null) {
+            client.setContactPerson(request.contactPerson());
+        }
+        if (request.email() != null) {
+            client.setEmail(request.email());
+        }
+        if (request.mobileNumber() != null) {
+            client.setMobileNumber(request.mobileNumber());
+        }
+        if (request.address() != null) {
+            client.setAddress(request.address());
+        }
 
         return ClientResponse.from(clientRepository.save(client));
     }
