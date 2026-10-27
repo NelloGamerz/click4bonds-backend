@@ -8,9 +8,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Admin.Dto.ClientResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientRequest;
+import com.click4bonds.app.Modules.Admin.Dto.UpdateClientRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminClientService;
 
 import jakarta.validation.Valid;
@@ -64,13 +65,13 @@ public class AdminClientController {
         return ResponseEntity.ok(adminClientService.search(name));
     }
 
-    @PutMapping("/{id}")
+    @PatchMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'CLIENT_MANAGEMENT')")
     public ResponseEntity<ClientResponse> updateClient(
             @PathVariable UUID id,
-            @Valid @RequestBody CreateClientRequest request) {
+            @Valid @RequestBody UpdateClientRequest request) {
 
-        return ResponseEntity.ok(adminClientService.update(id, request));
+        return ResponseEntity.ok(adminClientService.patch(id, request));
     }
 
     @DeleteMapping("/{id}")
