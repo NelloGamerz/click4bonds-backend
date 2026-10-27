@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Model;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -9,6 +10,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
+import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
 
 import jakarta.persistence.Column;
@@ -56,6 +58,7 @@ import lombok.Setter;
 @Table(name = "deal_confirmations", indexes = {
         @Index(name = "idx_deal_reference", columnList = "deal_reference", unique = true),
         @Index(name = "idx_deal_customer", columnList = "customer_id"),
+        @Index(name = "idx_deal_client", columnList = "client_id"),
         @Index(name = "idx_deal_bond", columnList = "bond_id"),
         @Index(name = "idx_deal_isin", columnList = "isin"),
         @Index(name = "idx_deal_status", columnList = "status"),
@@ -93,9 +96,35 @@ public class DealConfirmation {
     @Column(name = "deal_reference", nullable = false, unique = true, length = 32)
     private String dealReference;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "customer_id", nullable = false)
+    /**
+     * The account that bought the bond, for a deal a customer placed.
+     *
+     * <p>Null for a deal an employee created on a client's behalf; exactly one of
+     * this and {@link #client} is set.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
     private User customer;
+
+    /**
+     * The client the deal was struck for, for a back-office deal.
+     *
+     * <p>Null for a customer-placed deal. A client is not an application account,
+     * so it cannot be recorded as {@link #customer}.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "client_id")
+    private Client client;
+
+    /**
+     * The date the deal was struck, when the back office chose one.
+     *
+     * <p>Null for a customer-placed deal, whose deal date is its creation date.
+     * Set for a back-office deal so the confirmation letter prints the date the
+     * employee entered rather than the moment the row was written.</p>
+     */
+    @Column(name = "deal_date")
+    private LocalDate dealDate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bond_id", nullable = false)

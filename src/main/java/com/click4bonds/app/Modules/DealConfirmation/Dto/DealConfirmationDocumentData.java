@@ -128,13 +128,15 @@ public record DealConfirmationDocumentData(
 
         return new DealConfirmationDocumentData(
                 deal.getDealReference(),
-                deal.getCreatedAt() == null
-                        ? LocalDate.now()
-                        : LocalDate.ofInstant(deal.getCreatedAt(), ZoneOffset.UTC),
+                deal.getDealDate() != null
+                        ? deal.getDealDate()
+                        : deal.getCreatedAt() == null
+                                ? LocalDate.now()
+                                : LocalDate.ofInstant(deal.getCreatedAt(), ZoneOffset.UTC),
                 deal.getCreatedAt(),
                 valueDate,
-                customerName(deal.getCustomer()),
-                deal.getCustomer() == null ? null : deal.getCustomer().getEmail(),
+                counterpartyName(deal),
+                counterpartyEmail(deal),
                 bond == null ? null : bond.getName(),
                 deal.getIsin(),
                 bond == null || bond.getSecurityType() == null
@@ -157,6 +159,28 @@ public record DealConfirmationDocumentData(
                 deal.getPricePerUnit(),
                 deal.getTotalAmount(),
                 deal.getStatus());
+    }
+
+    /**
+     * The letter's counterparty is the buying account for a customer deal and
+     * the client record for a back-office deal; exactly one of them is set.
+     */
+    private static String counterpartyName(DealConfirmation deal) {
+
+        if (deal.getCustomer() != null) {
+            return customerName(deal.getCustomer());
+        }
+
+        return deal.getClient() == null ? null : deal.getClient().getName();
+    }
+
+    private static String counterpartyEmail(DealConfirmation deal) {
+
+        if (deal.getCustomer() != null) {
+            return deal.getCustomer().getEmail();
+        }
+
+        return deal.getClient() == null ? null : deal.getClient().getEmail();
     }
 
     private static String customerName(User customer) {

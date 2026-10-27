@@ -38,6 +38,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Repository.ClientRepository;
 import com.click4bonds.app.Modules.User.Service.UserService;
 
 /**
@@ -181,6 +182,7 @@ class DealConfirmationConcurrencyTest {
                 dealConfirmationRepository,
                 bondService,
                 userService,
+                mock(ClientRepository.class),
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,

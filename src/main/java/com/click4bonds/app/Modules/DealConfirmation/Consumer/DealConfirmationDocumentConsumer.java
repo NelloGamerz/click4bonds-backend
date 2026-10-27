@@ -108,7 +108,13 @@ public class DealConfirmationDocumentConsumer {
                     document.fileName(),
                     document.contentType());
 
-            emailConfirmation(dealData, document);
+            if (event.sendEmail()) {
+                emailConfirmation(dealData, document);
+            } else {
+                log.info(
+                        "Deal confirmation letter for deal {} produced but not emailed: the employee chose not to send it",
+                        dealData.dealReference());
+            }
 
         } catch (Exception failure) {
 

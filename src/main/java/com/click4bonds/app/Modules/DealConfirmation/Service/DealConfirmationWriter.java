@@ -23,7 +23,9 @@ import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
+import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
+import com.click4bonds.app.Modules.User.Repository.ClientRepository;
 import com.click4bonds.app.Modules.User.Service.UserService;
 
 import lombok.RequiredArgsConstructor;
@@ -59,6 +61,7 @@ public class DealConfirmationWriter {
     private final DealConfirmationRepository dealConfirmationRepository;
     private final BondService bondService;
     private final UserService userService;
+    private final ClientRepository clientRepository;
     private final DealReferenceGenerator dealReferenceGenerator;
     private final DealConfirmationMapper mapper;
     private final DealAccrualCalculator accrualCalculator;
@@ -81,6 +84,7 @@ public class DealConfirmationWriter {
     private record PurchaseContext(
             String isin,
             User customer,
+            Client client,
             Bond bond,
             long quantityPerLot,
             long totalQuantity,
@@ -108,7 +112,65 @@ public class DealConfirmationWriter {
             CreateDealConfirmationRequest request,
             String idempotencyKey) {
 
-        PurchaseContext context = prepare(userId, request);
+        User customer = getPurchasableCustomer(userId);
+
+        Bond bond = bondService.findBond(normalizeIsin(request.isin()));
+
+        PurchaseContext context = prepare(
+                customer,
+                null,
+                bond,
+                request.numberOfLots(),
+                LocalDate.now());
+
+        return commit(context, request.numberOfLots(), idempotencyKey);
+    }
+
+    /**
+     * Creates a deal on a client's behalf, from the back office.
+     *
+     * <p>Same validation, reservation and letter as a customer purchase; the
+     * difference is the counterparty (a {@link Client}, not an account) and that
+     * the employee may choose the deal date. A null date means today.</p>
+     *
+     * @throws ResourceNotFoundException client or bond does not exist
+     * @throws BadRequestException       bond is not purchasable, or the
+     *                                   quantities overflow
+     * @throws ConflictException         the bond does not have enough units left
+     */
+    @Transactional
+    public CreatedDeal createForClient(
+            UUID clientId,
+            UUID bondId,
+            Long numberOfLots,
+            LocalDate dealDate,
+            String idempotencyKey) {
+
+        Client client = clientRepository.findById(clientId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Client not found: " + clientId));
+
+        Bond bond = bondService.findBondById(bondId);
+
+        PurchaseContext context = prepare(
+                null,
+                client,
+                bond,
+                numberOfLots,
+                dealDate == null ? LocalDate.now() : dealDate);
+
+        return commit(context, numberOfLots, idempotencyKey);
+    }
+
+    /**
+     * Reserves the units and writes the deal. Shared by both create paths so a
+     * back-office deal cannot diverge from a customer purchase in what it
+     * reserves or what it stores.
+     */
+    private CreatedDeal commit(
+            PurchaseContext context,
+            Long numberOfLots,
+            String idempotencyKey) {
 
         Bond bond = context.bond();
 
@@ -149,11 +211,8 @@ public class DealConfirmationWriter {
                 reservedBond.getQuantum());
 
         DealConfirmation deal = buildDeal(
-                context.customer(),
-                reservedBond,
-                request,
-                context.quantityPerLot(),
-                context.totalQuantity(),
+                context,
+                numberOfLots,
                 idempotencyKey,
                 dealReferenceGenerator.next(context.dealDate()));
 
@@ -218,7 +277,16 @@ public class DealConfirmationWriter {
             UUID userId,
             CreateDealConfirmationRequest request) {
 
-        PurchaseContext context = prepare(userId, request);
+        User customer = getPurchasableCustomer(userId);
+
+        Bond bond = bondService.findBond(normalizeIsin(request.isin()));
+
+        PurchaseContext context = prepare(
+                customer,
+                null,
+                bond,
+                request.numberOfLots(),
+                LocalDate.now());
 
         /*
          * Measured against the bond as loaded rather than against a post-
@@ -231,11 +299,8 @@ public class DealConfirmationWriter {
                 .orElse(null);
 
         DealConfirmation projected = buildDeal(
-                context.customer(),
-                context.bond(),
-                request,
-                context.quantityPerLot(),
-                context.totalQuantity(),
+                context,
+                request.numberOfLots(),
                 null,
                 null);
 
@@ -277,48 +342,51 @@ public class DealConfirmationWriter {
      *                                   overflow
      * @throws ConflictException         the bond does not have enough units left
      */
+    /**
+     * Resolves a request into the (already loaded) counterparty and bond, and the
+     * quantities and dates of the deal, refusing anything a purchase would refuse.
+     *
+     * <p>Reads only — the same method serves {@link #create}, {@link #createForClient}
+     * and {@link #preview}. Duplicating the validation would let them drift, and a
+     * preview that accepted something the purchase rejects would show figures for
+     * a deal that cannot be made.</p>
+     *
+     * @param customer the buying account, or null for a back-office deal
+     * @param client   the client the deal is for, or null for a customer deal
+     * @param dealDate the date the deal is struck, which also fixes the value date
+     *                 and the reference's month
+     * @throws BadRequestException       bond is not purchasable or the quantities
+     *                                   overflow
+     * @throws ConflictException         the bond does not have enough units left
+     */
     private PurchaseContext prepare(
-            UUID userId,
-            CreateDealConfirmationRequest request) {
+            User customer,
+            Client client,
+            Bond bond,
+            Long numberOfLots,
+            LocalDate dealDate) {
 
-        String isin = normalizeIsin(request.isin());
-
-        /*
-         * Captured once. The reference, the letter's deal date and the value
-         * date the accrual is measured to all have to agree, and a request
-         * arriving at midnight would otherwise see two different "today"s.
-         */
-        LocalDate dealDate = LocalDate.now();
+        String isin = normalizeIsin(bond.getIsin());
 
         LocalDate valueDate = dealDate.plusDays(
                 documentProperties.getDeal().getValueDateOffsetDays());
 
         /*
-         * Loaded first so a request from an unknown or disabled account fails
-         * before any inventory is touched. This entity is referenced, never
-         * modified, so it does not matter that the reservation below detaches it.
-         */
-        User customer = getPurchasableCustomer(userId);
-
-        Bond bond = bondService.findBond(isin);
-
-        /*
          * The units in a lot are a property of the bond, not of the request, so
-         * they are read from the row just loaded and only the number of lots
-         * comes from the caller. This has to happen after the bond is read, which
-         * is why the total is no longer computed before any database access.
+         * they are read from the row loaded above and only the number of lots
+         * comes from the caller.
          */
         long quantityPerLot = resolveLotSize(bond);
 
         long totalQuantity = calculateTotalQuantity(
                 quantityPerLot,
-                request.numberOfLots());
+                numberOfLots);
 
         log.info(
                 "Deal request: isin={} quantityPerLot={} numberOfLots={} totalQuantity={}",
                 isin,
                 quantityPerLot,
-                request.numberOfLots(),
+                numberOfLots,
                 totalQuantity);
 
         validatePurchasable(bond, totalQuantity);
@@ -326,6 +394,7 @@ public class DealConfirmationWriter {
         return new PurchaseContext(
                 isin,
                 customer,
+                client,
                 bond,
                 quantityPerLot,
                 totalQuantity,
@@ -472,19 +541,25 @@ public class DealConfirmationWriter {
      *                      not.
      */
     private DealConfirmation buildDeal(
-            User customer,
-            Bond bond,
-            CreateDealConfirmationRequest request,
-            long quantityPerLot,
-            long totalQuantity,
+            PurchaseContext context,
+            Long numberOfLots,
             String idempotencyKey,
             String dealReference) {
+
+        Bond bond = context.bond();
 
         BigDecimal pricePerUnit = bond.getPrice();
 
         return DealConfirmation.builder()
                 .dealReference(dealReference)
-                .customer(customer)
+                .customer(context.customer())
+                .client(context.client())
+                /*
+                 * Only a back-office deal records the date it was struck. A
+                 * customer deal keeps its creation date, which is the date its
+                 * letter has always printed.
+                 */
+                .dealDate(context.client() == null ? null : context.dealDate())
                 .bond(bond)
                 .isin(bond.getIsin())
                 /*
@@ -492,9 +567,9 @@ public class DealConfirmationWriter {
                  * bond above — stored rather than left to be re-derived, because
                  * an admin editing the bond later must not restate an old deal.
                  */
-                .quantityPerLot(quantityPerLot)
-                .numberOfLots(request.numberOfLots())
-                .totalQuantity(totalQuantity)
+                .quantityPerLot(context.quantityPerLot())
+                .numberOfLots(numberOfLots)
+                .totalQuantity(context.totalQuantity())
                 .pricePerUnit(pricePerUnit)
                 /*
                  * Null price stays null rather than becoming zero: the bond's
@@ -503,7 +578,7 @@ public class DealConfirmationWriter {
                  */
                 .totalAmount(pricePerUnit == null
                         ? null
-                        : pricePerUnit.multiply(BigDecimal.valueOf(totalQuantity)))
+                        : pricePerUnit.multiply(BigDecimal.valueOf(context.totalQuantity())))
                 .idempotencyKey(idempotencyKey)
                 .build();
     }

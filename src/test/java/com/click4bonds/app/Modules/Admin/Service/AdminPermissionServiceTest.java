@@ -109,6 +109,19 @@ class AdminPermissionServiceTest {
         assertTrue(service.hasModule(authenticationFor(id), "ANALYTICS"));
     }
 
+    @Test
+    void anEmployeeIsAllowedClientManagementWhenGrantedIt() {
+
+        UUID id = UUID.randomUUID();
+        User employee = account(id, UserRole.EMPLOYEE);
+        grants(employee, Set.of(AdminModule.CLIENT_MANAGEMENT, AdminModule.DEAL_CREATION));
+
+        // The literal in AdminClientController's @PreAuthorize is not
+        // type-checked, so a name the enum cannot resolve would deny every call.
+        assertTrue(service.hasModule(authenticationFor(id), "CLIENT_MANAGEMENT"));
+        assertTrue(service.hasModule(authenticationFor(id), "DEAL_CREATION"));
+    }
+
     // ------------------------------------------------------------------
     // Refused
     // ------------------------------------------------------------------
