@@ -123,7 +123,7 @@ public class DealConfirmationWriter {
                 request.numberOfLots(),
                 LocalDate.now());
 
-        return commit(context, request.numberOfLots(), idempotencyKey);
+        return commit(context, request.numberOfLots(), idempotencyKey, null);
     }
 
     /**
@@ -133,6 +133,8 @@ public class DealConfirmationWriter {
      * difference is the counterparty (a {@link Client}, not an account) and that
      * the employee may choose the deal date. A null date means today.</p>
      *
+     * @param idempotencyKey may be null; a back-office deal never sends one
+     * @param employeeId the staff account creating the deal
      * @throws ResourceNotFoundException client or bond does not exist
      * @throws BadRequestException       bond is not purchasable, or the
      *                                   quantities overflow
@@ -144,11 +146,14 @@ public class DealConfirmationWriter {
             UUID bondId,
             Long numberOfLots,
             LocalDate dealDate,
-            String idempotencyKey) {
+            String idempotencyKey,
+            UUID employeeId) {
 
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Client not found: " + clientId));
+
+        User createdBy = userService.getUser(employeeId);
 
         Bond bond = bondService.findBondById(bondId);
 
@@ -159,7 +164,7 @@ public class DealConfirmationWriter {
                 numberOfLots,
                 dealDate == null ? LocalDate.now() : dealDate);
 
-        return commit(context, numberOfLots, idempotencyKey);
+        return commit(context, numberOfLots, idempotencyKey, createdBy);
     }
 
     /**
@@ -170,7 +175,8 @@ public class DealConfirmationWriter {
     private CreatedDeal commit(
             PurchaseContext context,
             Long numberOfLots,
-            String idempotencyKey) {
+            String idempotencyKey,
+            User createdBy) {
 
         Bond bond = context.bond();
 
@@ -214,7 +220,8 @@ public class DealConfirmationWriter {
                 context,
                 numberOfLots,
                 idempotencyKey,
-                dealReferenceGenerator.next(context.dealDate()));
+                dealReferenceGenerator.next(context.dealDate()),
+                createdBy);
 
         DealConfirmation saved = dealConfirmationRepository.save(deal);
 
@@ -301,6 +308,7 @@ public class DealConfirmationWriter {
         DealConfirmation projected = buildDeal(
                 context,
                 request.numberOfLots(),
+                null,
                 null,
                 null);
 
@@ -544,7 +552,8 @@ public class DealConfirmationWriter {
             PurchaseContext context,
             Long numberOfLots,
             String idempotencyKey,
-            String dealReference) {
+            String dealReference,
+            User createdBy) {
 
         Bond bond = context.bond();
 
@@ -554,6 +563,7 @@ public class DealConfirmationWriter {
                 .dealReference(dealReference)
                 .customer(context.customer())
                 .client(context.client())
+                .createdBy(createdBy)
                 /*
                  * Only a back-office deal records the date it was struck. A
                  * customer deal keeps its creation date, which is the date its

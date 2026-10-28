@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
@@ -17,6 +19,38 @@ public interface DealConfirmationRepository
         extends JpaRepository<DealConfirmation, UUID> {
 
     Optional<DealConfirmation> findByDealReference(String dealReference);
+
+    /**
+     * One page of the deals a staff account created, optionally filtered by a
+     * term matched against the reference, the client, the bond and the ISIN.
+     *
+     * <p>Scoped to {@code createdBy} in the query so one employee cannot page
+     * through another's deals. {@code search} is a caller-supplied trim; pass
+     * null to mean "unfiltered" (a blank string would match every row through
+     * {@code LIKE '%%'} all the same, but the distinction is deliberate here).</p>
+     *
+     * <p>The bond and client are fetched eagerly because the summary reads both
+     * and the caller maps after the page has been loaded.</p>
+     */
+    @EntityGraph(attributePaths = { "bond", "client" })
+    @Query("""
+            SELECT d
+            FROM DealConfirmation d
+            LEFT JOIN d.client c
+            LEFT JOIN d.bond b
+            WHERE d.createdBy.id = :employeeId
+            AND (
+                :search IS NULL
+                OR LOWER(d.dealReference) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(d.isin) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(c.name) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(b.name) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+            )
+            """)
+    Page<DealConfirmation> findCreatedBy(
+            @Param("employeeId") UUID employeeId,
+            @Param("search") String search,
+            Pageable pageable);
 
     /**
      * Looks up a deal by reference, but only for the customer it belongs to.
