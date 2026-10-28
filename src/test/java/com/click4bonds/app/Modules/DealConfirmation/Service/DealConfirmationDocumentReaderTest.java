@@ -76,6 +76,27 @@ class DealConfirmationDocumentReaderTest {
     }
 
     @Test
+    void servesAnEmployeesOwnDealThroughTheCreatorScopedLookup() {
+
+        when(dealConfirmationRepository.findByDealReferenceAndCreatedBy_Id(REFERENCE, CUSTOMER_ID))
+                .thenReturn(Optional.of(dealWith(LOCATION)));
+        when(documentStorage.keyOf(LOCATION)).thenReturn(KEY);
+        when(documentStorage.read(KEY)).thenReturn(CONTENT);
+
+        DealConfirmationDocumentReader.DownloadedDocument document =
+                reader.readCreatedBy(CUSTOMER_ID, REFERENCE);
+
+        // Scoped to the creator, never the customer lookup.
+        verify(dealConfirmationRepository)
+                .findByDealReferenceAndCreatedBy_Id(REFERENCE, CUSTOMER_ID);
+        verify(dealConfirmationRepository, org.mockito.Mockito.never())
+                .findByDealReferenceAndCustomer_Id(REFERENCE, CUSTOMER_ID);
+
+        assertThat(document.content()).isEqualTo(CONTENT);
+        assertThat(document.fileName()).isEqualTo(REFERENCE + ".pdf");
+    }
+
+    @Test
     void servesTheSpreadsheetWhenThatIsWhatWasRecorded() {
 
         /*
