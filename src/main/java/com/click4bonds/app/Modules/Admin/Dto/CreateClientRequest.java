@@ -1,5 +1,7 @@
 package com.click4bonds.app.Modules.Admin.Dto;
 
+import com.click4bonds.app.Modules.Party.Enums.PartyType;
+
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -32,5 +34,12 @@ public record CreateClientRequest(
         String mobileNumber,
 
         @Size(max = 1000, message = "Address must not exceed 1000 characters")
-        String address) {
+        String address,
+
+        /**
+         * The identity type of the party created with this client. Optional;
+         * when absent the service assumes {@code COMPANY}, which an admin can
+         * correct by linking a party of the right type.
+         */
+        PartyType partyType) {
 }

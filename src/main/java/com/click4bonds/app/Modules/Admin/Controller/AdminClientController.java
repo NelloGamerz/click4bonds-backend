@@ -20,6 +20,7 @@ import com.click4bonds.app.Modules.Admin.Dto.ClientResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientRequest;
 import com.click4bonds.app.Modules.Admin.Dto.UpdateClientRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminClientService;
+import com.click4bonds.app.Modules.Party.Dto.LinkPartyRequest;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -88,5 +89,21 @@ public class AdminClientController {
         adminClientService.delete(id);
 
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Attaches this client record to an existing, PAN-verified party.
+     *
+     * <p>The deliberate identity-linking step: registration never performs it,
+     * and a party without a verified PAN is refused.</p>
+     */
+    @PostMapping("/{id}/link-party")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'CLIENT_MANAGEMENT')")
+    public ResponseEntity<ClientResponse> linkParty(
+            @PathVariable UUID id,
+            @Valid @RequestBody LinkPartyRequest request) {
+
+        return ResponseEntity.ok(
+                adminClientService.linkParty(id, request.partyId()));
     }
 }

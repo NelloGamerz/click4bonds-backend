@@ -95,6 +95,9 @@ public final class AdminUserMapper {
                 .status(user.getStatus())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
+                .partyId(profile == null || profile.getParty() == null
+                        ? null
+                        : profile.getParty().getId())
                 .verification(UserMapper.toVerificationResponse(
                         profile == null ? null : profile.getVerification()))
                 .emailVerified(staffProfile == null ? null : staffProfile.getEmailVerified())

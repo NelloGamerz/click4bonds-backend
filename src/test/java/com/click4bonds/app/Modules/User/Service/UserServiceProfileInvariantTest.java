@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -18,6 +19,9 @@ import org.junit.jupiter.api.Test;
 
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
+import com.click4bonds.app.Modules.Party.Enums.PartyType;
+import com.click4bonds.app.Modules.Party.Model.Party;
+import com.click4bonds.app.Modules.Party.Service.PartyService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.AdminProfile;
@@ -41,8 +45,10 @@ class UserServiceProfileInvariantTest {
 
     private final AnalyticsService analyticsService = mock(AnalyticsService.class);
 
+    private final PartyService partyService = mock(PartyService.class);
+
     private final UserService service =
-            new UserService(userRepository, userVerificationService, analyticsService);
+            new UserService(userRepository, userVerificationService, analyticsService, partyService);
 
     private UserServiceProfileInvariantTest() {
 
@@ -50,6 +56,13 @@ class UserServiceProfileInvariantTest {
         // identifier off what comes back.
         when(userRepository.save(any(User.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
+
+        when(partyService.createForCustomer(any(User.class), any()))
+                .thenAnswer(invocation -> Party.builder()
+                        .id(UUID.randomUUID())
+                        .partyType(PartyType.INDIVIDUAL)
+                        .legalName("Test Customer")
+                        .build());
     }
 
     private static User account(UserRole role) {
@@ -79,6 +92,20 @@ class UserServiceProfileInvariantTest {
         assertSame(saved, profile.getUser());
 
         verify(userVerificationService).createVerification(profile);
+    }
+
+    @Test
+    void onlyACustomerIsCreatedWithAParty() {
+
+        User customer = service.createUser(account(UserRole.CUSTOMER));
+
+        assertNotNull(customer.getCustomerProfile().getParty());
+
+        // A staff account has no financial records to hang off a party.
+        service.createUser(account(UserRole.ADMIN));
+        service.createUser(account(UserRole.EMPLOYEE));
+
+        verify(partyService, times(1)).createForCustomer(any(User.class), any());
     }
 
     @Test
