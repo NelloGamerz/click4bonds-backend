@@ -133,6 +133,24 @@ public class AdminDealController {
         return download(year + "/" + side + "/" + month + "/" + sequence, jwt);
     }
 
+    /**
+     * The same download, with the reference as a query parameter.
+     *
+     * <p>Preferred for references that contain slashes. A path segment holding
+     * {@code /} must be percent-encoded by the client, and Spring Security's
+     * default firewall rejects an encoded slash before the CORS filter runs — so
+     * the browser reports a CORS failure instead of the 400 that actually
+     * happened. A query parameter has no such rule.</p>
+     */
+    @GetMapping("/document")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<byte[]> downloadDocumentByReference(
+            @RequestParam String reference,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return download(reference, jwt);
+    }
+
     private ResponseEntity<byte[]> download(String dealReference, Jwt jwt) {
 
         DealConfirmationDocumentReader.DownloadedDocument document =
