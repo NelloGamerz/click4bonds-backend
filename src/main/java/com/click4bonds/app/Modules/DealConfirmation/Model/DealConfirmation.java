@@ -59,6 +59,7 @@ import lombok.Setter;
         @Index(name = "idx_deal_reference", columnList = "deal_reference", unique = true),
         @Index(name = "idx_deal_customer", columnList = "customer_id"),
         @Index(name = "idx_deal_client", columnList = "client_id"),
+        @Index(name = "idx_deal_created_by", columnList = "created_by"),
         @Index(name = "idx_deal_bond", columnList = "bond_id"),
         @Index(name = "idx_deal_isin", columnList = "isin"),
         @Index(name = "idx_deal_status", columnList = "status"),
@@ -115,6 +116,17 @@ public class DealConfirmation {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "client_id")
     private Client client;
+
+    /**
+     * The staff account that created this deal, for a back-office deal.
+     *
+     * <p>Null for a deal a customer placed through the app — there is no employee
+     * behind it. Set for every deal created through {@code AdminDealController},
+     * which is what lets an employee list the deals they created.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by")
+    private User createdBy;
 
     /**
      * The date the deal was struck, when the back office chose one.

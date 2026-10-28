@@ -145,16 +145,18 @@ public class DealConfirmationService {
      *
      * @param dealDate  the date the deal is struck, or null for today
      * @param sendEmail whether the confirmation letter is emailed to the client
+     * @param employeeId the authenticated staff account, recorded on the deal
      */
     public Result createDealForClient(
             UUID clientId,
             UUID bondId,
             Long numberOfLots,
             LocalDate dealDate,
-            boolean sendEmail) {
+            boolean sendEmail,
+            UUID employeeId) {
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.createForClient(clientId, bondId, numberOfLots, dealDate, null);
+                writer.createForClient(clientId, bondId, numberOfLots, dealDate, null, employeeId);
 
         return new Result(complete(created, sendEmail), false);
     }

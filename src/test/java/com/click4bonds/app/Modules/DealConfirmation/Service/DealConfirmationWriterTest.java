@@ -342,8 +342,12 @@ class DealConfirmationWriterTest {
 
         LocalDate dealDate = LocalDate.of(2026, 10, 1);
 
+        User employee = customer();
+
         Mockito.when(clientRepository.findById(client.getId()))
                 .thenReturn(Optional.of(client));
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(employee);
         Mockito.when(bondService.findBondById(bond.getId()))
                 .thenReturn(bond);
         Mockito.when(bondService.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
@@ -352,12 +356,13 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.createForClient(client.getId(), bond.getId(), 5L, dealDate, null);
+                writer.createForClient(client.getId(), bond.getId(), 5L, dealDate, null, USER_ID);
 
         // The deal belongs to the client, not to any account.
         Mockito.verify(dealConfirmationRepository).save(
                 Mockito.argThat(deal -> deal.getClient() == client
                         && deal.getCustomer() == null
+                        && deal.getCreatedBy() == employee
                         && dealDate.equals(deal.getDealDate())));
 
         // The letter prints the client and the date the employee chose.
