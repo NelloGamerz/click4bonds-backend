@@ -14,6 +14,7 @@ import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.Party.Service.PartyService;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.AdminProfile;
@@ -42,6 +43,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserVerificationService userVerificationService;
     private final AnalyticsService analyticsService;
+    private final PartyService partyService;
 
     /**
      * Resolves the account that signs in with a phone number.
@@ -130,6 +132,15 @@ public class UserService {
 
             profile.setUser(user);
             user.setCustomerProfile(profile);
+
+            // A customer's financial records hang off a party. It is created
+            // here, with the profile, so there is no window in which a customer
+            // account exists without one. A party a caller already attached is
+            // kept: that is how a sign-up path can adopt an existing identity
+            // deliberately, while nothing is linked by matching contact data.
+            if (profile.getParty() == null) {
+                profile.setParty(partyService.createForCustomer(user, profile.getUserType()));
+            }
 
         } else {
 

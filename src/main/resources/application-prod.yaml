@@ -1,3 +1,8 @@
+# Required in production — the application refuses to start without it.
+# 32 random bytes, base64-encoded, e.g. `openssl rand -base64 32`.
+party:
+  encryption-key: ${PARTY_ENCRYPTION_KEY}
+
 spring:
   data:
     redis:

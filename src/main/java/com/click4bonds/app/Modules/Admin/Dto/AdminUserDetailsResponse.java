@@ -59,6 +59,15 @@ public class AdminUserDetailsResponse {
     private Instant createdAt;
     private Instant updatedAt;
 
+    /**
+     * The party this customer's financial records hang off. Null for a staff
+     * account, which has none.
+     *
+     * <p>Exposed so the admin financial-detail screens can address
+     * {@code /api/admin/parties/{partyId}} without a second lookup.</p>
+     */
+    private UUID partyId;
+
     private UserVerificationResponse verification;
 
     /**

@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.click4bonds.app.Modules.Party.Model.Party;
 import com.click4bonds.app.Modules.User.Enums.AgeRange;
 import com.click4bonds.app.Modules.User.Enums.CommunicationLanguage;
 import com.click4bonds.app.Modules.User.Enums.OnboardingStep;
@@ -22,6 +23,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
@@ -94,6 +96,21 @@ public class CustomerProfile {
      */
     @OneToOne(mappedBy = "customerProfile", cascade = CascadeType.ALL, fetch = FetchType.LAZY, orphanRemoval = true)
     private UserVerification verification;
+
+    /**
+     * The party this customer's financial records hang off.
+     *
+     * <p>Many profiles may point at one party: a party is the identity, and the
+     * customer profile is the account. That is what allows a client record and
+     * a registered customer to share financial records after an explicit,
+     * authorized link, without either record becoming the other's login.</p>
+     *
+     * <p>Owned by this side and never cascaded: a party outlives any one
+     * profile, so deleting the profile must not delete it.</p>
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "party_id", nullable = false)
+    private Party party;
 
     /**
      * Whether the account has cleared every verification step and is therefore

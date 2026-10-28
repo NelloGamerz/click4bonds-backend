@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.Admin.Service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,6 +15,10 @@ import org.springframework.data.domain.Sort;
 
 import com.click4bonds.app.Modules.Admin.Dto.ClientResponse;
 import com.click4bonds.app.Modules.Admin.Dto.UpdateClientRequest;
+import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
+import com.click4bonds.app.Modules.Party.Model.Party;
+import com.click4bonds.app.Modules.Party.Service.PanDetailsService;
+import com.click4bonds.app.Modules.Party.Service.PartyService;
 import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Repository.ClientRepository;
 
@@ -21,7 +26,12 @@ class AdminClientServicePatchTest {
 
     private final ClientRepository clientRepository = mock(ClientRepository.class);
 
-    private final AdminClientService service = new AdminClientService(clientRepository);
+    private final PartyService partyService = mock(PartyService.class);
+
+    private final PanDetailsService panDetailsService = mock(PanDetailsService.class);
+
+    private final AdminClientService service =
+            new AdminClientService(clientRepository, partyService, panDetailsService);
 
     @Test
     void patchLeavesFieldsNotIncludedInRequestUnchanged() {
@@ -75,5 +85,42 @@ class AdminClientServicePatchTest {
         assertEquals(client.getId(), clients.get(0).id());
         assertEquals("Acme", clients.get(0).name());
         verify(clientRepository).findAll(Sort.by(Sort.Direction.ASC, "name"));
+    }
+
+    @Test
+    void linkingAClientToAPartyRefusesAPartyWhosePanIsNotVerified() {
+
+        UUID clientId = UUID.randomUUID();
+        UUID partyId = UUID.randomUUID();
+
+        Client client = Client.builder().id(clientId).name("Acme").build();
+        Party party = Party.builder().id(partyId).legalName("Acme").build();
+
+        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+        when(partyService.require(partyId)).thenReturn(party);
+        when(panDetailsService.isVerified(party)).thenReturn(false);
+
+        assertThrows(ConflictException.class,
+                () -> service.linkParty(clientId, partyId));
+    }
+
+    @Test
+    void linkingAClientToAVerifiedPartyAttachesIt() {
+
+        UUID clientId = UUID.randomUUID();
+        UUID partyId = UUID.randomUUID();
+
+        Client client = Client.builder().id(clientId).name("Acme").build();
+        Party party = Party.builder().id(partyId).legalName("Acme").build();
+
+        when(clientRepository.findById(clientId)).thenReturn(Optional.of(client));
+        when(partyService.require(partyId)).thenReturn(party);
+        when(panDetailsService.isVerified(party)).thenReturn(true);
+        when(clientRepository.save(client)).thenReturn(client);
+
+        ClientResponse response = service.linkParty(clientId, partyId);
+
+        assertEquals(partyId, response.partyId());
+        assertEquals(party, client.getParty());
     }
 }

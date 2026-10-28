@@ -178,7 +178,7 @@ final class VerificationTestSupport {
         private final Set<String> claimedEmails = new HashSet<>();
 
         FakeUserService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         FakeUserService register(User user) {

@@ -246,7 +246,7 @@ public final class AuthTestSupport {
         private final Map<String, User> byEmail = new HashMap<>();
 
         public FakeUserService() {
-            super(null, null, null);
+            super(null, null, null, null);
         }
 
         public FakeUserService register(User user) {

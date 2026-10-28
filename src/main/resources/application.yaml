@@ -230,12 +230,21 @@ auth:
     rate-limit-window: ${AUTH_OTP_RATE_LIMIT_WINDOW:15m}
 
 
+# Protection for the party financial fields (PAN, bank account number).
+#
+# AES-256-GCM, 32 random bytes base64-encoded. The dev default below is public
+# on purpose — it lets a laptop and CI start without extra setup. Production
+# overrides this in application-prod.yaml with a required environment value.
+# Rotating the key makes existing ciphertext unreadable, so rotate by
+# re-encryption, not by editing this property.
+party:
+  encryption-key: ${PARTY_ENCRYPTION_KEY:Y2xpY2s0Ym9uZHMtZGV2LW9ubHktcGFydHkta2V5ISE=}
+
 management:
   metrics:
     tags:
       application: clickforbonds
       environment: ${SPRING_PROFILES_ACTIVE:dev}
-
     distribution:
       percentiles-histogram:
         http.server.requests: true
