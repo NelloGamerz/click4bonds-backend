@@ -8,12 +8,16 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,6 +29,7 @@ import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentReader;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -56,6 +61,7 @@ public class AdminDealController {
     private static final Sort DEAL_DEFAULT_SORT = Sort.by(Sort.Direction.DESC, "createdAt");
 
     private final AdminDealService adminDealService;
+    private final DealConfirmationDocumentReader documentReader;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
@@ -92,5 +98,55 @@ public class AdminDealController {
                                 pageable,
                                 DEAL_SORTABLE_PROPERTIES,
                                 DEAL_DEFAULT_SORT)));
+    }
+
+    /**
+     * Downloads the confirmation letter for a deal the authenticated employee
+     * created.
+     *
+     * <p>Scoped to {@code createdBy} in the query itself, so another employee's
+     * reference is indistinguishable from one that does not exist — both are
+     * 404.</p>
+     */
+    @GetMapping("/{dealReference}/document")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<byte[]> downloadDocument(
+            @PathVariable String dealReference,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return download(dealReference, jwt);
+    }
+
+    /**
+     * The same download for a reference that carries slashes, e.g.
+     * {@code 2026/S/OCT/144}, which arrives as several path segments.
+     */
+    @GetMapping("/{year}/{side}/{month}/{sequence}/document")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<byte[]> downloadNestedReferenceDocument(
+            @PathVariable String year,
+            @PathVariable String side,
+            @PathVariable String month,
+            @PathVariable String sequence,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return download(year + "/" + side + "/" + month + "/" + sequence, jwt);
+    }
+
+    private ResponseEntity<byte[]> download(String dealReference, Jwt jwt) {
+
+        DealConfirmationDocumentReader.DownloadedDocument document =
+                documentReader.readCreatedBy(
+                        UUID.fromString(jwt.getSubject()),
+                        dealReference);
+
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(document.fileName())
+                .build();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(document.contentType()))
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(document.content());
     }
 }

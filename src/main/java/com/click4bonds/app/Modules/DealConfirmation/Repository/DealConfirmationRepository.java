@@ -66,6 +66,14 @@ public interface DealConfirmationRepository
             UUID customerId);
 
     /**
+     * The same lookup for a back-office deal, scoped to the employee who created
+     * it so one employee cannot download another's letter.
+     */
+    Optional<DealConfirmation> findByDealReferenceAndCreatedBy_Id(
+            String dealReference,
+            UUID employeeId);
+
+    /**
      * Used to replay a retried request instead of buying the bond twice.
      *
      * <p>{@code userId} is {@link com.click4bonds.app.Modules.User.Model.User#getId()},

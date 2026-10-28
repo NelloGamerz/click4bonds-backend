@@ -52,10 +52,37 @@ public class DealConfirmationDocumentReader {
      */
     public DownloadedDocument read(UUID customerId, String dealReference) {
 
-        DealConfirmation deal = dealConfirmationRepository
-                .findByDealReferenceAndCustomer_Id(dealReference, customerId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Deal not found: " + dealReference));
+        return toDocument(
+                dealConfirmationRepository
+                        .findByDealReferenceAndCustomer_Id(dealReference, customerId)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Deal not found: " + dealReference)),
+                dealReference);
+    }
+
+    /**
+     * Loads the confirmation letter for a deal the given employee created.
+     *
+     * @param employeeId    the authenticated staff account
+     * @param dealReference the deal to read
+     * @throws ResourceNotFoundException when the employee has no such deal, or
+     *                                   the deal has no document yet — the same
+     *                                   two answers as {@link #read}, reported
+     *                                   identically for the same reason
+     */
+    public DownloadedDocument readCreatedBy(UUID employeeId, String dealReference) {
+
+        return toDocument(
+                dealConfirmationRepository
+                        .findByDealReferenceAndCreatedBy_Id(dealReference, employeeId)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Deal not found: " + dealReference)),
+                dealReference);
+    }
+
+    private DownloadedDocument toDocument(
+            DealConfirmation deal,
+            String dealReference) {
 
         if (deal.getDocumentR2Path() == null) {
 
