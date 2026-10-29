@@ -79,4 +79,16 @@ public class UserResponse {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private UserVerificationResponse verification;
+
+    /**
+     * The customer's profile, or null for a staff account.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private CustomerProfileResponse customerProfile;
+
+    /**
+     * The staff profile, or null for a customer.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private AdminProfileResponse adminProfile;
 }

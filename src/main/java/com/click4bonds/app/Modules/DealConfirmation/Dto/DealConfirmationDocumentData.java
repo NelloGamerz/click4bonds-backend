@@ -166,11 +166,7 @@ public record DealConfirmationDocumentData(
 
         return new DealConfirmationDocumentData(
                 deal.getDealReference(),
-                deal.getDealDate() != null
-                        ? deal.getDealDate()
-                        : deal.getCreatedAt() == null
-                                ? LocalDate.now()
-                                : LocalDate.ofInstant(deal.getCreatedAt(), ZoneOffset.UTC),
+                dealDateOf(deal),
                 deal.getCreatedAt(),
                 valueDate,
                 counterpartyName(deal),
@@ -202,6 +198,24 @@ public record DealConfirmationDocumentData(
                 settlementNumber,
                 side,
                 depository);
+    }
+
+    /**
+     * The date the deal was struck: the employee's date for a back-office deal,
+     * else the day the row was written.
+     *
+     * <p>Also what a later read measures the value date from, so the accrual a
+     * listing reports is measured to the same settlement date the letter used.</p>
+     */
+    public static LocalDate dealDateOf(DealConfirmation deal) {
+
+        if (deal.getDealDate() != null) {
+            return deal.getDealDate();
+        }
+
+        return deal.getCreatedAt() == null
+                ? LocalDate.now()
+                : LocalDate.ofInstant(deal.getCreatedAt(), ZoneOffset.UTC);
     }
 
     /**
