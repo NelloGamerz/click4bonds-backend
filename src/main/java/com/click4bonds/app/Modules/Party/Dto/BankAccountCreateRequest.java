@@ -23,6 +23,9 @@ public record BankAccountCreateRequest(
         String bankName,
 
         @NotBlank(message = "Account number is required")
+        @Size(max = 255, message = "Branch location must not exceed 255 characters")
+        String branchLocation,
+
         @Pattern(regexp = "^[0-9]{6,20}$", message = "Account number must be 6 to 20 digits")
         String accountNumber,
 

@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Component;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
@@ -32,10 +33,11 @@ import lombok.RequiredArgsConstructor;
  *       {@code DocumentProperties.Organisation}.</li>
  * </ul>
  *
- * <p>Everything the customer supplies — "Your PAN", "Your Dp Name", "DP ID",
- * "CLIENT ID" in rows 32-35 — is deliberately absent from the map, and the bank
- * particulars are written even when configured blank, so the sample values the
- * template was saved with cannot survive the fill. See the map's own comments.</p>
+ * <p>The customer's own identifiers — "Your PAN", "Your Dp Name", "DP ID",
+ * "CLIENT ID" in column D, rows 32-35 — are written when the counterparty's
+ * party has them and left alone when it does not. The bank particulars are
+ * written even when configured blank, so the sample values the template was
+ * saved with cannot survive the fill. See the map's own comments.</p>
  *
  * <p><strong>One thing on this letter is not settled.</strong> The TDS cell's
  * label still reads "0.10%" while the figure beside it is 10% of the accrued
@@ -89,6 +91,17 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
 
         requireFigures(values);
 
+        /*
+         * As on the corporate sheet: the workbook holds one layout, and an
+         * employee-chosen delivery mode prints different blocks. The PDF letter
+         * draws all three.
+         */
+        if (values.deliveryMode() != null) {
+            throw new DocumentGenerationException(
+                    "The spreadsheet fallback cannot lay out a " + values.deliveryMode()
+                            + " delivery; the PDF letter is required");
+        }
+
         DocumentProperties.Organisation organisation =
                 documentProperties.getOrganisation();
 
@@ -105,6 +118,11 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
          */
         cells.put("A7", values.counterpartyLine());
         cells.put("C41", values.counterpartyLine());
+
+        /* A8 is the merged address line under the name. */
+        if (values.counterparty() != null && values.counterparty().address() != null) {
+            cells.put("A8", "ADD. " + values.counterparty().address());
+        }
 
         // ---- Deal terms ----------------------------------------------------
         cells.put("C12", values.transactionType());
@@ -185,10 +203,19 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
         /*
          * D32:D35 are the customer's own identifiers — "Your PAN", "Your Dp
          * Name", "DP ID", "CLIENT ID" sit in column C as labels and their values
-         * belong in column D. This application holds none of them, so they are
-         * not in the map at all and the letter leaves them for the customer, as
-         * the corporate sheet does.
+         * belong in column D. Only the ones the party actually has are written;
+         * an absent one leaves the (empty) cell empty rather than clearing it
+         * with a blank.
          */
+        CounterpartyDetails party = values.counterparty();
+
+        if (party != null) {
+
+            putIfPresent(cells, "D32", party.pan());
+            putIfPresent(cells, "D33", party.dpName());
+            putIfPresent(cells, "D34", party.dpId());
+            putIfPresent(cells, "D35", party.clientId());
+        }
 
         return cells;
     }
@@ -261,6 +288,13 @@ public class GsecSellSheetStrategy implements DealConfirmationSheetStrategy {
                             + " sheet's accrued interest cannot be computed and no"
                             + " confirmed letter can be printed for it. A Sovereign"
                             + " bond should have both.");
+        }
+    }
+
+    private static void putIfPresent(Map<String, Object> cells, String address, String value) {
+
+        if (value != null && !value.isBlank()) {
+            cells.put(address, value);
         }
     }
 }

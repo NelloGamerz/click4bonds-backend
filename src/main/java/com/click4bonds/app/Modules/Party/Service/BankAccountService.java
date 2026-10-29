@@ -74,6 +74,7 @@ public class BankAccountService {
                 .party(party)
                 .accountHolderName(request.accountHolderName().trim())
                 .bankName(request.bankName().trim())
+                .branchLocation(trimOrNull(request.branchLocation()))
                 .accountNumber(secretCipher.encrypt(request.accountNumber()))
                 .ifscCode(request.ifscCode().trim())
                 .primaryAccount(primary)
@@ -107,6 +108,9 @@ public class BankAccountService {
         }
         if (request.bankName() != null) {
             account.setBankName(request.bankName().trim());
+        }
+        if (request.branchLocation() != null) {
+            account.setBranchLocation(trimOrNull(request.branchLocation()));
         }
         if (request.accountNumber() != null) {
             account.setAccountNumber(secretCipher.encrypt(request.accountNumber()));
@@ -152,6 +156,17 @@ public class BankAccountService {
                 account.getId(), party.getId(), status);
 
         return BankAccountResponse.of(account, secretCipher.decrypt(account.getAccountNumber()));
+    }
+
+    private static String trimOrNull(String value) {
+
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     private void clearPrimary(Party party) {

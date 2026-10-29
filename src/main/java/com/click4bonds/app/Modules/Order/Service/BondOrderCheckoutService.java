@@ -195,7 +195,7 @@ public class BondOrderCheckoutService {
          */
         DealConfirmationWriter.CreatedDeal created = dealConfirmationWriter.create(
                 callerId,
-                new CreateDealConfirmationRequest(bond.getIsin(), numberOfLots),
+                new CreateDealConfirmationRequest(bond.getIsin(), numberOfLots, null, null),
                 DEAL_KEY_PREFIX + order.getId());
 
         DealConfirmationResponse deal = created.response();

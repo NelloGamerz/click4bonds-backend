@@ -13,6 +13,7 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
@@ -102,11 +103,36 @@ class DealConfirmationPdfServiceImplTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null);
 
         byte[] pdf = service.render(sparse, DealConfirmationLayout.CORPORATE);
 
         assertTrue(pdf.length > 1000);
+    }
+
+    @Test
+    void rendersEveryDeliveryModeOnBothLayouts() {
+
+        /*
+         * The particulars blocks change shape with the mode, and a null
+         * counterparty must still draw. A smoke render of each combination is
+         * what catches a block that only works for one of them.
+         */
+        for (DeliveryMode mode : DeliveryMode.values()) {
+            for (DealConfirmationLayout layout : DealConfirmationLayout.values()) {
+
+                byte[] pdf = service.render(values(mode, "2610022"), layout);
+
+                assertTrue(
+                        pdf.length > 1000,
+                        mode + " on " + layout + " should render a letter");
+            }
+        }
     }
 
     @Test
@@ -136,6 +162,11 @@ class DealConfirmationPdfServiceImplTest {
     }
 
     private DealConfirmationSheetValues values() {
+
+        return values(null, null);
+    }
+
+    private DealConfirmationSheetValues values(DeliveryMode mode, String settlementNumber) {
 
         return new DealConfirmationSheetValues(
                 LocalDate.of(2026, 10, 5),
@@ -168,7 +199,12 @@ class DealConfirmationPdfServiceImplTest {
                 new BigDecimal("1280.00"),
                 new BigDecimal("7938722.88"),
                 null,
-                new BigDecimal("12.50"));
+                new BigDecimal("12.50"),
+                null,
+                mode,
+                settlementNumber,
+                null,
+                null);
     }
 
     private DealConfirmationSheetValues gsecValues() {
@@ -204,6 +240,11 @@ class DealConfirmationPdfServiceImplTest {
                 new BigDecimal("3.57"),
                 new BigDecimal("1132.09"),
                 new BigDecimal("7.07"),
-                new BigDecimal("7.20"));
+                new BigDecimal("7.20"),
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }

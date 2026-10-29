@@ -9,7 +9,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealSummaryResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
+import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
 
@@ -27,6 +30,32 @@ public class AdminDealService {
             CreateClientDealRequest request,
             UUID employeeId) {
 
+        /*
+         * A settlement number identifies the clearing house's settlement, so a
+         * letter for ICCL or NSCCL without one would be incomplete. DEMAT has no
+         * such number.
+         */
+        if (request.modeOfDelivery() != DeliveryMode.DEMAT
+                && (request.settlementNumber() == null
+                        || request.settlementNumber().isBlank())) {
+
+            throw new BadRequestException(
+                    "Settlement number is required for " + request.modeOfDelivery());
+        }
+
+        /*
+         * A demat purchase prints our DP particulars, so which depository they
+         * belong to has to be chosen; a demat sale prints our bank particulars
+         * and needs none.
+         */
+        if (request.side() == DealSide.BUY
+                && request.modeOfDelivery() == DeliveryMode.DEMAT
+                && request.depository() == null) {
+
+            throw new BadRequestException(
+                    "Depository is required for a DEMAT buy");
+        }
+
         return dealConfirmationService
                 .createDealForClient(
                         request.clientId(),
@@ -34,7 +63,13 @@ public class AdminDealService {
                         request.numberOfLots(),
                         request.dealDate(),
                         request.sendEmail(),
-                        employeeId)
+                        employeeId,
+                        request.bankAccountId(),
+                        request.dematAccountId(),
+                        request.modeOfDelivery(),
+                        request.settlementNumber(),
+                        request.side(),
+                        request.depository())
                 .response();
     }
 

@@ -455,7 +455,7 @@ class DealConfirmationServiceTest {
     // ============================================================
 
     private CreateDealConfirmationRequest request() {
-        return new CreateDealConfirmationRequest(ISIN, 5L);
+        return new CreateDealConfirmationRequest(ISIN, 5L, null, null);
     }
 
     private DealConfirmationSheetValues sheetValues() {
@@ -479,6 +479,11 @@ class DealConfirmationServiceTest {
                 null,
                 null,
                 500L,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -528,6 +533,11 @@ class DealConfirmationServiceTest {
                         DealConfirmationDocumentData.from(
                                 projected,
                                 LocalDate.of(2026, 9, 22),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
                                 null)));
     }
 
@@ -541,6 +551,11 @@ class DealConfirmationServiceTest {
                         DealConfirmationDocumentData.from(
                                 deal,
                                 LocalDate.of(2026, 9, 22),
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
                                 null)));
     }
 

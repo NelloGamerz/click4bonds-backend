@@ -113,7 +113,7 @@ document:
     gsec-mode-of-delivery: ${DOCUMENT_ORG_GSEC_DELIVERY:Demat}
     # Left blank: this application holds neither value, and a guessed identifier
     # on a legal document is worse than an empty cell.
-    account-number: ${DOCUMENT_ORG_ACCOUNT:}
+    account-number: ${DOCUMENT_ORG_ACCOUNT:13472320000772}
     settlement-number: ${DOCUMENT_ORG_SETTLEMENT:}
     # G-Sec letter only. The committed template carries sample values in these
     # cells from whichever letter it was saved from, and the same two strings
@@ -121,9 +121,21 @@ document:
     # trusted. Blank defaults clear those cells rather than reprinting them.
     # bank-ifsc is deliberately NOT ifsc-code above: that one is the clearing
     # corporation's, and this sheet's label asks for the bank's.
-    branch-location: ${DOCUMENT_ORG_BRANCH:}
-    bank-name: ${DOCUMENT_ORG_BANK_NAME:}
-    bank-ifsc: ${DOCUMENT_ORG_BANK_IFSC:}
+    branch-location: ${DOCUMENT_ORG_BRANCH:North Ex Mall Sec-9 Rohini Delhi -110085}
+    bank-name: ${DOCUMENT_ORG_BANK_NAME:HDFC BANK LTD}
+    bank-ifsc: ${DOCUMENT_ORG_BANK_IFSC:HDFC0001347}
+    # Our demat participant, printed on a DEMAT delivery.
+    dp-name: ${DOCUMENT_ORG_DP_NAME:SHRI PARASRAM HOLDINGS PVT.LTD}
+    dp-id: ${DOCUMENT_ORG_DP_ID:IN302365}
+    client-id: ${DOCUMENT_ORG_CLIENT_ID:10762882}
+    # NSCCL: our bank particulars, then the clearing-member identifiers its
+    # counterparty block shows.
+    nscll-bank-name: ${DOCUMENT_ORG_NSCCL_BANK_NAME:RBI}
+    nscll-ifsc-code: ${DOCUMENT_ORG_NSCCL_IFSC:XNSE0000001}
+    nscll-account-number: ${DOCUMENT_ORG_NSCCL_ACCOUNT:8715106}
+    nscll-cm-bp-id: ${DOCUMENT_ORG_NSCCL_CM_BP_ID:IN568177}
+    nscll-cm-name: ${DOCUMENT_ORG_NSCCL_CM_NAME:NSE CLEARING LTD}
+    nscll-market-type: ${DOCUMENT_ORG_NSCCL_MARKET_TYPE:CORPORATE BOND}
 
 # The object store every generated file is written to.
 #
@@ -237,8 +249,6 @@ auth:
 # overrides this in application-prod.yaml with a required environment value.
 # Rotating the key makes existing ciphertext unreadable, so rotate by
 # re-encryption, not by editing this property.
-party:
-  encryption-key: ${PARTY_ENCRYPTION_KEY:Y2xpY2s0Ym9uZHMtZGV2LW9ubHktcGFydHkta2V5ISE=}
 
 management:
   metrics:

@@ -48,7 +48,7 @@ class BankAccountServiceTest {
     private static BankAccountCreateRequest request(boolean primary) {
 
         return new BankAccountCreateRequest(
-                "Test Holder", "Test Bank", "1234567890", "HDFC0001234", primary);
+                "Test Holder", "Test Bank", "Marine Lines", "1234567890", "HDFC0001234", primary);
     }
 
     @Test
@@ -87,7 +87,7 @@ class BankAccountServiceTest {
 
         assertThrows(ResourceNotFoundException.class,
                 () -> service.update(party, accountId,
-                        new BankAccountUpdateRequest(null, null, null, null, null)));
+                        new BankAccountUpdateRequest(null, null, null, null, null, null)));
     }
 
     @Test

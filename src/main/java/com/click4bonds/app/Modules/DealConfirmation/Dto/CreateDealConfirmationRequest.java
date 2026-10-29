@@ -1,5 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Dto;
 
+import java.util.UUID;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -37,6 +39,15 @@ public record CreateDealConfirmationRequest(
          */
         @NotNull(message = "Number of lots is required")
         @Positive(message = "Number of lots must be greater than 0")
-        Long numberOfLots
+        Long numberOfLots,
+
+        /**
+         * The bank account the customer chose for this deal, or null when they
+         * chose none. Must belong to their own party, which the writer checks.
+         */
+        UUID bankAccountId,
+
+        /** The demat account the customer chose, on the same terms. */
+        UUID dematAccountId
 ) {
 }

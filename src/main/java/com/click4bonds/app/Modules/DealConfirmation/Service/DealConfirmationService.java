@@ -8,7 +8,10 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
 import com.click4bonds.app.Modules.DealConfirmation.Producer.DealConfirmationDocumentProducer;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
@@ -146,6 +149,12 @@ public class DealConfirmationService {
      * @param dealDate  the date the deal is struck, or null for today
      * @param sendEmail whether the confirmation letter is emailed to the client
      * @param employeeId the authenticated staff account, recorded on the deal
+     * @param bankAccountId the client's chosen bank account, or null
+     * @param dematAccountId the client's chosen demat account, or null
+     * @param modeOfDelivery how the deal settles; decides the letter's blocks
+     * @param settlementNumber the settlement number the employee supplied
+     * @param side whether we are selling to or buying from the client
+     * @param depository the depository chosen for a demat buy, or null
      */
     public Result createDealForClient(
             UUID clientId,
@@ -153,10 +162,28 @@ public class DealConfirmationService {
             Long numberOfLots,
             LocalDate dealDate,
             boolean sendEmail,
-            UUID employeeId) {
+            UUID employeeId,
+            UUID bankAccountId,
+            UUID dematAccountId,
+            DeliveryMode modeOfDelivery,
+            String settlementNumber,
+            DealSide side,
+            Depository depository) {
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.createForClient(clientId, bondId, numberOfLots, dealDate, null, employeeId);
+                writer.createForClient(
+                        clientId,
+                        bondId,
+                        numberOfLots,
+                        dealDate,
+                        null,
+                        employeeId,
+                        bankAccountId,
+                        dematAccountId,
+                        modeOfDelivery,
+                        settlementNumber,
+                        side,
+                        depository);
 
         return new Result(complete(created, sendEmail), false);
     }

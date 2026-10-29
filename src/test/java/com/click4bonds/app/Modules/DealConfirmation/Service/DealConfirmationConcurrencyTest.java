@@ -36,6 +36,10 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRe
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Party.Repository.BankAccountRepository;
+import com.click4bonds.app.Modules.Party.Repository.DematAccountRepository;
+import com.click4bonds.app.Modules.Party.Service.PanDetailsService;
+import com.click4bonds.app.Modules.Party.Service.SecretCipher;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Repository.ClientRepository;
@@ -186,7 +190,11 @@ class DealConfirmationConcurrencyTest {
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
-                new DocumentProperties());
+                new DocumentProperties(),
+                mock(BankAccountRepository.class),
+                mock(DematAccountRepository.class),
+                mock(PanDetailsService.class),
+                mock(SecretCipher.class));
     }
 
     private Callable<String> attempt(
@@ -202,7 +210,7 @@ class DealConfirmationConcurrencyTest {
             try {
                 writer.create(
                         userId,
-                        new CreateDealConfirmationRequest(ISIN, numberOfLots),
+                        new CreateDealConfirmationRequest(ISIN, numberOfLots, null, null),
                         null);
 
                 return "SUCCESS";
@@ -214,7 +222,7 @@ class DealConfirmationConcurrencyTest {
     }
 
     private CreateDealConfirmationRequest request(long numberOfLots) {
-        return new CreateDealConfirmationRequest(ISIN, numberOfLots);
+        return new CreateDealConfirmationRequest(ISIN, numberOfLots, null, null);
     }
 
     private void stubCustomer() {
@@ -228,7 +236,7 @@ class DealConfirmationConcurrencyTest {
 
         AtomicLong issued = new AtomicLong();
 
-        lenient().when(dealReferenceGenerator.next(any()))
+        lenient().when(dealReferenceGenerator.next(any(), any()))
                 .thenAnswer(invocation ->
                         "DC-20260922-" + String.format("%06d", issued.incrementAndGet()));
     }

@@ -121,7 +121,12 @@ class DealConfirmationDocumentProducerTest {
                         11L,
                         new BigDecimal("100.00"),
                         new BigDecimal("1100.00"),
-                        DealConfirmationStatus.CREATED),
+                        DealConfirmationStatus.CREATED,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null),
                 true);
     }
 }

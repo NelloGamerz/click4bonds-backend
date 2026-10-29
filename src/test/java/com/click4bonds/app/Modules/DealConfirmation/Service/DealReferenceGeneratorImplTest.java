@@ -14,6 +14,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.click4bonds.app.Modules.Common.Exceptions.InternalServerException;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealReferenceSequenceRepository;
 
 /**
@@ -38,7 +39,15 @@ class DealReferenceGeneratorImplTest {
 
         givenCounterReads(1L);
 
-        assertEquals("2026/S/SEP/1", generator.next(DAY));
+        assertEquals("2026/S/SEP/1", generator.next(DAY, DealSide.SELL));
+    }
+
+    @Test
+    void usesBForOurPurchase() {
+
+        givenCounterReads(3L);
+
+        assertEquals("2026/B/SEP/3", generator.next(DAY, DealSide.BUY));
     }
 
     @Test
@@ -46,7 +55,7 @@ class DealReferenceGeneratorImplTest {
 
         givenCounterReads(42L);
 
-        String reference = generator.next(DAY);
+        String reference = generator.next(DAY, DealSide.SELL);
 
         assertEquals("2026/S/SEP/42", reference);
 
@@ -55,7 +64,7 @@ class DealReferenceGeneratorImplTest {
          * the same counter — otherwise two deals on different days of the month
          * could be issued the same year/S/SEP/number.
          */
-        assertEquals("2026/S/SEP/42", generator.next(LocalDate.of(2026, 9, 30)));
+        assertEquals("2026/S/SEP/42", generator.next(LocalDate.of(2026, 9, 30), DealSide.SELL));
     }
 
     @Test
@@ -63,7 +72,7 @@ class DealReferenceGeneratorImplTest {
 
         givenCounterReads(7L);
 
-        generator.next(DAY);
+        generator.next(DAY, DealSide.SELL);
 
         /*
          * The counter must be incremented before it is read, and both must happen
@@ -81,7 +90,8 @@ class DealReferenceGeneratorImplTest {
         // could hand two deals the same reference.
         when(sequenceRepository.findLastValue(any())).thenReturn(null);
 
-        assertThrows(InternalServerException.class, () -> generator.next(DAY));
+        assertThrows(InternalServerException.class,
+                () -> generator.next(DAY, DealSide.SELL));
     }
 
     private void givenCounterReads(long value) {
