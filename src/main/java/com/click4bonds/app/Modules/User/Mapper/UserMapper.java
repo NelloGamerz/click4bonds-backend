@@ -1,7 +1,11 @@
 package com.click4bonds.app.Modules.User.Mapper;
 
+import com.click4bonds.app.Modules.User.Dto.AdminProfileResponse;
+import com.click4bonds.app.Modules.User.Dto.CustomerProfileResponse;
 import com.click4bonds.app.Modules.User.Dto.UserResponse;
 import com.click4bonds.app.Modules.User.Dto.UserVerificationResponse;
+import com.click4bonds.app.Modules.User.Enums.UserRole;
+import com.click4bonds.app.Modules.User.Model.AdminProfile;
 import com.click4bonds.app.Modules.User.Model.CustomerProfile;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserVerification;
@@ -59,6 +63,15 @@ public final class UserMapper {
 
         CustomerProfile profile = user.getCustomerProfile();
 
+        /*
+         * The role decides which profile is sent, not merely which association
+         * happens to be populated: a customer answers with their customer
+         * profile, a member of staff with their admin profile, and never both.
+         */
+        boolean customer = user.getRole() == UserRole.CUSTOMER;
+
+        AdminProfile adminProfile = customer ? null : user.getAdminProfile();
+
         boolean kycCompleted =
                 profile != null && Boolean.TRUE.equals(profile.getIsKycCompleted());
 
@@ -78,6 +91,12 @@ public final class UserMapper {
                 .updatedAt(user.getUpdatedAt())
                 .isKycCompleted(profile == null ? null : profile.getIsKycCompleted())
                 .verification(toVerificationResponse(verification))
+                .customerProfile(customer && profile != null
+                        ? CustomerProfileResponse.from(profile)
+                        : null)
+                .adminProfile(adminProfile == null
+                        ? null
+                        : AdminProfileResponse.from(adminProfile))
                 .build();
     }
 

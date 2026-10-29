@@ -1,5 +1,6 @@
 package com.click4bonds.app.Modules.Admin.Service;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -10,21 +11,34 @@ import org.springframework.transaction.annotation.Transactional;
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealSummaryResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
+import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealAccrualCalculator;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
+import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional
 public class AdminDealService {
 
     private final DealConfirmationService dealConfirmationService;
     private final DealConfirmationRepository dealConfirmationRepository;
+    private final DealAccrualCalculator accrualCalculator;
+    private final DealConfirmationSheetValuesFactory sheetValuesFactory;
+    private final DocumentProperties documentProperties;
 
     public DealConfirmationResponse create(
             CreateClientDealRequest request,
@@ -88,6 +102,48 @@ public class AdminDealService {
 
         return dealConfirmationRepository
                 .findCreatedBy(employeeId, term, pageable)
-                .map(AdminDealSummaryResponse::from);
+                .map(this::toSummary);
+    }
+
+    private AdminDealSummaryResponse toSummary(DealConfirmation deal) {
+
+        return AdminDealSummaryResponse.from(
+                deal,
+                letterValues(deal),
+                DealConfirmationSheetStrategyFactory.isSovereign(
+                        deal.getBond() == null ? null : deal.getBond().getRating()));
+    }
+
+    /**
+     * The figures this deal's confirmation letter prints, computed from the bond
+     * as it stands now.
+     *
+     * <p>Best-effort, as on the create path: the factory refuses a deal with no
+     * price or no accrued interest, and one such deal must not fail the whole
+     * page. Null means the row carries no figures.</p>
+     */
+    private DealConfirmationSheetValues letterValues(DealConfirmation deal) {
+
+        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
+                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+
+        DealAccrual accrual = accrualCalculator
+                .calculate(deal.getBond(), valueDate)
+                .orElse(null);
+
+        try {
+
+            return sheetValuesFactory.build(DealConfirmationDocumentData.from(
+                    deal, valueDate, accrual, null, null, null, null, null));
+
+        } catch (RuntimeException cannotBePrinted) {
+
+            log.warn(
+                    "Letter values could not be computed for deal {}; the row carries none",
+                    deal.getDealReference(),
+                    cannotBePrinted);
+
+            return null;
+        }
     }
 }

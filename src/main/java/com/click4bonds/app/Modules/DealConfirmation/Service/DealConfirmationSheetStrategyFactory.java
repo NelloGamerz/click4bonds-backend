@@ -64,7 +64,7 @@ public class DealConfirmationSheetStrategyFactory {
      * Treating a missing rating as Sovereign would silently move unrated bonds
      * onto a letter with TDS on it.</p>
      */
-    static boolean isSovereign(String rating) {
+    public static boolean isSovereign(String rating) {
 
         return rating != null && rating.trim().equalsIgnoreCase(SOVEREIGN_RATING);
     }
