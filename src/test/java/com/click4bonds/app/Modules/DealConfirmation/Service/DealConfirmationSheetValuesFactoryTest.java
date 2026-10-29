@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
@@ -342,6 +343,15 @@ class DealConfirmationSheetValuesFactoryTest {
     }
 
     @Test
+    void callsABuyFromTheClientOurPurchase() {
+
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder.side(DealSide.BUY)));
+
+        assertEquals("Our Purchase", values.transactionType());
+    }
+
+    @Test
     void datesTheLetterTheSameDayAsTheDeal() {
 
         DealConfirmationSheetValues values = factory.build(snapshot());
@@ -437,6 +447,12 @@ class DealConfirmationSheetValuesFactoryTest {
         private BigDecimal pricePerUnit = new BigDecimal("100.0000");
         private BigDecimal totalAmount = new BigDecimal("1100.0000");
         private BigDecimal accruedInterestPerHundredFace = new BigDecimal("2.401");
+        private DealSide side;
+
+        SnapshotBuilder side(DealSide value) {
+            this.side = value;
+            return this;
+        }
 
         SnapshotBuilder numberOfLots(Long value) {
             this.numberOfLots = value;
@@ -501,7 +517,12 @@ class DealConfirmationSheetValuesFactoryTest {
                     totalQuantity,
                     pricePerUnit,
                     totalAmount,
-                    DealConfirmationStatus.CREATED);
+                    DealConfirmationStatus.CREATED,
+                    null,
+                    null,
+                    null,
+                    side,
+                    null);
         }
     }
 }

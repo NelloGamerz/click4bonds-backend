@@ -375,7 +375,12 @@ class AtSplDealConfirmationDocumentServiceTest {
                 11L,
                 new BigDecimal("100.00"),
                 new BigDecimal("1100.00"),
-                DealConfirmationStatus.CREATED);
+                DealConfirmationStatus.CREATED,
+                null,
+                null,
+                null,
+                null,
+                null);
 
         assertThrows(DocumentGenerationException.class, () -> service.generate(incomplete));
 
@@ -423,7 +428,12 @@ class AtSplDealConfirmationDocumentServiceTest {
                 noReference.totalQuantity(),
                 noReference.pricePerUnit(),
                 noReference.totalAmount(),
-                noReference.status());
+                noReference.status(),
+                noReference.counterparty(),
+                noReference.deliveryMode(),
+                noReference.settlementNumber(),
+                noReference.side(),
+                noReference.depository());
 
         assertThrows(
                 DocumentGenerationException.class,
@@ -496,6 +506,11 @@ class AtSplDealConfirmationDocumentServiceTest {
                 11L,
                 new BigDecimal("100.00"),
                 new BigDecimal("1100.00"),
-                DealConfirmationStatus.CREATED);
+                DealConfirmationStatus.CREATED,
+                null,
+                null,
+                null,
+                null,
+                null);
     }
 }

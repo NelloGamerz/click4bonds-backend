@@ -7,14 +7,15 @@ import java.util.Locale;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Common.Exceptions.InternalServerException;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealReferenceSequenceRepository;
 
 import lombok.RequiredArgsConstructor;
 
 /**
  * Allocates {@code 2026/S/OCT/144}-style deal references: year, side of the
- * trade ({@code S} for our sale), month, and the deal's number within that
- * month.
+ * trade ({@code S} for our sale, {@code B} for our purchase), month, and the
+ * deal's number within that month.
  *
  * <p>The sequence comes from the {@code deal_reference_sequences} table and not
  * from a timestamp or an in-memory counter: a timestamp can repeat within the
@@ -35,9 +36,6 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DealReferenceGeneratorImpl implements DealReferenceGenerator {
 
-    /** Side of the trade: every deal this application writes is our sale. */
-    private static final String SALE = "S";
-
     /** Month in the reference, e.g. {@code OCT}. */
     private static final DateTimeFormatter MONTH_PART =
             DateTimeFormatter.ofPattern("MMM", Locale.ENGLISH);
@@ -47,7 +45,7 @@ public class DealReferenceGeneratorImpl implements DealReferenceGenerator {
     private final DealReferenceSequenceRepository sequenceRepository;
 
     @Override
-    public String next(LocalDate sequenceDate) {
+    public String next(LocalDate sequenceDate, DealSide side) {
 
         /*
          * The reference has no day in it, so the counter is per month. Keying it
@@ -75,7 +73,7 @@ public class DealReferenceGeneratorImpl implements DealReferenceGenerator {
         return String.format(
                 SEQUENCE_FORMAT,
                 sequenceMonth.getYear(),
-                SALE,
+                side == DealSide.BUY ? "B" : "S",
                 sequenceMonth.format(MONTH_PART).toUpperCase(Locale.ENGLISH),
                 lastValue);
     }

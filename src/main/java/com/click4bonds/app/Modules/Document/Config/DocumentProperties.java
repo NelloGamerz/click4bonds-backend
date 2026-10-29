@@ -155,6 +155,9 @@ public class DocumentProperties {
          * letter would be a different document with a different sheet.</p>
          */
         private String transactionType = "Our Sale";
+
+        /** The same, for a deal where we are buying from the client. */
+        private String purchaseTransactionType = "Our Purchase";
     }
 
     /** Who we are, as printed on the letter. */
@@ -216,5 +219,51 @@ public class DocumentProperties {
          * the clearing corporation's code wherever a bank's belongs.</p>
          */
         private String bankIfsc = "HDFC0001347";
+
+        /*
+         * Our demat participant, printed when a DEMAT delivery is confirmed.
+         * These identify the account the securities move from; they are not
+         * credentials.
+         */
+
+        /** DEMAT letter only. */
+        private String dpName = "SHRI PARASRAM HOLDINGS PVT.LTD";
+
+        /** DEMAT letter only; the NSDL participant id. */
+        private String dpId = "IN302365";
+
+        /** DEMAT letter only; the NSDL client id. */
+        private String clientId = "10762882";
+
+        /** DEMAT buy letter only; the CDSL participant id. */
+        private String cdslDpId = "12058200";
+
+        /** DEMAT buy letter only; the CDSL client id. */
+        private String cdslClientId = "00025221";
+
+        /*
+         * NSCCL particulars. Our bank details differ from the DEMAT and ICCL
+         * letters', so they are separate keys rather than sharing bank-name and
+         * account-number. The cm-* keys are the clearing-member identifiers the
+         * counterparty block shows; they are the same for every NSCCL deal.
+         */
+
+        /** NSCCL letter only. */
+        private String nscllBankName = "RBI";
+
+        /** NSCCL letter only. */
+        private String nscllIfscCode = "XNSE0000001";
+
+        /** NSCCL letter only. */
+        private String nscllAccountNumber = "8715106";
+
+        /** NSCCL letter only. */
+        private String nscllCmBpId = "IN568177";
+
+        /** NSCCL letter only. */
+        private String nscllCmName = "NSE CLEARING LTD";
+
+        /** NSCCL letter only. */
+        private String nscllMarketType = "CORPORATE BOND";
     }
 }

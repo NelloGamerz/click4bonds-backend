@@ -101,6 +101,18 @@ public class PanDetailsService {
                         secretCipher.decrypt(details.getPanNumber())));
     }
 
+    /**
+     * The stored PAN in plaintext, for a document that has to print it.
+     *
+     * <p>The only caller is the deal confirmation letter. Nothing may log the
+     * result or put it on an API response.</p>
+     */
+    public Optional<String> plainPan(Party party) {
+
+        return panDetailsRepository.findByParty(party)
+                .map(details -> secretCipher.decrypt(details.getPanNumber()));
+    }
+
     public boolean isVerified(Party party) {
 
         return panDetailsRepository.findByParty(party)

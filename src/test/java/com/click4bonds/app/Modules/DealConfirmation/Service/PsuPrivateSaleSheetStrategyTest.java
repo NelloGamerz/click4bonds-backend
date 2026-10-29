@@ -9,6 +9,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
@@ -125,28 +126,22 @@ class PsuPrivateSaleSheetStrategyTest {
     }
 
     @Test
-    void leavesTheIdentifiersThisApplicationDoesNotHold() {
+    void writesTheCustomersPanAndClearsTheUnheldOurOwnCells() {
 
         Map<String, Object> cells = strategy.toCells(values());
 
         /*
-         * "Your PAN" is a customer-side identifier and this application has no
-         * source for it — User carries only a panStatus, not a number. It is not
-         * in the map at all, so the cell keeps whatever the template has (empty).
-         * Writing a configured default here would put a PAN we cannot vouch for
-         * on a legal document.
+         * "Your PAN" is the counterparty's own identifier, taken from the party
+         * behind the deal and written to D30.
          */
-        assertFalse(
-                cells.containsKey("D30"),
-                "the customer's PAN has no source and must be left alone");
+        assertEquals("AAKCP1234C", cells.get("D30"));
 
         /*
-         * Account number and settlement number are the same story: the clearing
-         * house issues settlement numbers per deal, and no account number is
-         * held anywhere. They are written as blanks, which clears whatever
-         * sample value the template was saved with.
+         * Account number comes from the configured organisation; the settlement
+         * number is issued per deal and is configured blank, which clears
+         * whatever sample value the template was saved with.
          */
-        assertEquals("", cells.get("D33"));
+        assertEquals("13472320000772", cells.get("D33"));
         assertEquals("", cells.get("B34"));
     }
 
@@ -162,6 +157,7 @@ class PsuPrivateSaleSheetStrategyTest {
          */
         assertEquals("Counterparty Name- Test Customer", cells.get("A7"));
         assertEquals("Counterparty Name- Test Customer", cells.get("C39"));
+        assertEquals("ADD. 1 Marine Drive, Mumbai", cells.get("A8"));
     }
 
     @Test
@@ -222,6 +218,13 @@ class PsuPrivateSaleSheetStrategyTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                new CounterpartyDetails(
+                        "AAKCP1234C", "Acme Broking", "IN300001", "12345678", "HDFC Bank",
+                        "1 Marine Drive, Mumbai", null, null, null),
                 null,
                 null,
                 null,

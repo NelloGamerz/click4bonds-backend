@@ -13,6 +13,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
@@ -28,7 +29,7 @@ import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationExceptio
  * <p>Two things here are specific to this sheet and easy to get wrong: it
  * <em>deducts</em> TDS where the corporate sheet <em>adds</em> stamp duty, and the
  * customer's own identifiers (Your PAN, Your Dp Name, DP ID, CLIENT ID) sit in
- * columns C and D and must be left for the customer.</p>
+ * column D beside their column C labels.</p>
  */
 class GsecSellSheetStrategyTest {
 
@@ -156,6 +157,11 @@ class GsecSellSheetStrategyTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
                 null);
 
         DocumentGenerationException failure = assertThrows(
@@ -217,35 +223,27 @@ class GsecSellSheetStrategyTest {
     }
 
     @Test
-    void writesOurParticularsButNotTheCustomersIdentifiers() {
+    void writesOurParticularsAndTheCustomersIdentifiers() {
 
         Map<String, Object> cells = strategy.toCells(values());
 
         assertEquals("All Time Securities pvt. Ltd.", cells.get("C31"));
         assertEquals("AAHCA7743E", cells.get("B32"));
+        assertEquals("ADD. 1 Marine Drive, Mumbai", cells.get("A8"));
 
-        /*
-         * Branch, bank, bank IFSC and account number are configured blank, and
-         * written as blanks on purpose — that is what clears the sample values the
-         * template was saved with. Omitting them would let the template's own
-         * branch and bank details print on a customer's letter.
-         */
-        assertEquals("", cells.get("B33"));
-        assertEquals("", cells.get("B34"));
-        assertEquals("", cells.get("B35"));
-        assertEquals("", cells.get("B36"));
+        assertEquals("North Ex Mall Sec-9 Rohini Delhi -110085", cells.get("B33"));
+        assertEquals("HDFC BANK LTD", cells.get("B34"));
+        assertEquals("HDFC0001347", cells.get("B35"));
+        assertEquals("13472320000772", cells.get("B36"));
 
         /*
          * D32:D35 hold the customer's PAN, demat account name, DP ID and client
-         * ID. This application holds none of them; the letter leaves them blank
-         * for the customer to complete.
+         * ID, taken from the party behind the deal.
          */
-        for (String address : new String[] { "D32", "D33", "D34", "D35" }) {
-
-            assertFalse(
-                    cells.containsKey(address),
-                    address + " is the customer's own identifier and must be left alone");
-        }
+        assertEquals("AAKCP1234C", cells.get("D32"));
+        assertEquals("Acme Broking", cells.get("D33"));
+        assertEquals("IN300001", cells.get("D34"));
+        assertEquals("12345678", cells.get("D35"));
     }
 
     @Test
@@ -345,6 +343,18 @@ class GsecSellSheetStrategyTest {
                 new BigDecimal("3.57"),
                 new BigDecimal("1132.09"),
                 new BigDecimal("7.07"),
-                new BigDecimal("7.20"));
+                new BigDecimal("7.20"),
+                counterparty(),
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private static CounterpartyDetails counterparty() {
+
+        return new CounterpartyDetails(
+                "AAKCP1234C", "Acme Broking", "IN300001", "12345678", "HDFC Bank",
+                "1 Marine Drive, Mumbai", null, null, null);
     }
 }

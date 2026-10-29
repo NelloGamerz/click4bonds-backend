@@ -3,6 +3,11 @@ package com.click4bonds.app.Modules.DealConfirmation.Dto;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /**
  * The values a deal confirmation letter prints, independent of where they go.
  *
@@ -118,6 +123,29 @@ public record DealConfirmationSheetValues(
         BigDecimal gsecTds,
         BigDecimal gsecTotalConsiderationAmount,
         BigDecimal semiYtm,
-        BigDecimal annualYtm
+        BigDecimal annualYtm,
+
+        /**
+         * The counterparty's PAN, demat and bank particulars, or null.
+         *
+         * <p>Kept off the JSON response: the letter prints the full PAN, but the
+         * platform has never returned one in plaintext on an API response — the
+         * party endpoints mask it. The deal response carries every figure a
+         * customer needs to read; the PAN is the one it does not.</p>
+         */
+        @JsonIgnore
+        CounterpartyDetails counterparty,
+
+        /** Which settlement route the letter describes; null when not chosen. */
+        DeliveryMode deliveryMode,
+
+        /** The settlement number printed in our particulars; null when none. */
+        String settlementNumber,
+
+        /** Which side of the trade we are on; null is treated as our sale. */
+        DealSide side,
+
+        /** The depository whose demat identifiers we print on a buy; null when none. */
+        Depository depository
 ) {
 }

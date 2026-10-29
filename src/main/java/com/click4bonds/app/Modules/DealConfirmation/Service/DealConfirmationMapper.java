@@ -4,10 +4,14 @@ import java.time.LocalDate;
 
 import org.springframework.stereotype.Component;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
 
 /**
  * Entity to DTO mapping for {@link DealConfirmation}.
@@ -42,8 +46,15 @@ public class DealConfirmationMapper {
     public DealConfirmationDocumentData toDocumentData(
             DealConfirmation deal,
             LocalDate valueDate,
-            DealAccrual accrual) {
+            DealAccrual accrual,
+            CounterpartyDetails counterparty,
+            DeliveryMode deliveryMode,
+            String settlementNumber,
+            DealSide side,
+            Depository depository) {
 
-        return DealConfirmationDocumentData.from(deal, valueDate, accrual);
+        return DealConfirmationDocumentData.from(
+                deal, valueDate, accrual, counterparty, deliveryMode, settlementNumber,
+                side, depository);
     }
 }

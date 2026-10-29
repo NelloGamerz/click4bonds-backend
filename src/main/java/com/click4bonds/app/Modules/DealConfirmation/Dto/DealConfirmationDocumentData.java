@@ -6,7 +6,10 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
 import com.click4bonds.app.Modules.User.Model.User;
 
 /**
@@ -101,7 +104,32 @@ public record DealConfirmationDocumentData(
 
         BigDecimal totalAmount,
 
-        DealConfirmationStatus status
+        DealConfirmationStatus status,
+
+        /**
+         * The counterparty's PAN, demat and bank particulars as they stood when
+         * the deal was struck, or null when none could be resolved.
+         */
+        CounterpartyDetails counterparty,
+
+        /** How a back-office deal settles; null on a customer-placed deal. */
+        DeliveryMode deliveryMode,
+
+        /** The employee-supplied settlement number; null on a customer deal. */
+        String settlementNumber,
+
+        /**
+         * Which side of the trade we are on. {@code SELL} (our sale) for a
+         * customer deal and for a back-office sale; {@code BUY} (our purchase)
+         * when the employee is buying from the client.
+         */
+        DealSide side,
+
+        /**
+         * The depository whose demat identifiers we print on a buy; null unless
+         * the employee chose one.
+         */
+        Depository depository
 ) {
 
     /**
@@ -118,11 +146,21 @@ public record DealConfirmationDocumentData(
      *                  when they could not be determined. Null is a normal
      *                  outcome, not an error: the document step declines to
      *                  generate a letter rather than printing blanks.
+     * @param counterparty the chosen party particulars, or null
+     * @param deliveryMode how a back-office deal settles, or null
+     * @param settlementNumber the employee-supplied settlement number, or null
+     * @param side which side of the trade we are on
+     * @param depository the depository chosen for a demat buy, or null
      */
     public static DealConfirmationDocumentData from(
             DealConfirmation deal,
             LocalDate valueDate,
-            DealAccrual accrual) {
+            DealAccrual accrual,
+            CounterpartyDetails counterparty,
+            DeliveryMode deliveryMode,
+            String settlementNumber,
+            DealSide side,
+            Depository depository) {
 
         var bond = deal.getBond();
 
@@ -158,7 +196,12 @@ public record DealConfirmationDocumentData(
                 deal.getTotalQuantity(),
                 deal.getPricePerUnit(),
                 deal.getTotalAmount(),
-                deal.getStatus());
+                deal.getStatus(),
+                counterparty,
+                deliveryMode,
+                settlementNumber,
+                side,
+                depository);
     }
 
     /**

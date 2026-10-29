@@ -17,6 +17,9 @@ public record BankAccountUpdateRequest(
         @Size(max = 255, message = "Bank name must not exceed 255 characters")
         String bankName,
 
+        @Size(max = 255, message = "Branch location must not exceed 255 characters")
+        String branchLocation,
+
         @Pattern(regexp = "^[0-9]{6,20}$", message = "Account number must be 6 to 20 digits")
         String accountNumber,
 

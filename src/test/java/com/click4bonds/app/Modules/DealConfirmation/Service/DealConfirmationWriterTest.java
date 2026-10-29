@@ -25,10 +25,20 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
+import com.click4bonds.app.Modules.Party.Model.BankAccount;
+import com.click4bonds.app.Modules.Party.Model.DematAccount;
+import com.click4bonds.app.Modules.Party.Model.Party;
+import com.click4bonds.app.Modules.Party.Repository.BankAccountRepository;
+import com.click4bonds.app.Modules.Party.Repository.DematAccountRepository;
+import com.click4bonds.app.Modules.Party.Service.PanDetailsService;
+import com.click4bonds.app.Modules.Party.Service.SecretCipher;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
@@ -74,6 +84,18 @@ class DealConfirmationWriterTest {
     @Mock
     private DealAccrualCalculator accrualCalculator;
 
+    @Mock
+    private BankAccountRepository bankAccountRepository;
+
+    @Mock
+    private DematAccountRepository dematAccountRepository;
+
+    @Mock
+    private PanDetailsService panDetailsService;
+
+    @Mock
+    private SecretCipher secretCipher;
+
     private DealConfirmationWriter writer;
 
     @BeforeEach
@@ -86,7 +108,11 @@ class DealConfirmationWriterTest {
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
-                new DocumentProperties());
+                new DocumentProperties(),
+                bankAccountRepository,
+                dematAccountRepository,
+                panDetailsService,
+                secretCipher);
     }
 
     // ============================================================
@@ -216,7 +242,7 @@ class DealConfirmationWriterTest {
 
         writer.create(
                 USER_ID,
-                new CreateDealConfirmationRequest("ine123a01016", 5L),
+                new CreateDealConfirmationRequest("ine123a01016", 5L, null, null),
                 null);
 
         Mockito.verify(bondService).findBond(ISIN);
@@ -356,7 +382,19 @@ class DealConfirmationWriterTest {
         givenSaveReturnsItsArgument();
 
         DealConfirmationWriter.CreatedDeal created =
-                writer.createForClient(client.getId(), bond.getId(), 5L, dealDate, null, USER_ID);
+                writer.createForClient(
+                        client.getId(),
+                        bond.getId(),
+                        5L,
+                        dealDate,
+                        null,
+                        USER_ID,
+                        null,
+                        null,
+                        DeliveryMode.ICCL,
+                        "2610022",
+                        DealSide.SELL,
+                        null);
 
         // The deal belongs to the client, not to any account.
         Mockito.verify(dealConfirmationRepository).save(
@@ -369,6 +407,134 @@ class DealConfirmationWriterTest {
         assertEquals("Acme Ltd", created.documentData().customerName());
         assertEquals("ops@acme.example", created.documentData().customerEmail());
         assertEquals(dealDate, created.documentData().dealDate());
+    }
+
+    @Test
+    void fillsTheLettersCounterpartyDetailsFromTheChosenAccounts() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        Party party = Party.builder()
+                .id(UUID.randomUUID())
+                .legalName("Acme Ltd")
+                .address("1 Marine Drive, Mumbai")
+                .build();
+
+        Client client = Client.builder()
+                .id(UUID.randomUUID())
+                .name("Acme Ltd")
+                .email("ops@acme.example")
+                .party(party)
+                .build();
+
+        BankAccount bank = BankAccount.builder()
+                .id(UUID.randomUUID())
+                .bankName("HDFC Bank")
+                .branchLocation("Marine Lines")
+                .ifscCode("HDFC0001234")
+                .accountNumber("cipher")
+                .build();
+
+        DematAccount demat = DematAccount.builder()
+                .id(UUID.randomUUID())
+                .accountHolderName("Acme Broking")
+                .dpId("IN300001")
+                .clientId("12345678")
+                .build();
+
+        Mockito.when(clientRepository.findById(client.getId()))
+                .thenReturn(Optional.of(client));
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(customer());
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(bond);
+        Mockito.when(bondService.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
+                .thenReturn(1);
+        Mockito.when(bankAccountRepository.findByIdAndParty(bank.getId(), party))
+                .thenReturn(Optional.of(bank));
+        Mockito.when(dematAccountRepository.findByIdAndParty(demat.getId(), party))
+                .thenReturn(Optional.of(demat));
+        Mockito.when(panDetailsService.plainPan(party))
+                .thenReturn(Optional.of("AAKCP1234C"));
+        Mockito.when(secretCipher.decrypt("cipher"))
+                .thenReturn("123456789");
+        givenReference("2026/S/OCT/1");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created = writer.createForClient(
+                client.getId(),
+                bond.getId(),
+                5L,
+                LocalDate.of(2026, 10, 1),
+                null,
+                USER_ID,
+                bank.getId(),
+                demat.getId(),
+                DeliveryMode.DEMAT,
+                null,
+                DealSide.SELL,
+                null);
+
+        CounterpartyDetails details = created.documentData().counterparty();
+
+        assertEquals("AAKCP1234C", details.pan());
+        assertEquals("Acme Broking", details.dpName());
+        assertEquals("IN300001", details.dpId());
+        assertEquals("12345678", details.clientId());
+        assertEquals("HDFC Bank", details.bankName());
+        assertEquals("1 Marine Drive, Mumbai", details.address());
+        assertEquals("Marine Lines", details.bankBranchLocation());
+        assertEquals("HDFC0001234", details.bankIfsc());
+        assertEquals("123456789", details.bankAccountNumber());
+        assertEquals(DeliveryMode.DEMAT, created.documentData().deliveryMode());
+    }
+
+    @Test
+    void refusesAChosenAccountThatDoesNotBelongToTheClient() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        Party party = Party.builder()
+                .id(UUID.randomUUID())
+                .legalName("Acme Ltd")
+                .build();
+
+        Client client = Client.builder()
+                .id(UUID.randomUUID())
+                .name("Acme Ltd")
+                .party(party)
+                .build();
+
+        UUID someoneElsesBank = UUID.randomUUID();
+
+        Mockito.when(clientRepository.findById(client.getId()))
+                .thenReturn(Optional.of(client));
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(customer());
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(bond);
+        Mockito.when(bankAccountRepository.findByIdAndParty(someoneElsesBank, party))
+                .thenReturn(Optional.empty());
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> writer.createForClient(
+                        client.getId(),
+                        bond.getId(),
+                        5L,
+                        LocalDate.of(2026, 10, 1),
+                        null,
+                        USER_ID,
+                        someoneElsesBank,
+                        null,
+                        DeliveryMode.ICCL,
+                        "2610022",
+                        DealSide.SELL,
+                        null));
+
+        // Nothing was reserved: the account was rejected before the UPDATE ran.
+        Mockito.verify(bondService, Mockito.never())
+                .reserveQuantity(Mockito.any(), Mockito.any());
     }
 
     // ============================================================
@@ -560,7 +726,7 @@ class DealConfirmationWriterTest {
     // ============================================================
 
     private CreateDealConfirmationRequest request(long numberOfLots) {
-        return new CreateDealConfirmationRequest(ISIN, numberOfLots);
+        return new CreateDealConfirmationRequest(ISIN, numberOfLots, null, null);
     }
 
     /**
@@ -622,7 +788,7 @@ class DealConfirmationWriterTest {
     }
 
     private void givenReference(String reference) {
-        Mockito.when(dealReferenceGenerator.next(any(LocalDate.class)))
+        Mockito.when(dealReferenceGenerator.next(any(LocalDate.class), any(DealSide.class)))
                 .thenReturn(reference);
     }
 

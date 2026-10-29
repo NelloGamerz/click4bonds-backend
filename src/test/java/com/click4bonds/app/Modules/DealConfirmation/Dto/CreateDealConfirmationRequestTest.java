@@ -44,14 +44,14 @@ class CreateDealConfirmationRequestTest {
     @Test
     void acceptsAWellFormedRequest() {
 
-        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 5L))
+        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 5L, null, null))
                 .isEmpty());
     }
 
     @Test
     void acceptsTheMinimumNumberOfLots() {
 
-        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 1L))
+        assertTrue(violationsOf(new CreateDealConfirmationRequest("INE123A01016", 1L, null, null))
                 .isEmpty());
     }
 
@@ -62,19 +62,19 @@ class CreateDealConfirmationRequestTest {
     @Test
     void rejectsMissingIsin() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest(null, 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest(null, 5L, null, null)));
     }
 
     @Test
     void rejectsBlankIsin() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest("   ", 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest("   ", 5L, null, null)));
     }
 
     @Test
     void rejectsIsinLongerThanTheBondApiAllows() {
 
-        assertTrue(rejects("isin", new CreateDealConfirmationRequest("INE123A01016X", 5L)));
+        assertTrue(rejects("isin", new CreateDealConfirmationRequest("INE123A01016X", 5L, null, null)));
     }
 
     // ============================================================
@@ -84,26 +84,26 @@ class CreateDealConfirmationRequestTest {
     @Test
     void rejectsZeroLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 0L)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", 0L, null, null)));
     }
 
     @Test
     void rejectsNegativeLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", -5L)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", -5L, null, null)));
     }
 
     @Test
     void rejectsMissingNumberOfLots() {
 
-        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", null)));
+        assertTrue(rejects("numberOfLots", new CreateDealConfirmationRequest("INE123A01016", null, null, null)));
     }
 
     @Test
     void reportsEveryBrokenFieldAtOnce() {
 
         Set<ConstraintViolation<CreateDealConfirmationRequest>> violations =
-                violationsOf(new CreateDealConfirmationRequest("", 0L));
+                violationsOf(new CreateDealConfirmationRequest("", 0L, null, null));
 
         assertEquals(2, violations.size());
     }

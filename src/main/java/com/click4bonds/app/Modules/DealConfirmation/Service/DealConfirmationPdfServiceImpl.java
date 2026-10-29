@@ -13,7 +13,11 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 import com.lowagie.text.Chunk;
@@ -52,11 +56,11 @@ import lombok.extern.slf4j.Slf4j;
  * only decides where each one is printed and how it is formatted. That is what
  * keeps the letter and the deal from disagreeing about what was charged.</p>
  *
- * <p><strong>Values this application does not hold print as an em dash.</strong>
- * The customer's PAN, DP name, DP ID, client ID and bank account have no source
- * anywhere in the platform, so the letter shows {@code —} in their place rather
- * than inventing one. A placeholder reads as "not recorded"; a guess on a
- * contract does not.</p>
+ * <p><strong>A counterparty value this application does not hold prints as an
+ * em dash.</strong> The PAN, DP name, DP ID, client ID and bank name come from
+ * the party behind the deal, chosen by the caller at creation. A party that has
+ * not recorded one shows {@code —} rather than a guess: a placeholder reads as
+ * "not recorded", a guess on a contract does not.</p>
  *
  * <p><strong>The letterhead image is optional.</strong> A missing classpath
  * resource degrades to a letter without its masthead and logs the reason; it is
@@ -223,7 +227,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
             addCounterparty(document, values);
             addBondAndDealTerms(document, values, layout);
-            addOurDetails(document, layout);
+            addOurDetails(document, layout, values);
             addCustomerDetails(document, values);
             addDisclaimer(document);
             addSignatures(document, values);
@@ -268,9 +272,12 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         layout.setWidthPercentage(100f);
 
         PdfPCell left = borderless();
+        CounterpartyDetails party = values.counterparty();
+
         left.addElement(label("Counterparty"));
         left.addElement(name(values.counterpartyName()));
-        left.addElement(muted("Address: " + NONE, 9.2f));
+        left.addElement(muted(
+                "Address: " + (party == null ? NONE : text(party.address())), 9.2f));
         layout.addCell(left);
 
         PdfPCell right = borderless();
@@ -329,9 +336,10 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
          * A government security settles in demat form, not through the clearing
          * corporation the corporate letter names.
          */
-        String modeOfDelivery = layout == DealConfirmationLayout.GSEC
-                ? properties.getOrganisation().getGsecModeOfDelivery()
-                : values.modeOfDelivery();
+        String modeOfDelivery = values.deliveryMode() == null
+                && layout == DealConfirmationLayout.GSEC
+                        ? properties.getOrganisation().getGsecModeOfDelivery()
+                        : values.modeOfDelivery();
 
         addKeyValue(rows, "Mode of delivery", text(modeOfDelivery));
         addKeyValue(rows, "Deal date", date(values.dealDate()));
@@ -409,7 +417,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         return block;
     }
 
-    private void addOurDetails(Document document, DealConfirmationLayout layout)
+    private void addOurDetails(
+            Document document, DealConfirmationLayout layout, DealConfirmationSheetValues values)
             throws DocumentException {
 
         DocumentProperties.Organisation organisation = properties.getOrganisation();
@@ -447,7 +456,55 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable stats = stats(4);
 
-        if (layout == DealConfirmationLayout.GSEC) {
+        /*
+         * An employee-chosen delivery mode decides which particulars we print.
+         * A customer-placed deal has none and keeps the layout's own block.
+         */
+        if (values.deliveryMode() == DeliveryMode.DEMAT && values.side() == DealSide.BUY) {
+
+            /*
+             * A demat buy prints the depository the employee chose: our DP
+             * particulars move securities in, and the bank account is the same
+             * for both depositories.
+             */
+            boolean cdsl = values.depository() == Depository.CDSL;
+
+            addStatLabels(stats, "Our DP name", "Our DP ID", "Our Client ID", "Bank Name");
+            addStatValues(
+                    stats,
+                    text(organisation.getDpName()),
+                    text(cdsl ? organisation.getCdslDpId() : organisation.getDpId()),
+                    text(cdsl ? organisation.getCdslClientId() : organisation.getClientId()),
+                    text(organisation.getBankName()));
+
+            addStatLabels(stats, "Account No.", "", "", "");
+            addStatValues(stats, text(organisation.getAccountNumber()), "", "", "");
+
+        } else if (values.deliveryMode() == DeliveryMode.DEMAT) {
+
+            /*
+             * A demat sale prints the bank account the consideration is paid
+             * into, not our demat identifiers.
+             */
+            addStatLabels(stats, "Branch Location", "Our Bank Name", "IFSC Code", "Account No.");
+            addStatValues(
+                    stats,
+                    text(organisation.getBranchLocation()),
+                    text(organisation.getBankName()),
+                    text(organisation.getBankIfsc()),
+                    text(organisation.getAccountNumber()));
+
+        } else if (values.deliveryMode() == DeliveryMode.NSCCL) {
+
+            addStatLabels(stats, "Bank Name", "IFSC Code", "Account No.", "Settlement no.");
+            addStatValues(
+                    stats,
+                    text(organisation.getNscllBankName()),
+                    text(organisation.getNscllIfscCode()),
+                    text(organisation.getNscllAccountNumber()),
+                    text(values.settlementNumber()));
+
+        } else if (values.deliveryMode() == null && layout == DealConfirmationLayout.GSEC) {
 
             /*
              * The G-Sec letter asks for bank-side particulars rather than the
@@ -470,7 +527,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     text(organisation.getCmBpId()),
                     text(organisation.getCmName()),
                     text(organisation.getMarketType()),
-                    text(organisation.getSettlementNumber()));
+                    text(values.settlementNumber()));
 
             addStatLabels(stats, "IFSC code", "Banker", "", "");
             addStatValues(
@@ -488,6 +545,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private void addCustomerDetails(Document document, DealConfirmationSheetValues values)
             throws DocumentException {
+
+        CounterpartyDetails party = values.counterparty();
 
         PdfPTable block = column();
 
@@ -509,7 +568,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph panLabel = label("Your PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
-        Paragraph panValue = new Paragraph(NONE, REGULAR.at(10.5f, NAVY));
+        Paragraph panValue = new Paragraph(
+                party == null ? NONE : text(party.pan()), REGULAR.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
         panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
@@ -521,8 +581,39 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable stats = stats(4);
 
-        addStatLabels(stats, "Your DP name", "DP ID", "Client ID", "HDFC Bank Limited");
-        addStatValues(stats, NONE, NONE, NONE, NONE);
+        if (values.deliveryMode() == DeliveryMode.DEMAT) {
+
+            addStatLabels(
+                    stats, "Your Bank Branch Location", "Your Bank Name", "IFSC Code", "Account No.");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.bankBranchLocation()),
+                    party == null ? NONE : text(party.bankName()),
+                    party == null ? NONE : text(party.bankIfsc()),
+                    party == null ? NONE : text(party.bankAccountNumber()));
+
+        } else if (values.deliveryMode() == DeliveryMode.NSCCL) {
+
+            DocumentProperties.Organisation organisation = properties.getOrganisation();
+
+            addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "");
+            addStatValues(
+                    stats,
+                    text(organisation.getNscllCmBpId()),
+                    text(organisation.getNscllCmName()),
+                    text(organisation.getNscllMarketType()),
+                    "");
+
+        } else {
+
+            addStatLabels(stats, "Your DP name", "DP ID", "Client ID", "Bank Name");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.dpName()),
+                    party == null ? NONE : text(party.dpId()),
+                    party == null ? NONE : text(party.clientId()),
+                    party == null ? NONE : text(party.bankName()));
+        }
 
         addBlock(block, stats);
 

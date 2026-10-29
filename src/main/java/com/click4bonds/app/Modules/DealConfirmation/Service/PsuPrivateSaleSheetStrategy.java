@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
+import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,10 +25,10 @@ import lombok.RequiredArgsConstructor;
  * another in C/D. Only values are written — never labels — so the letter's
  * wording stays the template's business.</p>
  *
- * <p>Cells the customer fills in by hand are deliberately absent. The letter
- * prints "Your PAN", "DP ID", "CLIENT ID" and "Your Dp Name" with nothing after
- * them, because this application holds none of those values and inventing a
- * default would put a wrong identifier on a legal document.</p>
+ * <p>The customer's PAN is written to D30 when the counterparty's party has one
+ * recorded, and the cell is left alone when it has none. "DP ID", "CLIENT ID"
+ * and "Your Dp Name" have no cell on this sheet — they are drawn by the PDF
+ * letter instead.</p>
  *
  * <p>This class computes nothing. The arithmetic is
  * {@link DealConfirmationSheetValuesFactory}'s and is shared with every other
@@ -67,6 +68,18 @@ public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrateg
     @Override
     public Map<String, Object> toCells(DealConfirmationSheetValues values) {
 
+        /*
+         * The workbook has the customer-placed layout only. An employee-chosen
+         * delivery mode prints different blocks on both sides, which this sheet
+         * has no cells for — refusing is what keeps a DEMAT letter from carrying
+         * ICCL particulars. The PDF letter draws all three.
+         */
+        if (values.deliveryMode() != null) {
+            throw new DocumentGenerationException(
+                    "The spreadsheet fallback cannot lay out a " + values.deliveryMode()
+                            + " delivery; the PDF letter is required");
+        }
+
         DocumentProperties.Organisation organisation =
                 documentProperties.getOrganisation();
 
@@ -83,6 +96,14 @@ public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrateg
          */
         cells.put("A7", values.counterpartyLine());
         cells.put("C39", values.counterpartyLine());
+
+        /*
+         * A8 is the merged address line under the name. The template's "ADD."
+         * stays as its caption; only the address is added.
+         */
+        if (values.counterparty() != null && values.counterparty().address() != null) {
+            cells.put("A8", "ADD. " + values.counterparty().address());
+        }
 
         // ---- Deal terms ----------------------------------------------------
         cells.put("C12", values.transactionType());
@@ -121,6 +142,11 @@ public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrateg
         cells.put("D33", organisation.getAccountNumber());
         cells.put("B34", organisation.getSettlementNumber());
         cells.put("D34", organisation.getBanker());
+
+        // ---- The customer's own identifiers ---------------------------------
+        if (values.counterparty() != null && values.counterparty().pan() != null) {
+            cells.put("D30", values.counterparty().pan());
+        }
 
         return cells;
     }

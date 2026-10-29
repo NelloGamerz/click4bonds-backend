@@ -15,13 +15,24 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
+import com.click4bonds.app.Modules.Party.Model.BankAccount;
+import com.click4bonds.app.Modules.Party.Model.DematAccount;
+import com.click4bonds.app.Modules.Party.Model.Party;
+import com.click4bonds.app.Modules.Party.Repository.BankAccountRepository;
+import com.click4bonds.app.Modules.Party.Repository.DematAccountRepository;
+import com.click4bonds.app.Modules.Party.Service.PanDetailsService;
+import com.click4bonds.app.Modules.Party.Service.SecretCipher;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
 import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
@@ -66,6 +77,10 @@ public class DealConfirmationWriter {
     private final DealConfirmationMapper mapper;
     private final DealAccrualCalculator accrualCalculator;
     private final DocumentProperties documentProperties;
+    private final BankAccountRepository bankAccountRepository;
+    private final DematAccountRepository dematAccountRepository;
+    private final PanDetailsService panDetailsService;
+    private final SecretCipher secretCipher;
 
     /** A created deal, paired with the snapshot its document will be built from. */
     public record CreatedDeal(
@@ -123,7 +138,17 @@ public class DealConfirmationWriter {
                 request.numberOfLots(),
                 LocalDate.now());
 
-        return commit(context, request.numberOfLots(), idempotencyKey, null);
+        return commit(
+                context,
+                request.numberOfLots(),
+                idempotencyKey,
+                null,
+                request.bankAccountId(),
+                request.dematAccountId(),
+                null,
+                null,
+                DealSide.SELL,
+                null);
     }
 
     /**
@@ -135,7 +160,15 @@ public class DealConfirmationWriter {
      *
      * @param idempotencyKey may be null; a back-office deal never sends one
      * @param employeeId the staff account creating the deal
-     * @throws ResourceNotFoundException client or bond does not exist
+     * @param bankAccountId the client's chosen bank account, or null
+     * @param dematAccountId the client's chosen demat account, or null
+     * @param deliveryMode  how the deal settles; decides the letter's blocks
+     * @param settlementNumber the clearing house's number, supplied by the
+     *                         employee for ICCL and NSCCL
+     * @param side whether we are selling to or buying from the client
+     * @param depository the depository chosen for a demat buy, or null
+     * @throws ResourceNotFoundException client, bond, or a chosen account does
+     *                                   not exist for that client
      * @throws BadRequestException       bond is not purchasable, or the
      *                                   quantities overflow
      * @throws ConflictException         the bond does not have enough units left
@@ -147,7 +180,13 @@ public class DealConfirmationWriter {
             Long numberOfLots,
             LocalDate dealDate,
             String idempotencyKey,
-            UUID employeeId) {
+            UUID employeeId,
+            UUID bankAccountId,
+            UUID dematAccountId,
+            DeliveryMode deliveryMode,
+            String settlementNumber,
+            DealSide side,
+            Depository depository) {
 
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -164,7 +203,17 @@ public class DealConfirmationWriter {
                 numberOfLots,
                 dealDate == null ? LocalDate.now() : dealDate);
 
-        return commit(context, numberOfLots, idempotencyKey, createdBy);
+        return commit(
+                context,
+                numberOfLots,
+                idempotencyKey,
+                createdBy,
+                bankAccountId,
+                dematAccountId,
+                deliveryMode,
+                settlementNumber,
+                side,
+                depository);
     }
 
     /**
@@ -176,9 +225,23 @@ public class DealConfirmationWriter {
             PurchaseContext context,
             Long numberOfLots,
             String idempotencyKey,
-            User createdBy) {
+            User createdBy,
+            UUID bankAccountId,
+            UUID dematAccountId,
+            DeliveryMode deliveryMode,
+            String settlementNumber,
+            DealSide side,
+            Depository depository) {
 
         Bond bond = context.bond();
+
+        /*
+         * Resolved before anything is reserved: an account that does not belong
+         * to this counterparty is a bad request, not a reason to take units and
+         * put them back.
+         */
+        CounterpartyDetails counterparty =
+                counterpartyDetails(context, bankAccountId, dematAccountId);
 
         /*
          * THE oversell guard. One conditional UPDATE, evaluated by PostgreSQL
@@ -220,7 +283,7 @@ public class DealConfirmationWriter {
                 context,
                 numberOfLots,
                 idempotencyKey,
-                dealReferenceGenerator.next(context.dealDate()),
+                dealReferenceGenerator.next(context.dealDate(), side),
                 createdBy);
 
         DealConfirmation saved = dealConfirmationRepository.save(deal);
@@ -249,7 +312,15 @@ public class DealConfirmationWriter {
          */
         return new CreatedDeal(
                 mapper.toResponse(saved),
-                mapper.toDocumentData(saved, context.valueDate(), accrual));
+                mapper.toDocumentData(
+                        saved,
+                        context.valueDate(),
+                        accrual,
+                        counterparty,
+                        deliveryMode,
+                        settlementNumber,
+                        side,
+                        depository));
     }
 
     /**
@@ -305,6 +376,11 @@ public class DealConfirmationWriter {
                 .calculate(context.bond(), context.valueDate())
                 .orElse(null);
 
+        CounterpartyDetails counterparty = counterpartyDetails(
+                context,
+                request.bankAccountId(),
+                request.dematAccountId());
+
         DealConfirmation projected = buildDeal(
                 context,
                 request.numberOfLots(),
@@ -328,7 +404,15 @@ public class DealConfirmationWriter {
 
         return new CreatedDeal(
                 mapper.toResponse(projected),
-                mapper.toDocumentData(projected, context.valueDate(), accrual));
+                mapper.toDocumentData(
+                        projected,
+                        context.valueDate(),
+                        accrual,
+                        counterparty,
+                        null,
+                        null,
+                        DealSide.SELL,
+                        null));
     }
 
     // =========================================================
@@ -591,6 +675,69 @@ public class DealConfirmationWriter {
                         : pricePerUnit.multiply(BigDecimal.valueOf(context.totalQuantity())))
                 .idempotencyKey(idempotencyKey)
                 .build();
+    }
+
+    /**
+     * The counterparty's party particulars for the letter.
+     *
+     * <p>The party is the client's for a back-office deal and the customer's
+     * profile's for a purchase. A chosen account that does not belong to that
+     * party is refused rather than silently ignored: the caller asked for a
+     * specific account, and printing a different one on a contract would be
+     * worse than failing.</p>
+     *
+     * @return null when the counterparty has no party, so no particulars
+     */
+    private CounterpartyDetails counterpartyDetails(
+            PurchaseContext context,
+            UUID bankAccountId,
+            UUID dematAccountId) {
+
+        Party party = partyOf(context);
+
+        if (party == null) {
+
+            if (bankAccountId != null || dematAccountId != null) {
+                throw new ResourceNotFoundException(
+                        "The counterparty has no party, so no account can belong to it");
+            }
+
+            return null;
+        }
+
+        DematAccount demat = dematAccountId == null
+                ? null
+                : dematAccountRepository.findByIdAndParty(dematAccountId, party)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Demat account not found for this deal: " + dematAccountId));
+
+        BankAccount bank = bankAccountId == null
+                ? null
+                : bankAccountRepository.findByIdAndParty(bankAccountId, party)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Bank account not found for this deal: " + bankAccountId));
+
+        return new CounterpartyDetails(
+                panDetailsService.plainPan(party).orElse(null),
+                demat == null ? null : demat.getAccountHolderName(),
+                demat == null ? null : demat.getDpId(),
+                demat == null ? null : demat.getClientId(),
+                bank == null ? null : bank.getBankName(),
+                party.getAddress(),
+                bank == null ? null : bank.getBranchLocation(),
+                bank == null ? null : bank.getIfscCode(),
+                bank == null ? null : secretCipher.decrypt(bank.getAccountNumber()));
+    }
+
+    private Party partyOf(PurchaseContext context) {
+
+        if (context.customer() != null) {
+            return context.customer().getCustomerProfile() == null
+                    ? null
+                    : context.customer().getCustomerProfile().getParty();
+        }
+
+        return context.client() == null ? null : context.client().getParty();
     }
 
     /**

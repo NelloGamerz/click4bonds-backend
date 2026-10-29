@@ -64,6 +64,16 @@ public class BankAccount {
     @Column(name = "bank_name", nullable = false)
     private String bankName;
 
+    /**
+     * The branch the account is held at, as the customer supplies it.
+     *
+     * <p>Nullable: an account can be recorded before its branch is known, and a
+     * missing branch prints as an em dash on the confirmation letter rather than
+     * blocking the deal.</p>
+     */
+    @Column(name = "branch_location")
+    private String branchLocation;
+
     /** Ciphertext. Never log or return this value. */
     @Column(name = "account_number", nullable = false, columnDefinition = "text")
     private String accountNumber;

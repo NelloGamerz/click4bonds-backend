@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
@@ -208,8 +209,12 @@ public class DealConfirmationSheetValuesFactory {
                 snapshot.dealReference(),
                 counterpartyName,
                 "Counterparty Name- " + counterpartyName,
-                documentProperties.getDeal().getTransactionType(),
-                documentProperties.getOrganisation().getModeOfDelivery(),
+                snapshot.side() == DealSide.BUY
+                        ? documentProperties.getDeal().getPurchaseTransactionType()
+                        : documentProperties.getDeal().getTransactionType(),
+                snapshot.deliveryMode() != null
+                        ? snapshot.deliveryMode().name()
+                        : documentProperties.getOrganisation().getModeOfDelivery(),
                 dealDate,
                 snapshot.valueDate(),
                 snapshot.isin(),
@@ -234,7 +239,14 @@ public class DealConfirmationSheetValuesFactory {
                 gsec == null ? null : gsec.tds(),
                 gsec == null ? null : gsec.totalConsiderationAmount(),
                 snapshot.semiYtm(),
-                snapshot.annualYtm());
+                snapshot.annualYtm(),
+                snapshot.counterparty(),
+                snapshot.deliveryMode(),
+                snapshot.settlementNumber() != null && !snapshot.settlementNumber().isBlank()
+                        ? snapshot.settlementNumber()
+                        : documentProperties.getOrganisation().getSettlementNumber(),
+                snapshot.side(),
+                snapshot.depository());
     }
 
     /**
