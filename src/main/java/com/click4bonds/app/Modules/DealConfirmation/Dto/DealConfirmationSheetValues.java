@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Dto;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
@@ -148,4 +149,21 @@ public record DealConfirmationSheetValues(
         /** The depository whose demat identifiers we print on a buy; null when none. */
         Depository depository
 ) {
+
+    /**
+     * The number of units in one lot — the letter's "Lot size".
+     *
+     * <p>Derived rather than carried as its own component: the factory sets
+     * {@code quantum} to exactly {@code quantityPerLot x numberOfBonds}, so the
+     * division recovers the per-lot size without a second source of truth.</p>
+     */
+    public Long lotSize() {
+
+        if (quantum == null || numberOfBonds == null || numberOfBonds == 0) {
+            return null;
+        }
+
+        return quantum.divide(BigDecimal.valueOf(numberOfBonds), 0, RoundingMode.HALF_UP)
+                .longValueExact();
+    }
 }
