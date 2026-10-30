@@ -35,6 +35,7 @@ import com.lowagie.text.pdf.ColumnText;
 import com.lowagie.text.pdf.PdfContentByte;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPCellEvent;
+import com.lowagie.text.pdf.PdfPRow;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
@@ -102,11 +103,16 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     /** The registered entity, as printed in the letter and its metadata. */
     private static final String LEGAL_NAME = "All Time Securities Pvt. Ltd.";
 
-    private static final String FOOTER_LINE =
-            "Plot No 83-84, Pocket D-14, Shiva Road, Sector-8, Rohini, Delhi-110085"
-                    + "   ·   +91-11-47012101"
-                    + "   ·   alltime@alltime.co.in"
-                    + "   ·   www.alltime.co.in";
+    /*
+     * The address bar's four particulars, each drawn with its own icon. Split
+     * into fields rather than one string so an icon can sit before each.
+     */
+    private static final String[] FOOTER_ITEMS = {
+            "Plot No 83-84, Pocket D-14, Shiva Road, Sector-8, Rohini, Delhi-110085",
+            "+91-11-47012102",
+            "alltime@alltime.co.in",
+            "www.alltime.co.in"
+    };
 
     /*
      * The palette: deep navy for emphasis, cyan for accents, very light blue for
@@ -139,11 +145,27 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private static final Color TOTAL_BG = new Color(0xD9, 0xEF, 0xF9);
 
     private static final Color FOOTER_BG = new Color(0xF3, 0xF8, 0xFD);
-    private static final Color FOOTER_TEXT = new Color(0x3B, 0x55, 0x73);
+    private static final Color FOOTER_TEXT = Color.BLACK;
 
     /** How far a card's corners are rounded, and how heavy its outline is. */
     private static final float CARD_RADIUS = 8f;
     private static final float CARD_BORDER_WIDTH = 0.8f;
+
+    /**
+     * Row padding for the bond-details card, wider than the deal-terms 2.5 so
+     * it fills the height the longer deal-terms card sets — but no wider, or
+     * the letter spills onto a second page.
+     */
+    private static final float BOND_ROW_PADDING = 4.2f;
+
+    /*
+     * The border: a rule along the top edge, rules down both sides and along
+     * the foot, all joined at the corners. Every rule is flush to the physical
+     * page edge.
+     */
+    private static final Color BORDER_ORANGE = new Color(0xF4, 0x77, 0x00);
+    private static final Color BORDER_CYAN = new Color(0x00, 0xBC, 0xE4);
+    private static final float BORDER_WIDTH = 5f;
 
     /**
      * The typefaces. Helvetica is one of the fourteen fonts every PDF reader
@@ -300,6 +322,11 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         layout.addCell(right);
 
+        Paragraph cin = new Paragraph("CIN - U67100DL2009PTC191597", REGULAR.at(7.5f, MUTED));
+        cin.setAlignment(Element.ALIGN_RIGHT);
+        cin.setSpacingAfter(2f);
+
+        document.add(cin);
         document.add(fullWidthCard(layout));
         document.add(intro());
     }
@@ -351,6 +378,20 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         addKeyValue(rows, "Put / Call", putCall(values.putCallDescription()));
         addKeyValue(rows, "Interest payment date", text(values.ipDateDescription()));
 
+        /*
+         * This card has fewer rows than deal terms, which also carries a total
+         * band. The extra row padding spreads the difference across the fields
+         * so the two cards end together instead of leaving a blank foot.
+         */
+        for (PdfPRow row : rows.getRows()) {
+            for (PdfPCell cell : row.getCells()) {
+                if (cell != null) {
+                    cell.setPaddingTop(BOND_ROW_PADDING);
+                    cell.setPaddingBottom(BOND_ROW_PADDING);
+                }
+            }
+        }
+
         addBlock(block, rows);
 
         return block;
@@ -383,6 +424,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             addKeyValue(rows, "YTM", percent(values.annualYtm()));
         }
 
+        addKeyValue(rows, "Lot size", quantity(values.lotSize()));
         addKeyValue(rows, "No. of bonds", quantity(values.numberOfBonds()));
         addKeyValue(rows, "Quantum", money(values.quantum()));
         addKeyValue(rows, "Principal amount", money(values.principalAmount()));
@@ -429,7 +471,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         heading.setWidthPercentage(100f);
 
         PdfPCell beneficiary = borderless();
-        beneficiary.addElement(label("Our details · Beneficiary name"));
+        beneficiary.addElement(sectionTitle("Our details · Beneficiary name"));
 
         Paragraph beneficiaryName = new Paragraph(
                 text(organisation.getBeneficiaryName()),
@@ -441,7 +483,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPCell pan = borderless();
         pan.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph panLabel = label("Our PAN");
+        Paragraph panLabel = keyLabel("Our PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
         Paragraph panValue = new Paragraph(text(organisation.getPan()), EMPHASIS.at(10.5f, NAVY));
@@ -554,7 +596,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         heading.setWidthPercentage(100f);
 
         PdfPCell name = borderless();
-        name.addElement(label("Customer details · Name"));
+        name.addElement(sectionTitle("Customer details · Name"));
 
         Paragraph customerName = new Paragraph(
                 text(values.counterpartyName()),
@@ -565,11 +607,11 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPCell pan = borderless();
         pan.setHorizontalAlignment(Element.ALIGN_RIGHT);
-        Paragraph panLabel = label("Your PAN");
+        Paragraph panLabel = keyLabel("Your PAN");
         panLabel.setAlignment(Element.ALIGN_RIGHT);
         pan.addElement(panLabel);
         Paragraph panValue = new Paragraph(
-                party == null ? NONE : text(party.pan()), REGULAR.at(10.5f, NAVY));
+                party == null ? NONE : text(party.pan()), EMPHASIS.at(10.5f, NAVY));
         panValue.setAlignment(Element.ALIGN_RIGHT);
         panValue.setSpacingBefore(1f);
         pan.addElement(panValue);
@@ -637,10 +679,11 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     /**
      * The signature block is deliberately only captions and clear space.
      *
-     * <p>The letter is signed by hand, so there are no signature graphics,
-     * rules or "Authorised Signatory" labels: the customer and the company each
-     * get an unbroken area in which to sign. The counterparty's name remains
-     * beneath their space so the signed letter still identifies them.</p>
+     * <p>The letter is signed by hand, so there are no signature graphics or
+     * rules: the customer and the company each get an unbroken area in which to
+     * sign. Under each area sits its caption — "Authorised Signatory" for the
+     * company, and the counterparty's name above "Authorised Signatory" for the
+     * customer — so the signed letter still identifies both sides.</p>
      */
     private void addSignatures(Document document, DealConfirmationSheetValues values)
             throws DocumentException {
@@ -649,18 +692,17 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         signatures.setWidthPercentage(100f);
         signatures.setSpacingBefore(9f);
 
-        signatures.addCell(signatureText("for " + LEGAL_NAME));
+        signatures.addCell(signatureText("For " + LEGAL_NAME));
         signatures.addCell(empty());
         signatures.addCell(signatureText("We Confirm the transaction as specified above"));
 
         signatures.addCell(signatureSpace());
         signatures.addCell(empty());
-        signatures.addCell(signatureSpace());
+        signatures.addCell(signatureSpace(text(values.counterpartyName())));
 
+        signatures.addCell(signatureText("Authorised Signatory"));
         signatures.addCell(empty());
-        signatures.addCell(empty());
-        signatures.addCell(signatureText(
-                "Counterparty Name- " + text(values.counterpartyName())));
+        signatures.addCell(signatureText("Authorised Signatory"));
 
         document.add(signatures);
     }
@@ -697,7 +739,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     private Paragraph intro() {
 
         Paragraph paragraph = new Paragraph(
-                "Respected Madam/Sir, we hereby confirm the following transaction:",
+                "Respected Sir/Madam, we hereby confirm the following transaction:",
                 REGULAR.at(10f, MUTED));
 
         paragraph.setSpacingBefore(7f);
@@ -712,6 +754,38 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         Paragraph paragraph = new Paragraph(
                 text.toUpperCase(Locale.ENGLISH),
                 REGULAR.at(7f, NAVY_SOFT));
+
+        paragraph.setSpacingBefore(0f);
+        paragraph.setSpacingAfter(0f);
+
+        return paragraph;
+    }
+
+    /**
+     * The banner title of the Our-details and Customer-details cards, a touch
+     * stronger than the ordinary field label so the section reads first.
+     */
+    private Paragraph sectionTitle(String text) {
+
+        Paragraph paragraph = new Paragraph(
+                text.toUpperCase(Locale.ENGLISH),
+                EMPHASIS.at(8f, NAVY));
+
+        paragraph.setSpacingBefore(0f);
+        paragraph.setSpacingAfter(0f);
+
+        return paragraph;
+    }
+
+    /**
+     * A field label in the Our-details and Customer-details cards: upper-case
+     * navy bold, so the key stands out from the figure beneath it.
+     */
+    private Paragraph keyLabel(String text) {
+
+        Paragraph paragraph = new Paragraph(
+                text.toUpperCase(Locale.ENGLISH),
+                EMPHASIS.at(7.2f, NAVY));
 
         paragraph.setSpacingBefore(0f);
         paragraph.setSpacingAfter(0f);
@@ -868,8 +942,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         keyCell.setBorder(Rectangle.BOTTOM);
         keyCell.setBorderColor(DIVIDER);
         keyCell.setBorderWidth(0.6f);
-        keyCell.setPaddingTop(2.7f);
-        keyCell.setPaddingBottom(2.7f);
+        keyCell.setPaddingTop(2.5f);
+        keyCell.setPaddingBottom(2.5f);
         keyCell.setPaddingLeft(0f);
         keyCell.setPaddingRight(3f);
 
@@ -877,8 +951,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         valueCell.setBorder(Rectangle.BOTTOM);
         valueCell.setBorderColor(DIVIDER);
         valueCell.setBorderWidth(0.6f);
-        valueCell.setPaddingTop(2.7f);
-        valueCell.setPaddingBottom(2.7f);
+        valueCell.setPaddingTop(2.5f);
+        valueCell.setPaddingBottom(2.5f);
         valueCell.setPaddingLeft(3f);
         valueCell.setPaddingRight(0f);
         valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -904,7 +978,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             cell.setPaddingBottom(0f);
 
             if (!heading.isEmpty()) {
-                cell.addElement(label(heading));
+                cell.addElement(keyLabel(heading));
             }
 
             table.addCell(cell);
@@ -969,15 +1043,18 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         return table;
     }
 
-    private PdfPCell signatureText(String text) {
+    private PdfPCell signatureText(String... lines) {
 
         PdfPCell cell = borderless();
         cell.setPaddingTop(2f);
 
-        Paragraph paragraph = new Paragraph(text, EMPHASIS.at(9.2f, NAVY));
-        paragraph.setSpacingBefore(0f);
+        for (String line : lines) {
 
-        cell.addElement(paragraph);
+            Paragraph paragraph = new Paragraph(line, EMPHASIS.at(9.2f, NAVY));
+            paragraph.setSpacingBefore(0f);
+
+            cell.addElement(paragraph);
+        }
 
         return cell;
     }
@@ -989,6 +1066,27 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                 FontFactory.HELVETICA, 1f)));
         cell.setBorder(Rectangle.NO_BORDER);
         cell.setFixedHeight(34f);
+
+        return cell;
+    }
+
+    /**
+     * The signing space with the counterparty's name set at its foot, directly
+     * above the caption — so both "Authorised Signatory" captions below stay on
+     * one line and the signature area keeps its height.
+     */
+    private PdfPCell signatureSpace(String nameAbove) {
+
+        PdfPCell cell = new PdfPCell();
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setPadding(0f);
+        cell.setFixedHeight(34f);
+        cell.setVerticalAlignment(Element.ALIGN_BOTTOM);
+
+        Paragraph paragraph = new Paragraph(nameAbove, EMPHASIS.at(9.2f, NAVY));
+        paragraph.setSpacingBefore(3f);
+        paragraph.setSpacingAfter(0f);
+        cell.addElement(paragraph);
 
         return cell;
     }
@@ -1118,6 +1216,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             canvas.fill();
 
             drawFooter(canvas, page);
+            drawBorder(canvas, page);
         }
 
         /** White page, two pale blue washes, corner rings and the watermark. */
@@ -1166,6 +1265,46 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         }
 
         /**
+         * The border: a rule on the top edge, rules down both sides and along
+         * the foot, joined at all four corners.
+         *
+         * <p>Each rule is centred half its own width inside the page, so it is
+         * fully visible yet touches the physical edge with no white gap. Drawn
+         * on the normal canvas, after the footer, so the full-bleed address bar
+         * cannot paint over the bottom rule.</p>
+         */
+        private static void drawBorder(PdfContentByte canvas, Rectangle page) {
+
+            float width = page.getWidth();
+            float height = page.getHeight();
+            float half = BORDER_WIDTH / 2f;
+
+            canvas.saveState();
+            canvas.setLineWidth(BORDER_WIDTH);
+            canvas.setLineCap(PdfContentByte.LINE_CAP_BUTT);
+            canvas.setColorStroke(BORDER_CYAN);
+
+            /* Top: full width, flush to the edge. */
+            canvas.moveTo(0f, height - half);
+            canvas.lineTo(width, height - half);
+            canvas.stroke();
+
+            /* Sides: full height, meeting the top and bottom rules at the corners. */
+            canvas.moveTo(half, half);
+            canvas.lineTo(half, height - half);
+            canvas.moveTo(width - half, half);
+            canvas.lineTo(width - half, height - half);
+            canvas.stroke();
+
+            /* Bottom: full width, flush to the edge. */
+            canvas.moveTo(0f, half);
+            canvas.lineTo(width, half);
+            canvas.stroke();
+
+            canvas.restoreState();
+        }
+
+        /**
          * Paints a vertical blue wash as a stack of hairline bands.
          *
          * <p>{@code bottom} is where the wash begins and {@code height} how far
@@ -1198,7 +1337,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * ratio));
         }
 
-        /** The address bar: a pale blue band under a navy/cyan rule. */
+        /** The address bar: a pale blue band under a black rule. */
         private static void drawFooter(PdfContentByte canvas, Rectangle page) {
 
             float width = page.getWidth();
@@ -1207,22 +1346,117 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             canvas.rectangle(0f, FOOTER_BOTTOM_GAP, width, FOOTER_HEIGHT);
             canvas.fill();
 
-            canvas.setColorFill(NAVY);
+            canvas.setColorFill(Color.BLACK);
             canvas.rectangle(0f, FOOTER_BOTTOM_GAP + FOOTER_HEIGHT - 1f, width, 1f);
             canvas.fill();
 
-            canvas.setColorFill(CYAN);
-            canvas.rectangle(
-                    0f, FOOTER_BOTTOM_GAP + FOOTER_HEIGHT - 1f, width * 0.28f, 1f);
-            canvas.fill();
+            drawFooterLine(canvas, width);
+        }
 
-            ColumnText.showTextAligned(
-                    canvas,
-                    Element.ALIGN_CENTER,
-                    new Phrase(FOOTER_LINE, REGULAR.at(7.5f, FOOTER_TEXT)),
-                    width / 2f,
-                    FOOTER_BOTTOM_GAP + (FOOTER_HEIGHT - 7.5f) / 2f + 1f,
-                    0f);
+        private static final String[] FOOTER_ICONS = {
+                "/icons/location.png",
+                "/icons/phone.png",
+                "/icons/email.png",
+                "/icons/website.png"
+        };
+
+        private static final float FOOTER_ICON_SIZE = 7f;
+        private static final float FOOTER_ICON_GAP = 2.5f;
+        private static final float FOOTER_SEPARATOR_PAD = 5f;
+
+        /**
+         * Draws the particulars as one centred line, an icon before each field.
+         *
+         * <p>The widths are measured from the font so the line stays centred
+         * however the address, number or domain changes.</p>
+         */
+        private static void drawFooterLine(PdfContentByte canvas, float width) {
+
+            Font font = REGULAR.at(7.5f, FOOTER_TEXT);
+            float size = 7.5f;
+            String separator = "·";
+            float separatorWidth = textWidth(separator, font, size);
+
+            float[] widths = new float[FOOTER_ITEMS.length];
+            float total = 0f;
+
+            for (int i = 0; i < FOOTER_ITEMS.length; i++) {
+                widths[i] = textWidth(FOOTER_ITEMS[i], font, size);
+                total += FOOTER_ICON_SIZE + FOOTER_ICON_GAP + widths[i];
+            }
+
+            total += (FOOTER_ITEMS.length - 1)
+                    * (2 * FOOTER_SEPARATOR_PAD + separatorWidth);
+
+            float baseline = FOOTER_BOTTOM_GAP + (FOOTER_HEIGHT - size) / 2f + 1f;
+            float cursor = (width - total) / 2f;
+
+            for (int i = 0; i < FOOTER_ITEMS.length; i++) {
+
+                drawFooterIcon(canvas, i, cursor, baseline);
+                cursor += FOOTER_ICON_SIZE + FOOTER_ICON_GAP;
+
+                ColumnText.showTextAligned(
+                        canvas, Element.ALIGN_LEFT,
+                        new Phrase(FOOTER_ITEMS[i], font), cursor, baseline, 0f);
+                cursor += widths[i];
+
+                if (i < FOOTER_ITEMS.length - 1) {
+
+                    cursor += FOOTER_SEPARATOR_PAD;
+                    ColumnText.showTextAligned(
+                            canvas, Element.ALIGN_LEFT,
+                            new Phrase(separator, font), cursor, baseline, 0f);
+                    cursor += separatorWidth + FOOTER_SEPARATOR_PAD;
+                }
+            }
+        }
+
+        private static float textWidth(String text, Font font, float size) {
+
+            return font.getBaseFont().getWidthPoint(text, size);
+        }
+
+        /**
+         * Places one footer icon from {@code src/main/resources/icons}.
+         *
+         * <p>Scaled to fit the icon box without distorting it and drawn flush
+         * with the text baseline. A missing or undecodable icon is skipped: the
+         * address line still identifies us, so it is not worth failing a letter
+         * over.</p>
+         */
+        private static void drawFooterIcon(PdfContentByte canvas, int index, float x, float baseline) {
+
+            String resource = FOOTER_ICONS[index];
+
+            try (InputStream stream =
+                         DealConfirmationPdfServiceImpl.class.getResourceAsStream(resource)) {
+
+                if (stream == null) {
+
+                    log.warn("{} is not on the classpath, the footer shows no icon", resource);
+                    return;
+                }
+
+                Image image = Image.getInstance(stream.readAllBytes());
+
+                float scale = Math.min(
+                        FOOTER_ICON_SIZE / image.getWidth(),
+                        FOOTER_ICON_SIZE / image.getHeight());
+
+                float width = image.getWidth() * scale;
+                float height = image.getHeight() * scale;
+
+                canvas.addImage(
+                        image,
+                        width, 0f, 0f, height,
+                        x + (FOOTER_ICON_SIZE - width) / 2f,
+                        baseline - 1.5f);
+
+            } catch (IOException | DocumentException failure) {
+
+                log.warn("Could not place {}, the footer shows no icon", resource, failure);
+            }
         }
     }
 
