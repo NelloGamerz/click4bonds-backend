@@ -24,7 +24,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.click4bonds.app.Modules.Admin.Dto.AdminDealCalculationResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealSummaryResponse;
+import com.click4bonds.app.Modules.Admin.Dto.CalculateDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
@@ -74,6 +76,27 @@ public class AdminDealController {
                 .body(adminDealService.create(
                         request,
                         UUID.fromString(jwt.getSubject())));
+    }
+
+    /**
+     * Prices one deal, or solves the yield it was priced at.
+     *
+     * <p>Send exactly one of {@code price} or {@code annualYtm}; the other is
+     * calculated and both are saved on this deal. The bond's own price and yield
+     * are untouched, so a negotiated price for one client never restates the
+     * bond. The calculation is measured to the deal's value date.</p>
+     */
+    @PostMapping("/{dealId}/calculate")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<AdminDealCalculationResponse> calculateDeal(
+            @PathVariable UUID dealId,
+            @Valid @RequestBody CalculateDealPricingRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return ResponseEntity.ok(adminDealService.calculate(
+                UUID.fromString(jwt.getSubject()),
+                dealId,
+                request));
     }
 
     /**

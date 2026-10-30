@@ -37,7 +37,7 @@ import lombok.Setter;
  *
  * <p>{@link #accountNumber} holds AES-GCM ciphertext. It is written and read
  * only through {@code BankAccountService} and {@code SecretCipher}; responses
- * carry a masked form. The IFSC is stored and returned as-is: it identifies a
+ * carry it decrypted. The IFSC is stored and returned as-is: it identifies a
  * branch, not an account.</p>
  */
 @Entity

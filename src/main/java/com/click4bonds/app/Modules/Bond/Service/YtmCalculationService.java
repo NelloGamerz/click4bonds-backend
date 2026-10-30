@@ -79,6 +79,33 @@ public interface YtmCalculationService {
     BigDecimal previewAnnualYtm(Bond bond, LocalDate calculationDate);
 
     /**
+     * The annual YTM a bond yields when bought at {@code pricePercentage}, as of
+     * a date, calculated but not stored.
+     *
+     * <p>
+     * The same cash flows and the same day count as {@link #previewAnnualYtm},
+     * except that the purchase leg is priced at the caller's figure rather than
+     * the bond's stored price. This is what lets a deal be priced — a negotiated
+     * price, or one quoted for that one client — without restating the bond's own
+     * market price or yield.
+     *
+     * <p>
+     * Nothing is written to the bond, which is why an {@code annualYtm} set from
+     * this method is the caller's to keep (see {@code DealConfirmation}).
+     *
+     * @param bond            the bond to calculate YTM for
+     * @param calculationDate the settlement/calculation date to use
+     * @param pricePercentage the clean price to buy at, as a percentage of par,
+     *                        e.g. {@code 98.94}
+     * @return the annual YTM as a percentage to 4 decimals
+     * @throws IllegalArgumentException if an argument is {@code null}
+     * @throws IllegalStateException    if XIRR cannot be solved
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ConflictException
+     *         when the bond has no future cash flow to yield
+     */
+    BigDecimal previewAnnualYtm(Bond bond, LocalDate calculationDate, BigDecimal pricePercentage);
+
+    /**
      * The semi-annual equivalent of an annual yield: the rate that, compounded
      * twice a year, produces the same annual growth.
      *

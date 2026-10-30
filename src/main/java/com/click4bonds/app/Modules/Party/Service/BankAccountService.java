@@ -32,8 +32,8 @@ import lombok.extern.slf4j.Slf4j;
  * transactions racing for primary both clear, and the second insert fails
  * against the index instead of leaving two primaries.</p>
  *
- * <p>Account numbers are encrypted at rest and masked in responses, and are
- * never logged.</p>
+ * <p>Account numbers are encrypted at rest and decrypted when a response is
+ * built, and are never logged.</p>
  */
 @Service
 @RequiredArgsConstructor

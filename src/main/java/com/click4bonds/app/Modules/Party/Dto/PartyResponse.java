@@ -10,7 +10,7 @@ import com.click4bonds.app.Modules.Party.Model.Party;
 /**
  * A party as an API caller sees it, with its financial records summarized.
  *
- * <p>PAN and bank account numbers in the nested responses are masked. The
+ * <p>PAN and bank account numbers in the nested responses are decrypted. The
  * entity is never serialized directly.</p>
  */
 public record PartyResponse(

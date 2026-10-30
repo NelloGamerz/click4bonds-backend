@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.context.annotation.Lazy;
@@ -11,9 +12,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
+import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 
 @Service
 public class YtmCalculationServiceImpl implements YtmCalculationService {
+
+    /** Scale for the clean price in rupees, matching {@link BondFaceValue}. */
+    private static final int PURCHASE_SCALE = 10;
 
     private final BondCashFlowService bondCashFlowService;
     private final XirrCalculator xirrCalculator;
@@ -75,6 +80,51 @@ public class YtmCalculationServiceImpl implements YtmCalculationService {
          * platform would have stored had that date been today.
          */
         return toAnnualYtmPercentage(annualYtmDecimal(bond, calculationDate));
+    }
+
+    @Override
+    public BigDecimal previewAnnualYtm(
+            Bond bond,
+            LocalDate calculationDate,
+            BigDecimal pricePercentage) {
+
+        validateBond(bond);
+
+        if (calculationDate == null) {
+            throw new IllegalArgumentException("Calculation date cannot be null");
+        }
+
+        if (pricePercentage == null) {
+            throw new IllegalArgumentException("Price cannot be null");
+        }
+
+        List<XirrCalculator.CashFlow> receipts =
+                bondCashFlowService.generateReceiptCashFlows(bond, calculationDate);
+
+        if (receipts.isEmpty()) {
+            throw new ConflictException(
+                    "Bond has no future cash flow to yield: isin=" + bond.getIsin());
+        }
+
+        /*
+         * The only leg that differs from generateCashFlows(): the purchase is
+         * priced at the caller's figure instead of the bond's stored price, so a
+         * deal struck at its own price never moves the bond's quoted yield. The
+         * receipts and the accrual come from the same services, on the same day
+         * count, so the two directions still agree.
+         */
+        BigDecimal cleanPrice = pricePercentage
+                .multiply(BondFaceValue.of(bond))
+                .divide(BondFaceValue.PAR, PURCHASE_SCALE, RoundingMode.HALF_UP);
+
+        BigDecimal purchase = cleanPrice.add(
+                bondCashFlowService.accruedInterestCharged(bond, calculationDate));
+
+        List<XirrCalculator.CashFlow> cashFlows = new ArrayList<>(receipts);
+        cashFlows.add(new XirrCalculator.CashFlow(calculationDate, purchase.negate()));
+
+        return toAnnualYtmPercentage(
+                xirrCalculator.calculate(cashFlows, BondDayCountBasis.of(bond)));
     }
 
     /**

@@ -37,8 +37,8 @@ import lombok.Setter;
  * <p>{@link #panNumber} holds AES-GCM ciphertext (base64 of IV + ciphertext +
  * tag), never plaintext. It is written and read only through
  * {@code PanDetailsService} and {@code SecretCipher}; nothing outside those
- * classes should log, compare or serialize it. API responses carry a masked
- * form.</p>
+ * classes should log, compare or serialize it. API responses carry the
+ * decrypted form.</p>
  *
  * <p>{@link #status} is this record's verification state. It is intentionally
  * separate from {@code UserVerification.panStatus}, which remains the onboarding

@@ -53,15 +53,14 @@ class PanDetailsServiceTest {
     }
 
     @Test
-    void aSubmittedPanIsStoredEncryptedPendingAndMaskedInTheResponse() {
+    void aSubmittedPanIsStoredEncryptedPendingAndReturnedDecrypted() {
 
         when(repository.findByParty(party)).thenReturn(Optional.empty());
 
         PanDetailsResponse response = service.submit(party, "aaapz1234c");
 
         assertEquals(VerificationStatus.PENDING, response.status());
-        assertEquals("AA*******C", response.maskedPanNumber());
-        assertNotEquals("AAAPZ1234C", response.maskedPanNumber());
+        assertEquals("AAAPZ1234C", response.panNumber());
     }
 
     @Test
@@ -92,7 +91,7 @@ class PanDetailsServiceTest {
 
         assertEquals(VerificationStatus.VERIFIED, response.status());
         assertNotNull(response.verifiedAt());
-        assertEquals("AA*******C", response.maskedPanNumber());
+        assertEquals("AAAPZ9999C", response.panNumber());
     }
 
     @Test

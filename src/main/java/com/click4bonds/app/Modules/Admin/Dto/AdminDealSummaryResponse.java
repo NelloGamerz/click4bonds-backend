@@ -26,6 +26,13 @@ public record AdminDealSummaryResponse(
         Long totalQuantity,
         BigDecimal pricePerUnit,
         BigDecimal totalAmount,
+
+        /** The yield saved for this deal, or null until one is calculated. */
+        BigDecimal annualYtm,
+
+        /** The semi-annual equivalent of {@link #annualYtm}. */
+        BigDecimal semiYtm,
+
         DealConfirmationStatus status,
         LocalDate dealDate,
         Instant createdAt,
@@ -69,6 +76,8 @@ public record AdminDealSummaryResponse(
                 deal.getTotalQuantity(),
                 deal.getPricePerUnit(),
                 deal.getTotalAmount(),
+                deal.getAnnualYtm(),
+                deal.getSemiYtm(),
                 deal.getStatus(),
                 deal.getDealDate(),
                 deal.getCreatedAt(),

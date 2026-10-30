@@ -4,16 +4,15 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.click4bonds.app.Modules.Party.Model.BankAccount;
-import com.click4bonds.app.Modules.Party.Service.SecretCipher;
 import com.click4bonds.app.Modules.User.Enums.VerificationStatus;
 
-/** A bank account with the account number masked. */
+/** A bank account with its account number decrypted for the caller. */
 public record BankAccountResponse(
         UUID id,
         String accountHolderName,
         String bankName,
         String branchLocation,
-        String maskedAccountNumber,
+        String accountNumber,
         String ifscCode,
         Boolean primaryAccount,
         VerificationStatus status,
@@ -22,7 +21,7 @@ public record BankAccountResponse(
 
     /**
      * @param account               stored record, holding ciphertext
-     * @param plainAccountNumber    decrypted number, used only to build the mask
+     * @param plainAccountNumber    decrypted number
      */
     public static BankAccountResponse of(BankAccount account, String plainAccountNumber) {
 
@@ -31,7 +30,7 @@ public record BankAccountResponse(
                 account.getAccountHolderName(),
                 account.getBankName(),
                 account.getBranchLocation(),
-                SecretCipher.maskAccountNumber(plainAccountNumber),
+                plainAccountNumber,
                 account.getIfscCode(),
                 account.getPrimaryAccount(),
                 account.getStatus(),

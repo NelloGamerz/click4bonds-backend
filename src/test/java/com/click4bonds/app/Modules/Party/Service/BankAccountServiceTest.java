@@ -58,7 +58,7 @@ class BankAccountServiceTest {
         BankAccountResponse second = service.add(party, request(false));
 
         assertFalse(second.primaryAccount());
-        assertEquals("******7890", second.maskedAccountNumber());
+        assertEquals("1234567890", second.accountNumber());
     }
 
     @Test

@@ -21,6 +21,17 @@ public interface DealConfirmationRepository
     Optional<DealConfirmation> findByDealReference(String dealReference);
 
     /**
+     * A deal by id, scoped to the employee who created it — the same scoping the
+     * listing and the document download use, so one employee cannot price
+     * another's deal.
+     *
+     * <p>The bond is fetched eagerly because the caller prices against it after
+     * the lookup.</p>
+     */
+    @EntityGraph(attributePaths = { "bond" })
+    Optional<DealConfirmation> findByIdAndCreatedBy_Id(UUID id, UUID employeeId);
+
+    /**
      * One page of the deals a staff account created, optionally filtered by a
      * term matched against the reference, the client, the bond and the ISIN.
      *

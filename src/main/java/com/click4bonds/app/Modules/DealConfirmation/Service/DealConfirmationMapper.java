@@ -38,6 +38,8 @@ public class DealConfirmationMapper {
                 .totalQuantity(deal.getTotalQuantity())
                 .pricePerUnit(deal.getPricePerUnit())
                 .totalAmount(deal.getTotalAmount())
+                .annualYtm(deal.getAnnualYtm())
+                .semiYtm(deal.getSemiYtm())
                 .status(deal.getStatus())
                 .createdAt(deal.getCreatedAt())
                 .build();

@@ -176,6 +176,20 @@ public class DealConfirmation {
     @Column(name = "total_amount", precision = 19, scale = 4)
     private BigDecimal totalAmount;
 
+    /**
+     * The annual yield this deal was priced at, as a percentage.
+     *
+     * <p>Deal-scoped: an employee can recalculate it for this deal alone and the
+     * bond's own quoted yield is left untouched. NULL until a calculation is
+     * saved, which is when the deal carries no yield of its own.</p>
+     */
+    @Column(name = "annual_ytm", precision = 19, scale = 4)
+    private BigDecimal annualYtm;
+
+    /** The semi-annual equivalent of {@link #annualYtm}, as a percentage. */
+    @Column(name = "semi_ytm", precision = 19, scale = 4)
+    private BigDecimal semiYtm;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     @Builder.Default
