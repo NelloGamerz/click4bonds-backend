@@ -129,10 +129,10 @@ public record DealConfirmationSheetValues(
         /**
          * The counterparty's PAN, demat and bank particulars, or null.
          *
-         * <p>Kept off the JSON response: the letter prints the full PAN, but the
-         * platform has never returned one in plaintext on an API response — the
-         * party endpoints mask it. The deal response carries every figure a
-         * customer needs to read; the PAN is the one it does not.</p>
+         * <p>Kept off the JSON response: the letter prints the full PAN, and the
+         * party endpoints already expose it to the party's own account. The deal
+         * response carries every figure a customer needs to read; the PAN is the
+         * one it does not.</p>
          */
         @JsonIgnore
         CounterpartyDetails counterparty,

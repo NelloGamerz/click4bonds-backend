@@ -42,6 +42,15 @@ public class DealConfirmationResponse {
     /** NULL when the bond has no price recorded. */
     private BigDecimal totalAmount;
 
+    /**
+     * The yield this deal was priced at for its own terms, as a percentage.
+     * NULL until a calculation is saved for the deal.
+     */
+    private BigDecimal annualYtm;
+
+    /** The semi-annual equivalent of {@link #annualYtm}, as a percentage. */
+    private BigDecimal semiYtm;
+
     private DealConfirmationStatus status;
 
     private Instant createdAt;

@@ -38,7 +38,7 @@ import lombok.RequiredArgsConstructor;
  * Back-office access to parties and the authorized verification surface.
  *
  * <p>Gated by {@code CLIENT_MANAGEMENT}, the same grant that covers client
- * records. Responses mask PAN and bank account numbers.</p>
+ * records. Responses include PAN and bank account numbers in the clear.</p>
  *
  * <p>Details entered here by a staff member are recorded as already
  * {@code VERIFIED}: the entry is the record of what the staff member checked.

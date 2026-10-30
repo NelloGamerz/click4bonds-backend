@@ -125,30 +125,4 @@ public class SecretCipher {
             throw new IllegalStateException("Unable to decrypt party secret", ex);
         }
     }
-
-    /** @return a PAN with only its last character visible */
-    public static String maskPan(String pan) {
-
-        if (pan == null || pan.length() < 4) {
-            return "****";
-        }
-
-        return pan.substring(0, Math.min(2, pan.length() - 1))
-                + "*".repeat(pan.length() - 3)
-                + pan.substring(pan.length() - 1);
-    }
-
-    /** @return an account number with only its last four digits visible */
-    public static String maskAccountNumber(String number) {
-
-        if (number == null) {
-            return null;
-        }
-
-        if (number.length() <= 4) {
-            return "*".repeat(number.length());
-        }
-
-        return "*".repeat(number.length() - 4) + number.substring(number.length() - 4);
-    }
 }

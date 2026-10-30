@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.Bond.Service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -196,6 +197,43 @@ class PriceCalculationServiceTest {
                     0.0001,
                     "Yield " + yield + " round-tripped to " + recovered + " via price " + price.price());
         }
+    }
+
+    /**
+     * The same round trip, but with the price supplied by the caller instead of
+     * read off the bond.
+     *
+     * <p>
+     * The bond carries a deliberately wrong stored price: if the new overload
+     * read it, the yield would be nothing like 8%. Nothing is written to the
+     * bond, which is the property a deal-scoped calculation relies on.
+     */
+    @Test
+    void solvesTheYieldAtACallerSuppliedPriceWithoutTouchingTheBond() {
+
+        Bond bond = muthootFincorp2028();
+        bond.setPrice(new BigDecimal("42.00"));
+        LocalDate settlement = LocalDate.of(2026, 9, 3);
+
+        BigDecimal targetYield = new BigDecimal("0.08");
+
+        BondPrice atEightPercent = priceService.calculatePrice(
+                bond, settlement, targetYield);
+
+        BigDecimal recovered = ytmCalculationService.previewAnnualYtm(
+                bond, settlement, atEightPercent.price());
+
+        assertEquals(
+                targetYield.doubleValue(),
+                recovered.movePointLeft(2).doubleValue(),
+                0.0001,
+                "Yield at the supplied price should be 8%, got " + recovered);
+
+        assertEquals(
+                0,
+                new BigDecimal("42.00").compareTo(bond.getPrice()),
+                "The bond's stored price must not change");
+        assertNull(bond.getAnnualYtm(), "The bond's yield must not be written");
     }
 
     /**

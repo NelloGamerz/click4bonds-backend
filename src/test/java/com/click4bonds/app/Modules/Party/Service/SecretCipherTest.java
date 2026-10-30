@@ -49,12 +49,4 @@ class SecretCipherTest {
 
         assertThrows(IllegalStateException.class, () -> cipher.decrypt(tampered));
     }
-
-    @Test
-    void maskingShowsOnlyWhatIsSafe() {
-
-        assertEquals("AA*******C", SecretCipher.maskPan("AAAPZ1234C"));
-        assertEquals("******1234", SecretCipher.maskAccountNumber("1234561234"));
-        assertEquals("****", SecretCipher.maskPan(null));
-    }
 }

@@ -21,8 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 /**
  * PAN submission and verification.
  *
- * <p>The PAN value is encrypted before it is stored and decrypted only long
- * enough to build a masked response. It is never logged.</p>
+ * <p>The PAN value is encrypted before it is stored and decrypted when a party
+ * response is built. It is never logged.</p>
  *
  * <p>Submitting a PAN puts the record at {@link VerificationStatus#PENDING}.
  * Only {@link #updateStatus} can move it to {@code VERIFIED}, and that method is
@@ -105,7 +105,7 @@ public class PanDetailsService {
      * The stored PAN in plaintext, for a document that has to print it.
      *
      * <p>The only caller is the deal confirmation letter. Nothing may log the
-     * result or put it on an API response.</p>
+     * result.</p>
      */
     public Optional<String> plainPan(Party party) {
 
