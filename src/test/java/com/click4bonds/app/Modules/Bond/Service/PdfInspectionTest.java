@@ -45,7 +45,8 @@ class PdfInspectionTest {
                 LocalDate.of(2026, 10, 8),
                 BigDecimal.ONE);
 
-        BondCashFlowPdfServiceImpl pdfService = new BondCashFlowPdfServiceImpl();
+        BondCashFlowPdfServiceImpl pdfService = new BondCashFlowPdfServiceImpl(
+                new CouponScheduleService(new CouponDateGenerator()));
 
         Path outDir = Path.of("target", "pdf-inspect");
         Files.createDirectories(outDir);

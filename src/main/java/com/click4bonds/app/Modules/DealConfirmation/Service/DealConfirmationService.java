@@ -8,6 +8,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
@@ -155,6 +156,8 @@ public class DealConfirmationService {
      * @param settlementNumber the settlement number the employee supplied
      * @param side whether we are selling to or buying from the client
      * @param depository the depository chosen for a demat buy, or null
+     * @param pricing the price and yield previewed for this deal, or null to
+     *                use the bond's own price
      */
     public Result createDealForClient(
             UUID clientId,
@@ -168,7 +171,8 @@ public class DealConfirmationService {
             DeliveryMode modeOfDelivery,
             String settlementNumber,
             DealSide side,
-            Depository depository) {
+            Depository depository,
+            DealPricing pricing) {
 
         DealConfirmationWriter.CreatedDeal created =
                 writer.createForClient(
@@ -184,7 +188,8 @@ public class DealConfirmationService {
                         settlementNumber,
                         side,
                         depository,
-                        sendEmail);
+                        sendEmail,
+                        pricing);
 
         /*
          * A back-office deal is not lettered until it is confirmed. The request

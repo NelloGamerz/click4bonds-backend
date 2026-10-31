@@ -20,6 +20,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRe
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
@@ -157,7 +158,8 @@ public class DealConfirmationWriter {
                 null,
                 DealSide.SELL,
                 null,
-                true);
+                true,
+                null);
     }
 
     /**
@@ -196,7 +198,8 @@ public class DealConfirmationWriter {
             String settlementNumber,
             DealSide side,
             Depository depository,
-            boolean sendEmail) {
+            boolean sendEmail,
+            DealPricing pricing) {
 
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -224,7 +227,8 @@ public class DealConfirmationWriter {
                 settlementNumber,
                 side,
                 depository,
-                sendEmail);
+                sendEmail,
+                pricing);
     }
 
     /**
@@ -243,7 +247,8 @@ public class DealConfirmationWriter {
             String settlementNumber,
             DealSide side,
             Depository depository,
-            boolean sendEmail) {
+            boolean sendEmail,
+            DealPricing pricing) {
 
         Bond bond = context.bond();
 
@@ -303,7 +308,8 @@ public class DealConfirmationWriter {
                 depository,
                 bankAccountId,
                 dematAccountId,
-                sendEmail);
+                sendEmail,
+                pricing);
 
         DealConfirmation saved = dealConfirmationRepository.save(deal);
 
@@ -567,7 +573,8 @@ public class DealConfirmationWriter {
                 null,
                 request.bankAccountId(),
                 request.dematAccountId(),
-                false);
+                false,
+                null);
 
         /*
          * The entity's builder defaults the status to CREATED, which is true of a
@@ -825,11 +832,20 @@ public class DealConfirmationWriter {
             Depository depository,
             UUID bankAccountId,
             UUID dematAccountId,
-            boolean sendEmail) {
+            boolean sendEmail,
+            DealPricing pricing) {
 
         Bond bond = context.bond();
 
-        BigDecimal pricePerUnit = bond.getPrice();
+        /*
+         * A previewed price wins over the bond's own: the employee negotiated
+         * this deal, and the bond's quote is not the deal's figure. Null pricing
+         * is the ordinary path — no preview was made — and keeps the bond's price
+         * exactly as before.
+         */
+        BigDecimal pricePerUnit = pricing == null
+                ? bond.getPrice()
+                : pricing.pricePerUnit();
 
         return DealConfirmation.builder()
                 .dealReference(dealReference)
@@ -873,6 +889,8 @@ public class DealConfirmationWriter {
                 .bankAccountId(bankAccountId)
                 .dematAccountId(dematAccountId)
                 .sendEmail(sendEmail)
+                .annualYtm(pricing == null ? null : pricing.annualYtm())
+                .semiYtm(pricing == null ? null : pricing.semiYtm())
                 .build();
     }
 

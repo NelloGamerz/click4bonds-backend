@@ -27,6 +27,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
@@ -396,7 +397,8 @@ class DealConfirmationWriterTest {
                         "2610022",
                         DealSide.SELL,
                         null,
-                        false);
+                        false,
+                        null);
 
         // The deal belongs to the client, not to any account.
         Mockito.verify(dealConfirmationRepository).save(
@@ -476,7 +478,8 @@ class DealConfirmationWriterTest {
                 null,
                 DealSide.SELL,
                 null,
-                false);
+                false,
+                null);
 
         CounterpartyDetails details = created.documentData().counterparty();
 
@@ -534,7 +537,8 @@ class DealConfirmationWriterTest {
                         "2610022",
                         DealSide.SELL,
                         null,
-                        false));
+                        false,
+                        null));
 
         // Nothing was reserved: the account was rejected before the UPDATE ran.
         Mockito.verify(bondService, Mockito.never())
@@ -850,6 +854,58 @@ class DealConfirmationWriterTest {
         // The release must not run for the loser — it would credit the units twice.
         Mockito.verify(bondService, Mockito.never())
                 .releaseQuantity(any(), any());
+    }
+
+    @Test
+    void savesAPreviewedPriceAndYieldOnTheNewDeal() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        Client client = Client.builder()
+                .id(UUID.randomUUID())
+                .name("Acme Ltd")
+                .email("ops@acme.example")
+                .build();
+
+        Mockito.when(clientRepository.findById(client.getId()))
+                .thenReturn(Optional.of(client));
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(customer());
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(bond);
+        Mockito.when(bondService.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
+                .thenReturn(1);
+        givenReference("2026/S/OCT/9");
+        givenSaveReturnsItsArgument();
+
+        DealPricing pricing = new DealPricing(
+                new BigDecimal("97.5000"),
+                new BigDecimal("12.3456"),
+                new BigDecimal("6.1728"));
+
+        writer.createForClient(
+                client.getId(),
+                bond.getId(),
+                5L,
+                LocalDate.of(2026, 10, 1),
+                null,
+                USER_ID,
+                null,
+                null,
+                DeliveryMode.ICCL,
+                "2610022",
+                DealSide.SELL,
+                null,
+                false,
+                pricing);
+
+        Mockito.verify(dealConfirmationRepository).save(
+                Mockito.argThat(deal -> new BigDecimal("97.5000")
+                        .compareTo(deal.getPricePerUnit()) == 0
+                        && new BigDecimal("12.3456")
+                                .compareTo(deal.getAnnualYtm()) == 0
+                        && new BigDecimal("6.1728")
+                                .compareTo(deal.getSemiYtm()) == 0));
     }
 
     private Bond bond(BondStatus status, Long quantum) {

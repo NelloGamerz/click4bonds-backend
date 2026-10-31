@@ -36,6 +36,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfPageEventHelper;
 import com.lowagie.text.pdf.PdfWriter;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -59,8 +60,11 @@ import lombok.extern.slf4j.Slf4j;
  * headings reappear on every page and the table splits cleanly.
  */
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
+
+    private final CouponScheduleService couponScheduleService;
 
     /**
      * The trading name, and the legal entity behind it. The statement is issued
@@ -98,6 +102,13 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
             () -> new DecimalFormat("#,##0.####", DecimalFormatSymbols.getInstance(Locale.ENGLISH)));
 
     private static final ThreadLocal<DecimalFormat> RATE_FORMAT = ThreadLocal.withInitial(
+            () -> new DecimalFormat("#,##0.0000", DecimalFormatSymbols.getInstance(Locale.ENGLISH)));
+
+    /*
+     * A price is a percentage of par to four decimals, not a rate, so it is
+     * printed without the percent sign.
+     */
+    private static final ThreadLocal<DecimalFormat> PRICE_FORMAT = ThreadLocal.withInitial(
             () -> new DecimalFormat("#,##0.0000", DecimalFormatSymbols.getInstance(Locale.ENGLISH)));
 
     private static final String[] SCHEDULE_HEADERS = {
@@ -244,6 +255,8 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
         addDetailRow(table, "Payment Terms", nameOf(bond.getCouponFrequency()));
         addDetailRow(table, "Coupon", percent(bond.getCouponRate()));
         addDetailRow(table, "YTM", percent(bond.getAnnualYtm()));
+        addDetailRow(table, "Price", price(bond.getPrice()));
+        addDetailRow(table, "Last IP", lastIpDate(bond, cashFlow.calculationDate()));
         addDetailRow(table, "Maturity Date", date(bond.getMaturityDate()));
         addDetailRow(table, "Security", nameOf(bond.getSecurityType()));
 //        addDetailRow(table, "Category", bond.getCategory());
@@ -491,6 +504,36 @@ public class BondCashFlowPdfServiceImpl implements BondCashFlowPdfService {
     private static String percent(BigDecimal rate) {
 
         return rate == null ? null : RATE_FORMAT.get().format(rate) + "%";
+    }
+
+    private static String price(BigDecimal value) {
+
+        return value == null ? null : PRICE_FORMAT.get().format(value);
+    }
+
+    /**
+     * The last interest payment date on or before the settlement date.
+     *
+     * <p>Resolved from the bond's own coupon schedule, so it agrees with the
+     * accrual the statement is measured to. A bond whose schedule cannot be
+     * resolved prints no date rather than failing the whole statement — the
+     * schedule itself is what the reader came for.</p>
+     */
+    private String lastIpDate(Bond bond, LocalDate calculationDate) {
+
+        try {
+
+            return date(couponScheduleService.resolve(bond, calculationDate).previous());
+
+        } catch (RuntimeException cannotResolve) {
+
+            log.warn(
+                    "Last IP date could not be resolved for isin={}; the statement prints none",
+                    bond.getIsin(),
+                    cannotResolve);
+
+            return null;
+        }
     }
 
     private static String date(LocalDate value) {

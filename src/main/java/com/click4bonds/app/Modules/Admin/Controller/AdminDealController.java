@@ -25,9 +25,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealCalculationResponse;
+import com.click4bonds.app.Modules.Admin.Dto.AdminDealPricingPreviewResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealSummaryResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CalculateDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
+import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
@@ -78,6 +80,29 @@ public class AdminDealController {
                 .body(adminDealService.create(
                         request,
                         UUID.fromString(jwt.getSubject())));
+    }
+
+    /**
+     * Prices a bond for a deal that does not exist yet.
+     *
+     * <p>Send exactly one of {@code price} or {@code annualYtm}; the other is
+     * calculated. Both are cached for this employee and bond for the next create
+     * request, which saves them on the new deal. The bond's own price and yield
+     * are neither read as the input nor written, so a negotiated price for one
+     * client never restates the bond.</p>
+     *
+     * <p>The calculation is measured to the value date of the deal date supplied,
+     * or of today when none is.</p>
+     */
+    @PostMapping("/price-preview")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<AdminDealPricingPreviewResponse> previewPricing(
+            @Valid @RequestBody PreviewDealPricingRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return ResponseEntity.ok(adminDealService.previewPricing(
+                UUID.fromString(jwt.getSubject()),
+                request));
     }
 
     /**
