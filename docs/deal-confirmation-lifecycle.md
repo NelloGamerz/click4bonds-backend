@@ -93,6 +93,50 @@ left, the request fails with `409` and nothing is written.
 `sendEmail`) are stored on the deal so the letter can be rendered at confirm
 time.
 
+### 3.1 Preview the price — before the deal exists
+
+To strike a deal at a negotiated price, calculate the price/yield pair first.
+This writes nothing to the bond and nothing to a deal.
+
+```http
+POST /api/admin/deals/price-preview
+Content-Type: application/json
+
+{
+  "bondId": "…",
+  "price": 98.94,          // send exactly one of price / annualYtm
+  "dealDate": "2026-10-31" // optional; sets the value date, default today
+}
+```
+
+or `{ "bondId": "…", "annualYtm": 12.5, "dealDate": "2026-10-31" }`.
+
+Response `200`:
+
+```json
+{
+  "bondId": "…",
+  "isin": "INE123A01016",
+  "bondName": "Example Bond",
+  "valueDate": "2026-10-31",
+  "pricePerUnit": "98.9400",
+  "annualYtm": "12.5000",
+  "semiYtm": "12.1320"
+}
+```
+
+The result is **cached for 30 minutes against the employee and the bond**. The
+next `POST /api/admin/deals` for that bond saves the cached price and yield on
+the new deal and clears the entry. Without a preview (or if the entry expired,
+or Redis is unavailable) the deal is created at the bond's own price, exactly as
+before.
+
+After the deal exists, use `POST /api/admin/deals/{dealId}/calculate` — that
+writes to the database, not the cache.
+
+Errors: `400` when neither/both of `price` and `annualYtm` are sent or the price
+is not positive; `404` when no bond has that id; `403` without `DEAL_CREATION`.
+
 ---
 
 ## 4. Reprice / edit

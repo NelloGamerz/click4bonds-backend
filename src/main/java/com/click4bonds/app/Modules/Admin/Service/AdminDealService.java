@@ -10,9 +10,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealCalculationResponse;
+import com.click4bonds.app.Modules.Admin.Dto.AdminDealPricingPreviewResponse;
 import com.click4bonds.app.Modules.Admin.Dto.AdminDealSummaryResponse;
 import com.click4bonds.app.Modules.Admin.Dto.CalculateDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
+import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
@@ -23,6 +25,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
@@ -50,6 +53,7 @@ public class AdminDealService {
     private final DocumentProperties documentProperties;
     private final PriceCalculationService priceCalculationService;
     private final YtmCalculationService ytmCalculationService;
+    private final AdminDealPricingService pricingService;
 
     public DealConfirmationResponse create(
             CreateClientDealRequest request,
@@ -81,7 +85,15 @@ public class AdminDealService {
                     "Depository is required for a DEMAT buy");
         }
 
-        return dealConfirmationService
+        /*
+         * A price the employee previewed for this bond — negotiated before the
+         * deal existed — is saved on the new deal. The bond's own quote is left
+         * untouched, and the cache entry is spent, so the next deal starts from
+         * a fresh calculation.
+         */
+        DealPricing pricing = cachedPricingOrNull(employeeId, request.bondId());
+
+        DealConfirmationResponse response = dealConfirmationService
                 .createDealForClient(
                         request.clientId(),
                         request.bondId(),
@@ -94,8 +106,68 @@ public class AdminDealService {
                         request.modeOfDelivery(),
                         request.settlementNumber(),
                         request.side(),
-                        request.depository())
+                        request.depository(),
+                        pricing)
                 .response();
+
+        if (pricing != null) {
+            clearPricing(employeeId, request.bondId());
+        }
+
+        return response;
+    }
+
+    /*
+     * The cache is a convenience between the preview and the create, never a
+     * reason a real deal cannot be saved: if Redis is unavailable the deal is
+     * created at the bond's own price, exactly as it was before the preview
+     * existed.
+     */
+    private DealPricing cachedPricingOrNull(UUID employeeId, UUID bondId) {
+
+        try {
+
+            return pricingService.cachedPricing(employeeId, bondId).orElse(null);
+
+        } catch (RuntimeException cacheUnavailable) {
+
+            log.warn(
+                    "Deal pricing cache could not be read for bond {}; the deal is created at the bond's price",
+                    bondId,
+                    cacheUnavailable);
+
+            return null;
+        }
+    }
+
+    private void clearPricing(UUID employeeId, UUID bondId) {
+
+        try {
+
+            pricingService.clear(employeeId, bondId);
+
+        } catch (RuntimeException cacheUnavailable) {
+
+            log.warn(
+                    "Deal pricing cache could not be cleared for bond {}; the entry expires on its own",
+                    bondId,
+                    cacheUnavailable);
+        }
+    }
+
+    /**
+     * Prices a bond for a deal that has not been created yet.
+     *
+     * <p>Send exactly one of {@code price} or {@code annualYtm}; the other is
+     * calculated and both are cached for the employee's next create request. The
+     * bond's stored price and yield are neither read nor written — this is the
+     * deal's figure, not the bond's.</p>
+     */
+    public AdminDealPricingPreviewResponse previewPricing(
+            UUID employeeId,
+            PreviewDealPricingRequest request) {
+
+        return pricingService.preview(employeeId, request);
     }
 
     /**
