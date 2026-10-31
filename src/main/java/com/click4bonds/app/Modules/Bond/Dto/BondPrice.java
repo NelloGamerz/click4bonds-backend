@@ -28,9 +28,8 @@ import java.math.BigDecimal;
  * rises by that amount. Reporting only the first would leave a caller unable to
  * reconcile the dirty price with the clean one.
  *
- * @param price                  clean price as a percentage of par, to 2
- *                               decimals — the form {@code Bond.price} is
- *                               quoted in, e.g. {@code 98.94}
+ * @param price                  clean price as a percentage of par, to 4
+ *                               decimals, e.g. {@code 98.9400}
  * @param dirtyPrice             present value of the bond's future receipts in
  *                               rupees per unit of face value, at the platform's
  *                               full working precision

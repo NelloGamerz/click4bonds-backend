@@ -17,11 +17,13 @@ import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
+import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
@@ -136,6 +138,16 @@ public class AdminDealService {
                 .findByIdAndCreatedBy_Id(dealId, employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Deal not found: " + dealId));
+
+        /*
+         * A confirmed or cancelled deal is final: its figures are what the
+         * client has been told, so they cannot be repriced afterwards.
+         */
+        if (deal.getStatus() != DealConfirmationStatus.CREATED) {
+            throw new ConflictException(
+                    "Deal is " + deal.getStatus() + " and cannot be changed: "
+                            + deal.getDealReference());
+        }
 
         LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
                 .plusDays(documentProperties.getDeal().getValueDateOffsetDays());

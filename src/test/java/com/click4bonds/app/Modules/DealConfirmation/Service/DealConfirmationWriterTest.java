@@ -37,6 +37,7 @@ import com.click4bonds.app.Modules.Party.Repository.BankAccountRepository;
 import com.click4bonds.app.Modules.Party.Repository.DematAccountRepository;
 import com.click4bonds.app.Modules.Party.Service.PanDetailsService;
 import com.click4bonds.app.Modules.Party.Service.SecretCipher;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.User.Enums.UserStatus;
@@ -394,7 +395,8 @@ class DealConfirmationWriterTest {
                         DeliveryMode.ICCL,
                         "2610022",
                         DealSide.SELL,
-                        null);
+                        null,
+                        false);
 
         // The deal belongs to the client, not to any account.
         Mockito.verify(dealConfirmationRepository).save(
@@ -473,7 +475,8 @@ class DealConfirmationWriterTest {
                 DeliveryMode.DEMAT,
                 null,
                 DealSide.SELL,
-                null);
+                null,
+                false);
 
         CounterpartyDetails details = created.documentData().counterparty();
 
@@ -530,7 +533,8 @@ class DealConfirmationWriterTest {
                         DeliveryMode.ICCL,
                         "2610022",
                         DealSide.SELL,
-                        null));
+                        null,
+                        false));
 
         // Nothing was reserved: the account was rejected before the UPDATE ran.
         Mockito.verify(bondService, Mockito.never())
@@ -733,6 +737,121 @@ class DealConfirmationWriterTest {
      * The lot size lived on the request until it moved onto the bond, so the
      * fixture carries it now: every quantity in this class is 100 units a lot.
      */
+    // ============================================================
+    // CONFIRM AND CANCEL
+    // ============================================================
+
+    @Test
+    void confirmsADealOnlyWhenTheConditionalClaimWins() {
+
+        UUID dealId = UUID.randomUUID();
+        Bond bond = bond(BondStatus.ACTIVE, 500L);
+        DealConfirmation deal = DealConfirmation.builder()
+                .id(dealId)
+                .dealReference("2026/S/OCT/7")
+                .bond(bond)
+                .isin(ISIN)
+                .quantityPerLot(100L)
+                .numberOfLots(5L)
+                .totalQuantity(500L)
+                .status(DealConfirmationStatus.CONFIRMED)
+                .sendEmail(true)
+                .build();
+
+        Mockito.when(dealConfirmationRepository.transitionStatus(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CONFIRMED)).thenReturn(1);
+        Mockito.when(dealConfirmationRepository.findById(dealId))
+                .thenReturn(Optional.of(deal));
+
+        DealConfirmationWriter.ConfirmedDeal confirmed = writer.confirm(dealId);
+
+        assertEquals(
+                DealConfirmationStatus.CONFIRMED,
+                confirmed.response().getStatus());
+        assertEquals("2026/S/OCT/7", confirmed.documentData().dealReference());
+        assertEquals(true, confirmed.sendEmail());
+
+        // Confirming holds the units that were already reserved; it reserves none.
+        Mockito.verify(bondService, Mockito.never())
+                .reserveQuantity(any(), any());
+        Mockito.verify(bondService, Mockito.never())
+                .releaseQuantity(any(), any());
+    }
+
+    @Test
+    void refusesToConfirmADealThatIsNoLongerAwaitingConfirmation() {
+
+        UUID dealId = UUID.randomUUID();
+
+        // Zero rows means another caller already confirmed or cancelled it.
+        Mockito.when(dealConfirmationRepository.transitionStatus(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CONFIRMED)).thenReturn(0);
+
+        assertThrows(ConflictException.class, () -> writer.confirm(dealId));
+
+        Mockito.verify(dealConfirmationRepository, Mockito.never()).findById(any());
+    }
+
+    @Test
+    void cancellingADealReturnsItsUnitsToTheBondAndReactivatesIt() {
+
+        UUID dealId = UUID.randomUUID();
+        Bond bond = bond(BondStatus.SOLD_OUT, 0L);
+        DealConfirmation deal = DealConfirmation.builder()
+                .id(dealId)
+                .dealReference("2026/S/OCT/8")
+                .bond(bond)
+                .isin(ISIN)
+                .quantityPerLot(100L)
+                .numberOfLots(5L)
+                .totalQuantity(500L)
+                .status(DealConfirmationStatus.CANCELLED)
+                .build();
+
+        Bond afterRelease = bond(BondStatus.SOLD_OUT, 500L);
+        afterRelease.setId(bond.getId());
+
+        Mockito.when(dealConfirmationRepository.transitionStatusForCreator(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CANCELLED,
+                USER_ID)).thenReturn(1);
+        Mockito.when(dealConfirmationRepository.findById(dealId))
+                .thenReturn(Optional.of(deal));
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(afterRelease);
+
+        writer.cancel(dealId, USER_ID);
+
+        Mockito.verify(bondService)
+                .releaseQuantity(bond.getId(), BigDecimal.valueOf(500));
+
+        assertEquals(BondStatus.ACTIVE, afterRelease.getStatus());
+        Mockito.verify(bondService).saveBond(afterRelease);
+    }
+
+    @Test
+    void refusesToCancelADealThatWasAlreadyClosed() {
+
+        UUID dealId = UUID.randomUUID();
+
+        Mockito.when(dealConfirmationRepository.transitionStatusForCreator(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CANCELLED,
+                USER_ID)).thenReturn(0);
+
+        assertThrows(ConflictException.class, () -> writer.cancel(dealId, USER_ID));
+
+        // The release must not run for the loser — it would credit the units twice.
+        Mockito.verify(bondService, Mockito.never())
+                .releaseQuantity(any(), any());
+    }
+
     private Bond bond(BondStatus status, Long quantum) {
 
         return Bond.builder()

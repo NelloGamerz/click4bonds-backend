@@ -20,6 +20,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRe
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
@@ -88,6 +89,13 @@ public class DealConfirmationWriter {
             DealConfirmationDocumentData documentData) {
     }
 
+    /** A confirmed deal, paired with the snapshot its letter is now built from. */
+    public record ConfirmedDeal(
+            DealConfirmationResponse response,
+            DealConfirmationDocumentData documentData,
+            boolean sendEmail) {
+    }
+
     /**
      * Everything a request resolves to before anything is written.
      *
@@ -148,7 +156,8 @@ public class DealConfirmationWriter {
                 null,
                 null,
                 DealSide.SELL,
-                null);
+                null,
+                true);
     }
 
     /**
@@ -186,7 +195,8 @@ public class DealConfirmationWriter {
             DeliveryMode deliveryMode,
             String settlementNumber,
             DealSide side,
-            Depository depository) {
+            Depository depository,
+            boolean sendEmail) {
 
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -213,7 +223,8 @@ public class DealConfirmationWriter {
                 deliveryMode,
                 settlementNumber,
                 side,
-                depository);
+                depository,
+                sendEmail);
     }
 
     /**
@@ -231,7 +242,8 @@ public class DealConfirmationWriter {
             DeliveryMode deliveryMode,
             String settlementNumber,
             DealSide side,
-            Depository depository) {
+            Depository depository,
+            boolean sendEmail) {
 
         Bond bond = context.bond();
 
@@ -284,7 +296,14 @@ public class DealConfirmationWriter {
                 numberOfLots,
                 idempotencyKey,
                 dealReferenceGenerator.next(context.dealDate(), side),
-                createdBy);
+                createdBy,
+                deliveryMode,
+                settlementNumber,
+                side,
+                depository,
+                bankAccountId,
+                dematAccountId,
+                sendEmail);
 
         DealConfirmation saved = dealConfirmationRepository.save(deal);
 
@@ -321,6 +340,161 @@ public class DealConfirmationWriter {
                         settlementNumber,
                         side,
                         depository));
+    }
+
+    /**
+     * Confirms a back-office deal and freezes it.
+     *
+     * <p>The status change is one conditional UPDATE from {@code CREATED}, so
+     * two employees confirming the same deal at once — or a confirm racing a
+     * cancel — is decided by the database: exactly one wins, the other finds
+     * nothing to update and is refused. The reserved units stay reserved; a
+     * confirmed deal is the one that keeps them.</p>
+     *
+     * @return the confirmed deal, with the snapshot its letter is built from
+     * @throws ConflictException when the deal is not awaiting confirmation
+     */
+    @Transactional
+    public ConfirmedDeal confirm(UUID dealId) {
+
+        int updated = dealConfirmationRepository.transitionStatus(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CONFIRMED);
+
+        if (updated == 0) {
+            throw new ConflictException(
+                    "Deal is not awaiting confirmation: " + dealId);
+        }
+
+        DealConfirmation deal = dealConfirmationRepository.findById(dealId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Deal not found: " + dealId));
+
+        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
+                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+
+        DealAccrual accrual = accrualCalculator
+                .calculate(deal.getBond(), valueDate)
+                .orElse(null);
+
+        log.info("Deal confirmed: reference={}", deal.getDealReference());
+
+        return new ConfirmedDeal(
+                mapper.toResponse(deal),
+                mapper.toDocumentData(
+                        deal,
+                        valueDate,
+                        accrual,
+                        counterpartyOf(deal),
+                        deal.getDeliveryMode(),
+                        deal.getSettlementNumber(),
+                        deal.getSide(),
+                        deal.getDepository()),
+                deal.isSendEmail());
+    }
+
+    /**
+     * Cancels a deal the employee created and returns its units to the bond.
+     *
+     * <p>Same conditional-claim shape as {@link #confirm}: the release happens
+     * only for the caller that actually moved the deal to {@code CANCELLED}, so
+     * a double click cannot credit the quantity twice. The bond is reloaded
+     * after the release because the increment was a direct UPDATE.</p>
+     *
+     * @param employeeId the creator; another employee's deal is not found
+     * @throws ConflictException when the deal is not awaiting confirmation
+     */
+    @Transactional
+    public DealConfirmationResponse cancel(UUID dealId, UUID employeeId) {
+
+        int updated = dealConfirmationRepository.transitionStatusForCreator(
+                dealId,
+                DealConfirmationStatus.CREATED,
+                DealConfirmationStatus.CANCELLED,
+                employeeId);
+
+        if (updated == 0) {
+            throw new ConflictException(
+                    "Deal is not awaiting cancellation: " + dealId);
+        }
+
+        DealConfirmation deal = dealConfirmationRepository.findById(dealId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Deal not found: " + dealId));
+
+        UUID bondId = deal.getBond().getId();
+
+        bondService.releaseQuantity(
+                bondId,
+                BigDecimal.valueOf(deal.getTotalQuantity()));
+
+        Bond released = bondService.findBondById(bondId);
+
+        /*
+         * Reopening a bond the reservation had sold out: the units are back, so
+         * a status that says they are gone would refuse the next buyer.
+         */
+        if (released.getStatus() == BondStatus.SOLD_OUT
+                && released.getQuantum() != null
+                && released.getQuantum().signum() > 0) {
+
+            released.setStatus(BondStatus.ACTIVE);
+
+            bondService.saveBond(released);
+        }
+
+        log.info(
+                "Deal cancelled: reference={} quantity={} returned to isin={}",
+                deal.getDealReference(),
+                deal.getTotalQuantity(),
+                deal.getIsin());
+
+        return mapper.toResponse(deal);
+    }
+
+    /**
+     * The counterparty particulars of an already-persisted deal, for a letter
+     * generated after the fact.
+     *
+     * <p>Rebuilt from the party and the account ids stored on the deal, because
+     * nothing about a letter's counterparty survives a confirmation: the deal
+     * row is the record.</p>
+     */
+    private CounterpartyDetails counterpartyOf(DealConfirmation deal) {
+
+        Party party = deal.getClient() != null
+                ? deal.getClient().getParty()
+                : deal.getCustomer() == null || deal.getCustomer().getCustomerProfile() == null
+                        ? null
+                        : deal.getCustomer().getCustomerProfile().getParty();
+
+        if (party == null) {
+            return null;
+        }
+
+        DematAccount demat = deal.getDematAccountId() == null
+                ? null
+                : dematAccountRepository
+                        .findByIdAndParty(deal.getDematAccountId(), party)
+                        .orElse(null);
+
+        BankAccount bank = deal.getBankAccountId() == null
+                ? null
+                : bankAccountRepository
+                        .findByIdAndParty(deal.getBankAccountId(), party)
+                        .orElse(null);
+
+        return new CounterpartyDetails(
+                panDetailsService.plainPan(party).orElse(null),
+                demat == null ? null : demat.getAccountHolderName(),
+                demat == null ? null : demat.getDpId(),
+                demat == null ? null : demat.getClientId(),
+                bank == null ? null : bank.getBankName(),
+                party.getAddress(),
+                bank == null ? null : bank.getBranchLocation(),
+                bank == null ? null : bank.getIfscCode(),
+                bank == null ? null : secretCipher.decrypt(bank.getAccountNumber()));
     }
 
     /**
@@ -386,7 +560,14 @@ public class DealConfirmationWriter {
                 request.numberOfLots(),
                 null,
                 null,
-                null);
+                null,
+                null,
+                null,
+                DealSide.SELL,
+                null,
+                request.bankAccountId(),
+                request.dematAccountId(),
+                false);
 
         /*
          * The entity's builder defaults the status to CREATED, which is true of a
@@ -637,7 +818,14 @@ public class DealConfirmationWriter {
             Long numberOfLots,
             String idempotencyKey,
             String dealReference,
-            User createdBy) {
+            User createdBy,
+            DeliveryMode deliveryMode,
+            String settlementNumber,
+            DealSide side,
+            Depository depository,
+            UUID bankAccountId,
+            UUID dematAccountId,
+            boolean sendEmail) {
 
         Bond bond = context.bond();
 
@@ -674,6 +862,17 @@ public class DealConfirmationWriter {
                         ? null
                         : pricePerUnit.multiply(BigDecimal.valueOf(context.totalQuantity())))
                 .idempotencyKey(idempotencyKey)
+                /*
+                 * Captured for the letter, which a back-office deal generates
+                 * only when it is confirmed — after this request has returned.
+                 */
+                .deliveryMode(deliveryMode)
+                .settlementNumber(settlementNumber)
+                .side(side == null ? DealSide.SELL : side)
+                .depository(depository)
+                .bankAccountId(bankAccountId)
+                .dematAccountId(dematAccountId)
+                .sendEmail(sendEmail)
                 .build();
     }
 
