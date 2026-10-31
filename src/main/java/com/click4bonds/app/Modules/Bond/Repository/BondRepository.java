@@ -216,6 +216,28 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
                         @Param("quantity") BigDecimal quantity);
 
         /**
+         * Returns {@code quantity} units to a bond's quantum — the undo of
+         * {@link #reserveQuantity}, used when a deal is cancelled.
+         *
+         * <p>An increment, not a read-then-write, so a release racing another
+         * reservation or release cannot lose an update. The caller is
+         * responsible for calling it at most once per reserved deal.</p>
+         *
+         * @param id       bond whose quantum is being restored
+         * @param quantity amount to add; must be greater than zero
+         * @return number of rows updated — always 0 or 1
+         */
+        @Modifying(clearAutomatically = true, flushAutomatically = true)
+        @Query("""
+                            UPDATE Bond b
+                            SET b.quantum = b.quantum + :quantity
+                            WHERE b.id = :id
+                        """)
+        int releaseQuantity(
+                        @Param("id") UUID id,
+                        @Param("quantity") BigDecimal quantity);
+
+        /**
          * The ISINs of every bond belonging to an issuer.
          *
          * <p>Used when the issuer's logo changes: each bond's cached detail

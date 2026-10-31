@@ -116,7 +116,7 @@ class PriceCalculationServiceTest {
                 settlement,
                 new BigDecimal("0.20"));
 
-        assertMoneyEquals("91.67", atTwentyPercent.price(), "clean price at a 20% yield");
+        assertMoneyEquals("91.6667", atTwentyPercent.price(), "clean price at a 20% yield");
     }
 
     /**
@@ -140,7 +140,7 @@ class PriceCalculationServiceTest {
                 .divide(ONE_HUNDRED, 10, RoundingMode.HALF_UP);
 
         /*
-         * The quoted price is stored to two decimals, so the two agree to within
+         * The quoted price is stored to four decimals, so the two agree to within
          * half of the last one rather than exactly.
          */
         assertTrue(
@@ -166,7 +166,7 @@ class PriceCalculationServiceTest {
      * yield it started from.
      *
      * <p>
-     * The price is rounded to two decimals on the way, as a stored price is, so
+     * The price is rounded to four decimals on the way, as a stored price is, so
      * the yield that comes back is the yield of a bond that really trades — not
      * of an unrounded intermediate. The tolerance is a basis point.
      */

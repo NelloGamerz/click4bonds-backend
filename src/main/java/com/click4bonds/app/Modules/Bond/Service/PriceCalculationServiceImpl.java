@@ -48,8 +48,8 @@ public class PriceCalculationServiceImpl implements PriceCalculationService {
 
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
-    /** A price is quoted to a hundredth of a percent, as {@code Bond.price} is. */
-    private static final int PRICE_SCALE = 2;
+    /** A price is quoted to four decimals; {@code deal_confirmations} stores it at that scale. */
+    private static final int PRICE_SCALE = 4;
 
     private static final BigDecimal LOWEST_RATE = BigDecimal.valueOf(-1);
 

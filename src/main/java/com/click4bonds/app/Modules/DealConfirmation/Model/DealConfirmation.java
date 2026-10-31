@@ -10,6 +10,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
+import com.click4bonds.app.Modules.Party.Enums.Depository;
 import com.click4bonds.app.Modules.User.Model.Client;
 import com.click4bonds.app.Modules.User.Model.User;
 
@@ -35,17 +38,12 @@ import lombok.Setter;
 /**
  * The deal information for a purchase of a number of bond lots.
  *
- * <p>Created directly, with no approval workflow. This row records what was
- * agreed — quantities, the price as it stood, the reference the customer
- * quotes — and deliberately carries no claim on stock: it neither reserves,
- * deducts nor releases inventory, and it is written without any reference to
- * {@link Bond#getQuantum()}.</p>
- *
- * <p>Inventory belongs to the reservation and payment flow around this record:
- * units are reserved before a draft deal exists and consumed once payment
- * settles. A deal confirmation can therefore exist while the bond's remaining
- * quantity is unchanged, and later revisions of the deal do not touch it
- * either.</p>
+ * <p>This row records what was agreed — quantities, the price as it stood, the
+ * reference the customer quotes — and its {@link #status} is the deal's
+ * progress. Units are reserved in the same transaction that writes the row (see
+ * {@code DealConfirmationWriter}); a cancelled deal returns them, a confirmed
+ * one keeps them. A confirmed or cancelled deal is final: nothing on it may be
+ * changed afterwards.</p>
  *
  * <p><strong>Why some fields are copied rather than only referenced.</strong>
  * This row is the buyer's confirmation document, so the values it is built from
@@ -194,6 +192,42 @@ public class DealConfirmation {
     @Column(nullable = false, length = 30)
     @Builder.Default
     private DealConfirmationStatus status = DealConfirmationStatus.CREATED;
+
+    /*
+     * The inputs the confirmation letter is built from, captured on the deal
+     * because a back-office letter is generated only once the deal is confirmed
+     * — long after the request that carried them. Null on a customer deal for
+     * every field but the side, which is SELL.
+     */
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "delivery_mode", length = 20)
+    private DeliveryMode deliveryMode;
+
+    @Column(name = "settlement_number", length = 64)
+    private String settlementNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    @Builder.Default
+    private DealSide side = DealSide.SELL;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Depository depository;
+
+    /** The counterparty bank account chosen for the letter, or null. */
+    @Column(name = "bank_account_id")
+    private UUID bankAccountId;
+
+    /** The counterparty demat account chosen for the letter, or null. */
+    @Column(name = "demat_account_id")
+    private UUID dematAccountId;
+
+    /** Whether the letter is emailed to the client once it is generated. */
+    @Column(name = "send_email", nullable = false)
+    @Builder.Default
+    private boolean sendEmail = false;
 
     /**
      * Optional client-supplied key that makes this endpoint idempotent.

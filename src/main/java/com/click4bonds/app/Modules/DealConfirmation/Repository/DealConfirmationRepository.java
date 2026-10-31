@@ -134,4 +134,48 @@ public interface DealConfirmationRepository
             @Param("status") DealConfirmationStatus status,
             @Param("documentR2Path") String documentR2Path,
             @Param("documentGeneratedAt") Instant documentGeneratedAt);
+
+    /**
+     * Moves a deal from one status to another, in one conditional UPDATE.
+     *
+     * <p>This is the claim that makes confirm and cancel safe: the
+     * {@code status = :fromStatus} predicate is evaluated under the row lock, so
+     * of two concurrent callers exactly one updates a row and the other gets
+     * {@code 0}. The loser must be refused rather than retried — the winner has
+     * already changed the deal, possibly its bond's inventory.</p>
+     *
+     * @return 1 when the deal was in {@code fromStatus} and has moved, 0 otherwise
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE DealConfirmation d
+               SET d.status = :toStatus,
+                   d.updatedAt = CURRENT_TIMESTAMP
+             WHERE d.id = :dealId
+               AND d.status = :fromStatus
+               AND d.createdBy IS NOT NULL
+            """)
+    int transitionStatus(
+            @Param("dealId") UUID dealId,
+            @Param("fromStatus") DealConfirmationStatus fromStatus,
+            @Param("toStatus") DealConfirmationStatus toStatus);
+
+    /**
+     * The same claim, additionally scoped to the employee who created the deal,
+     * so one employee cannot cancel another's.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("""
+            UPDATE DealConfirmation d
+               SET d.status = :toStatus,
+                   d.updatedAt = CURRENT_TIMESTAMP
+             WHERE d.id = :dealId
+               AND d.status = :fromStatus
+               AND d.createdBy.id = :employeeId
+            """)
+    int transitionStatusForCreator(
+            @Param("dealId") UUID dealId,
+            @Param("fromStatus") DealConfirmationStatus fromStatus,
+            @Param("toStatus") DealConfirmationStatus toStatus,
+            @Param("employeeId") UUID employeeId);
 }

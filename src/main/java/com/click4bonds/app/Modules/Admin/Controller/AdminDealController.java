@@ -32,6 +32,7 @@ import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentReader;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -64,6 +65,7 @@ public class AdminDealController {
 
     private final AdminDealService adminDealService;
     private final DealConfirmationDocumentReader documentReader;
+    private final DealConfirmationService dealConfirmationService;
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
@@ -97,6 +99,39 @@ public class AdminDealController {
                 UUID.fromString(jwt.getSubject()),
                 dealId,
                 request));
+    }
+
+    /**
+     * Confirms a deal, freezing it and asking for its confirmation letter.
+     *
+     * <p>Gated by {@code DEAL_CONFIRMATION}, which is deliberately a different
+     * grant from the one that creates deals: the employee who strikes a deal is
+     * not necessarily the one who signs it off, and an employee holding only
+     * {@code DEAL_CREATION} cannot confirm their own.</p>
+     *
+     * <p>From this point the deal cannot be edited or cancelled.</p>
+     */
+    @PostMapping("/{dealId}/confirm")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CONFIRMATION')")
+    public ResponseEntity<DealConfirmationResponse> confirmDeal(
+            @PathVariable UUID dealId) {
+
+        return ResponseEntity.ok(dealConfirmationService.confirmDeal(dealId));
+    }
+
+    /**
+     * Cancels a deal the authenticated employee created, returning its units to
+     * the bond. Only a deal still awaiting confirmation can be cancelled.
+     */
+    @PostMapping("/{dealId}/cancel")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
+    public ResponseEntity<DealConfirmationResponse> cancelDeal(
+            @PathVariable UUID dealId,
+            @AuthenticationPrincipal Jwt jwt) {
+
+        return ResponseEntity.ok(dealConfirmationService.cancelDeal(
+                dealId,
+                UUID.fromString(jwt.getSubject())));
     }
 
     /**

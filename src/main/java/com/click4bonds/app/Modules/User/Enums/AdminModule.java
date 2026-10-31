@@ -58,7 +58,14 @@ public enum AdminModule {
     /**
      * Creating deals on a client's behalf from the back office.
      */
-    DEAL_CREATION;
+    DEAL_CREATION,
+
+    /**
+     * Confirming a back-office deal, which locks it and asks for its
+     * confirmation letter. Separate from {@link #DEAL_CREATION} so the employee
+     * who strikes a deal is not necessarily the one who signs it off.
+     */
+    DEAL_CONFIRMATION;
 
     /**
      * Resolves a stored or declared module name.

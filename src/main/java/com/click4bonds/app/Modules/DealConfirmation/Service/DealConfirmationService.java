@@ -133,7 +133,7 @@ public class DealConfirmationService {
             return new Result(mapper.toResponse(existing), true);
         }
 
-        DealConfirmationResponse response = complete(created, true);
+        DealConfirmationResponse response = complete(created, true, true);
 
         return new Result(response, false);
     }
@@ -183,9 +183,50 @@ public class DealConfirmationService {
                         modeOfDelivery,
                         settlementNumber,
                         side,
-                        depository);
+                        depository,
+                        sendEmail);
 
-        return new Result(complete(created, sendEmail), false);
+        /*
+         * A back-office deal is not lettered until it is confirmed. The request
+         * that struck it returns as soon as the deal row and its reservation are
+         * committed; the letter is asked for from {@link #confirmDeal}.
+         */
+        return new Result(complete(created, sendEmail, false), false);
+    }
+
+    /**
+     * Confirms a back-office deal, freezing it and asking for its letter.
+     *
+     * <p>The letter is requested here rather than at creation: a deal could be
+     * edited or cancelled until this moment, and a letter for figures that were
+     * still moving would be wrong.</p>
+     *
+     * @param dealId the deal to confirm
+     * @return the confirmed deal
+     * @throws com.click4bonds.app.Modules.Common.Exceptions.ConflictException
+     *         when the deal is not awaiting confirmation
+     */
+    public DealConfirmationResponse confirmDeal(UUID dealId) {
+
+        DealConfirmationWriter.ConfirmedDeal confirmed = writer.confirm(dealId);
+
+        requestDocument(
+                confirmed.response().getDealConfirmationId(),
+                confirmed.documentData(),
+                confirmed.sendEmail());
+
+        return confirmed.response();
+    }
+
+    /**
+     * Cancels a deal the employee created and returns its units to the bond.
+     *
+     * @param dealId     the deal to cancel
+     * @param employeeId the creator; another employee's deal is not found
+     * @return the cancelled deal
+     */
+    public DealConfirmationResponse cancelDeal(UUID dealId, UUID employeeId) {
+        return writer.cancel(dealId, employeeId);
     }
 
     /**
@@ -195,7 +236,8 @@ public class DealConfirmationService {
      */
     private DealConfirmationResponse complete(
             DealConfirmationWriter.CreatedDeal created,
-            boolean sendEmail) {
+            boolean sendEmail,
+            boolean generateDocument) {
 
         DealConfirmationResponse response = created.response();
 
@@ -206,10 +248,12 @@ public class DealConfirmationService {
          */
         response.setLetterValues(letterValues(created.documentData()));
 
-        requestDocument(
-                created.response().getDealConfirmationId(),
-                created.documentData(),
-                sendEmail);
+        if (generateDocument) {
+            requestDocument(
+                    created.response().getDealConfirmationId(),
+                    created.documentData(),
+                    sendEmail);
+        }
 
         return response;
     }

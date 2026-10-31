@@ -953,6 +953,14 @@ public class BondService {
     }
 
     /**
+     * Returns units to a bond's quantum when a deal that reserved them is
+     * cancelled.
+     */
+    public int releaseQuantity(UUID bondId, BigDecimal quantity) {
+        return bondRepository.releaseQuantity(bondId, quantity);
+    }
+
+    /**
      * The ISINs of every bond belonging to an issuer.
      *
      * <p>Needed when something the bond responses embed changes per issuer — a
