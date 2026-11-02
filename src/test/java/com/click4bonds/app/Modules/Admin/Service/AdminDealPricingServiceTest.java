@@ -23,6 +23,7 @@ import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
+import com.click4bonds.app.Modules.Bond.Repository.MarketHolidayRepository;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
@@ -54,6 +55,9 @@ class AdminDealPricingServiceTest {
     @Mock
     private YtmCalculationService ytmCalculationService;
 
+    @Mock
+    private MarketHolidayRepository marketHolidayRepository;
+
     private AdminDealPricingService service;
 
     @BeforeEach
@@ -63,7 +67,7 @@ class AdminDealPricingServiceTest {
                 bondService,
                 priceCalculationService,
                 ytmCalculationService,
-                new BusinessDateService());
+                new BusinessDateService(marketHolidayRepository));
     }
 
     @Test

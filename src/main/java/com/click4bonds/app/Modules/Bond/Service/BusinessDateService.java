@@ -5,14 +5,22 @@ import java.time.LocalDate;
 
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Bond.Repository.MarketHolidayRepository;
+
+import lombok.RequiredArgsConstructor;
+
 /**
  * Business-day arithmetic for settlement dates.
  *
- * <p>Only weekends are excluded: T+1 is the next working day and T+2 the second,
- * rolling a Saturday or Sunday forward to Monday.</p>
+ * <p>Weekends and the exchange holiday calendar are both excluded: T+1 is the
+ * next working day and T+2 the second, rolling forward over any Saturday,
+ * Sunday or configured market holiday.</p>
  */
 @Service
+@RequiredArgsConstructor
 public class BusinessDateService {
+
+    private final MarketHolidayRepository marketHolidayRepository;
 
     public LocalDate tPlusOne(LocalDate date) {
         return plusBusinessDays(date, 1);
@@ -23,11 +31,8 @@ public class BusinessDateService {
     }
 
     /**
-     * Adds {@code businessDays} working days, skipping Saturdays and Sundays.
-     * Zero days returns the date unchanged.
-     *
-     * shortcut: market holidays are not considered; add an exchange calendar
-     * when the business needs them.
+     * Adds {@code businessDays} working days, skipping Saturdays, Sundays and
+     * market holidays. Zero days returns the date unchanged.
      */
     public LocalDate plusBusinessDays(LocalDate date, int businessDays) {
 
@@ -37,12 +42,22 @@ public class BusinessDateService {
         while (remaining > 0) {
             result = result.plusDays(1);
 
-            if (result.getDayOfWeek() != DayOfWeek.SATURDAY
-                    && result.getDayOfWeek() != DayOfWeek.SUNDAY) {
+            if (isBusinessDay(result)) {
                 remaining--;
             }
         }
 
         return result;
+    }
+
+    private boolean isBusinessDay(LocalDate date) {
+
+        DayOfWeek day = date.getDayOfWeek();
+
+        if (day == DayOfWeek.SATURDAY || day == DayOfWeek.SUNDAY) {
+            return false;
+        }
+
+        return !marketHolidayRepository.existsByHolidayDate(date);
     }
 }

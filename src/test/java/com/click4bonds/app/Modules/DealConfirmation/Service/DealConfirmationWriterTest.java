@@ -20,6 +20,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
+import com.click4bonds.app.Modules.Bond.Repository.MarketHolidayRepository;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
@@ -110,7 +111,7 @@ class DealConfirmationWriterTest {
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
-                new BusinessDateService(),
+                new BusinessDateService(Mockito.mock(MarketHolidayRepository.class)),
                 bankAccountRepository,
                 dematAccountRepository,
                 panDetailsService,
