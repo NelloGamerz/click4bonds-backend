@@ -57,6 +57,7 @@ public class DematAccountService {
                 .party(party)
                 .depository(request.depository())
                 .dpId(request.dpId().trim())
+                .dpName(request.dpName().trim())
                 .clientId(request.clientId().trim())
                 .accountHolderName(request.accountHolderName().trim())
                 .status(status)
@@ -88,6 +89,9 @@ public class DematAccountService {
         }
         if (request.dpId() != null) {
             account.setDpId(request.dpId().trim());
+        }
+        if (request.dpName() != null) {
+            account.setDpName(request.dpName().trim());
         }
         if (request.clientId() != null) {
             account.setClientId(request.clientId().trim());

@@ -538,7 +538,7 @@ public class DealConfirmationWriter {
 
         return new CounterpartyDetails(
                 panDetailsService.plainPan(party).orElse(null),
-                demat == null ? null : demat.getAccountHolderName(),
+                demat == null ? null : demat.getDpName(),
                 demat == null ? null : demat.getDpId(),
                 demat == null ? null : demat.getClientId(),
                 bank == null ? null : bank.getBankName(),
@@ -988,7 +988,7 @@ public class DealConfirmationWriter {
 
         return new CounterpartyDetails(
                 panDetailsService.plainPan(party).orElse(null),
-                demat == null ? null : demat.getAccountHolderName(),
+                demat == null ? null : demat.getDpName(),
                 demat == null ? null : demat.getDpId(),
                 demat == null ? null : demat.getClientId(),
                 bank == null ? null : bank.getBankName(),

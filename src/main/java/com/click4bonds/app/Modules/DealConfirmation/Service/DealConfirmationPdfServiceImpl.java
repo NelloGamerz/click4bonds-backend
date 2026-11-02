@@ -638,7 +638,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         PdfPTable stats = stats(4);
 
-        if (values.deliveryMode() == DeliveryMode.DEMAT) {
+        if (values.deliveryMode() == DeliveryMode.DEMAT
+                && values.side() == DealSide.BUY) {
 
             addStatLabels(
                     stats, "Your Bank Branch Location", "Your Bank Name", "IFSC Code", "Account No.");
@@ -648,6 +649,29 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     party == null ? NONE : text(party.bankName()),
                     party == null ? NONE : text(party.bankIfsc()),
                     party == null ? NONE : text(party.bankAccountNumber()));
+
+        } else if (values.deliveryMode() == DeliveryMode.DEMAT) {
+
+            /*
+             * A demat sale moves securities out of the counterparty's account,
+             * so the letter prints the account it comes from and the bank the
+             * consideration is paid to.
+             */
+            addStatLabels(stats, "Your DP Name", "DP ID", "Client ID", "Bank Name");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.dpName()),
+                    party == null ? NONE : text(party.dpId()),
+                    party == null ? NONE : text(party.clientId()),
+                    party == null ? NONE : text(party.bankName()));
+
+            addStatLabels(stats, "IFSC Code", "", "", "");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.bankIfsc()),
+                    "",
+                    "",
+                    "");
 
         } else if (values.deliveryMode() == DeliveryMode.NSCCL) {
 

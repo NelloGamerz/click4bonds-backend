@@ -62,6 +62,10 @@ public class DematAccount {
     @Column(name = "dp_id", nullable = false, length = 20)
     private String dpId;
 
+    /** Name of the depository participant that holds the account. */
+    @Column(name = "dp_name", nullable = false, length = 255)
+    private String dpName;
+
     @Column(name = "client_id", nullable = false, length = 20)
     private String clientId;
 
