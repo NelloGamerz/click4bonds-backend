@@ -10,8 +10,9 @@ package com.click4bonds.app.Modules.DealConfirmation.Enums;
  *       identifiers.</li>
  *   <li>{@code DEMAT} — a direct demat transfer. Our DP and bank particulars;
  *       the counterparty's PAN and bank particulars.</li>
- *   <li>{@code NSCCL} — cleared through NSE Clearing. Our bank particulars and
- *       settlement number; the counterparty's PAN and CM particulars.</li>
+ *   <li>{@code NSCCL} — cleared through NSE Clearing. Our bank and CM
+ *       particulars with the settlement number; the counterparty's PAN, demat
+ *       identifiers and bank particulars.</li>
  * </ul>
  *
  * <p>Chosen by the employee on a back-office deal; null on a customer-placed
