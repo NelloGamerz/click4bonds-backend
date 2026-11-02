@@ -24,12 +24,12 @@ import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
 /**
  * Behaviour of the pre-deal price/yield preview: the calculation is the platform
@@ -63,7 +63,7 @@ class AdminDealPricingServiceTest {
                 bondService,
                 priceCalculationService,
                 ytmCalculationService,
-                new DocumentProperties());
+                new BusinessDateService());
     }
 
     @Test
@@ -83,7 +83,8 @@ class AdminDealPricingServiceTest {
                         BOND_ID,
                         new BigDecimal("98.94"),
                         null,
-                        dealDate));
+                        dealDate,
+                        null));
 
         assertEquals(new BigDecimal("98.94"), preview.pricePerUnit());
         assertEquals(new BigDecimal("12.5000"), preview.annualYtm());
@@ -124,7 +125,8 @@ class AdminDealPricingServiceTest {
                         BOND_ID,
                         null,
                         new BigDecimal("12.5"),
-                        dealDate));
+                        dealDate,
+                        null));
 
         assertEquals(0, new BigDecimal("98.9400").compareTo(preview.pricePerUnit()));
         assertEquals(new BigDecimal("12.5"), preview.annualYtm());
@@ -160,6 +162,7 @@ class AdminDealPricingServiceTest {
                                 BOND_ID,
                                 new BigDecimal("98.94"),
                                 new BigDecimal("12.5"),
+                                null,
                                 null)));
     }
 
@@ -170,7 +173,7 @@ class AdminDealPricingServiceTest {
                 BadRequestException.class,
                 () -> service.preview(
                         USER_ID,
-                        new PreviewDealPricingRequest(BOND_ID, null, null, null)));
+                        new PreviewDealPricingRequest(BOND_ID, null, null, null, null)));
     }
 
     private Bond bond() {

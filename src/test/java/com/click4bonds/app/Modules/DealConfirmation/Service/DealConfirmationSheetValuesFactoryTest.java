@@ -15,6 +15,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
@@ -417,6 +418,17 @@ class DealConfirmationSheetValuesFactoryTest {
     // FIXTURES
     // =========================================================
 
+    @Test
+    void anIcclLetterPrintsTheSettlementCycle() {
+
+        DealConfirmationSheetValues values = factory.build(
+                snapshotWith(builder -> builder
+                        .deliveryMode(DeliveryMode.ICCL)
+                        .valueDateOffsetDays(2)));
+
+        assertEquals("ICDM(T+2)", values.marketType());
+    }
+
     /**
      * Eleven bonds at 100, accruing 2.401 per bond — chosen so the rounding is
      * visible in the totals rather than hidden by round numbers.
@@ -448,6 +460,18 @@ class DealConfirmationSheetValuesFactoryTest {
         private BigDecimal totalAmount = new BigDecimal("1100.0000");
         private BigDecimal accruedInterestPerHundredFace = new BigDecimal("2.401");
         private DealSide side;
+        private DeliveryMode deliveryMode;
+        private Integer valueDateOffsetDays = 0;
+
+        SnapshotBuilder deliveryMode(DeliveryMode value) {
+            this.deliveryMode = value;
+            return this;
+        }
+
+        SnapshotBuilder valueDateOffsetDays(Integer value) {
+            this.valueDateOffsetDays = value;
+            return this;
+        }
 
         SnapshotBuilder side(DealSide value) {
             this.side = value;
@@ -496,6 +520,7 @@ class DealConfirmationSheetValuesFactoryTest {
                     dealDate,
                     dealDate.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
                     valueDate,
+                    valueDateOffsetDays,
                     customerName,
                     "customer@example.com",
                     "TEST BOND 2027",
@@ -519,7 +544,7 @@ class DealConfirmationSheetValuesFactoryTest {
                     totalAmount,
                     DealConfirmationStatus.CREATED,
                     null,
-                    null,
+                    deliveryMode,
                     null,
                     side,
                     null);

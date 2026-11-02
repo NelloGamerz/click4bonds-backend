@@ -197,6 +197,7 @@ class PsuPrivateSaleSheetStrategyTest {
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "ICCL",
+                "ICDM(T+0)",
                 LocalDate.of(2026, 9, 25),
                 LocalDate.of(2026, 9, 25),
                 "INE123A07012",

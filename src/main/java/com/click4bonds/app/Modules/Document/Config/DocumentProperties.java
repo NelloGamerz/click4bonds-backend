@@ -145,9 +145,6 @@ public class DocumentProperties {
          */
         private int faceValue = 100;
 
-        /** Days from the deal date to the value (settlement) date. T+0 today. */
-        private int valueDateOffsetDays = 0;
-
         /**
          * Which side of the trade the letter describes.
          *

@@ -89,8 +89,6 @@ document:
     # Bond has no face-value field; 100 is the market convention and the only
     # value consistent with the persisted total_amount (price x quantity).
     face-value: ${DOCUMENT_FACE_VALUE:100}
-    # Deal date to value (settlement) date. T+0 today.
-    value-date-offset-days: ${DOCUMENT_VALUE_DATE_OFFSET_DAYS:0}
     # The customer is buying from us, so the letter is our sale. A purchase-side
     # letter is a different document with a different sheet.
     transaction-type: ${DOCUMENT_TRANSACTION_TYPE:Our Sale}

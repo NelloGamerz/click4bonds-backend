@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
 
@@ -204,6 +205,17 @@ public class DealConfirmationSheetValuesFactory {
 
         String counterpartyName = nullToEmpty(snapshot.customerName());
 
+        /*
+         * An ICCL letter names the settlement cycle it was struck on, which is
+         * the lag the employee chose; every other letter keeps the configured
+         * corporate market type.
+         */
+        String marketType = snapshot.deliveryMode() == DeliveryMode.ICCL
+                ? "ICDM(T+" + (snapshot.valueDateOffsetDays() == null
+                        ? 0
+                        : snapshot.valueDateOffsetDays()) + ")"
+                : documentProperties.getOrganisation().getMarketType();
+
         return new DealConfirmationSheetValues(
                 letterDate,
                 snapshot.dealReference(),
@@ -215,6 +227,7 @@ public class DealConfirmationSheetValuesFactory {
                 snapshot.deliveryMode() != null
                         ? snapshot.deliveryMode().name()
                         : documentProperties.getOrganisation().getModeOfDelivery(),
+                marketType,
                 dealDate,
                 snapshot.valueDate(),
                 snapshot.isin(),

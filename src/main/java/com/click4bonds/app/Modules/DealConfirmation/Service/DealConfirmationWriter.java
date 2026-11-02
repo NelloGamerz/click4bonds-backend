@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
@@ -26,7 +27,6 @@ import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Party.Enums.Depository;
 import com.click4bonds.app.Modules.Party.Model.BankAccount;
 import com.click4bonds.app.Modules.Party.Model.DematAccount;
@@ -78,7 +78,7 @@ public class DealConfirmationWriter {
     private final DealReferenceGenerator dealReferenceGenerator;
     private final DealConfirmationMapper mapper;
     private final DealAccrualCalculator accrualCalculator;
-    private final DocumentProperties documentProperties;
+    private final BusinessDateService businessDateService;
     private final BankAccountRepository bankAccountRepository;
     private final DematAccountRepository dematAccountRepository;
     private final PanDetailsService panDetailsService;
@@ -113,7 +113,8 @@ public class DealConfirmationWriter {
             long quantityPerLot,
             long totalQuantity,
             LocalDate dealDate,
-            LocalDate valueDate) {
+            LocalDate valueDate,
+            Integer valueDateOffsetDays) {
     }
 
     /**
@@ -145,7 +146,8 @@ public class DealConfirmationWriter {
                 null,
                 bond,
                 request.numberOfLots(),
-                LocalDate.now());
+                LocalDate.now(),
+                0);
 
         return commit(
                 context,
@@ -190,6 +192,7 @@ public class DealConfirmationWriter {
             UUID bondId,
             Long numberOfLots,
             LocalDate dealDate,
+            Integer valueDateOffsetDays,
             String idempotencyKey,
             UUID employeeId,
             UUID bankAccountId,
@@ -214,7 +217,8 @@ public class DealConfirmationWriter {
                 client,
                 bond,
                 numberOfLots,
-                dealDate == null ? LocalDate.now() : dealDate);
+                dealDate == null ? LocalDate.now() : dealDate,
+                valueDateOffsetDays);
 
         return commit(
                 context,
@@ -377,8 +381,11 @@ public class DealConfirmationWriter {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Deal not found: " + dealId));
 
-        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
-                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                DealConfirmationDocumentData.dealDateOf(deal),
+                deal.getValueDateOffsetDays() == null
+                        ? 0
+                        : deal.getValueDateOffsetDays());
 
         DealAccrual accrual = accrualCalculator
                 .calculate(deal.getBond(), valueDate)
@@ -476,8 +483,11 @@ public class DealConfirmationWriter {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Deal not found: " + dealId));
 
-        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
-                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                DealConfirmationDocumentData.dealDateOf(deal),
+                deal.getValueDateOffsetDays() == null
+                        ? 0
+                        : deal.getValueDateOffsetDays());
 
         DealAccrual accrual = accrualCalculator
                 .calculate(deal.getBond(), valueDate)
@@ -579,7 +589,8 @@ public class DealConfirmationWriter {
                 null,
                 bond,
                 request.numberOfLots(),
-                LocalDate.now());
+                LocalDate.now(),
+                0);
 
         /*
          * Measured against the bond as loaded rather than against a post-
@@ -679,12 +690,16 @@ public class DealConfirmationWriter {
             Client client,
             Bond bond,
             Long numberOfLots,
-            LocalDate dealDate) {
+            LocalDate dealDate,
+            Integer valueDateOffsetDays) {
 
         String isin = normalizeIsin(bond.getIsin());
 
-        LocalDate valueDate = dealDate.plusDays(
-                documentProperties.getDeal().getValueDateOffsetDays());
+        int offsetDays = valueDateOffsetDays == null ? 0 : valueDateOffsetDays;
+
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                dealDate,
+                offsetDays);
 
         /*
          * The units in a lot are a property of the bond, not of the request, so
@@ -714,7 +729,8 @@ public class DealConfirmationWriter {
                 quantityPerLot,
                 totalQuantity,
                 dealDate,
-                valueDate);
+                valueDate,
+                offsetDays);
     }
 
     // =========================================================
@@ -893,6 +909,7 @@ public class DealConfirmationWriter {
                  * letter has always printed.
                  */
                 .dealDate(context.client() == null ? null : context.dealDate())
+                .valueDateOffsetDays(context.valueDateOffsetDays())
                 .bond(bond)
                 .isin(bond.getIsin())
                 /*

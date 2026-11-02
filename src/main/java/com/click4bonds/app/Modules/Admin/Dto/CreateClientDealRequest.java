@@ -7,6 +7,8 @@ import com.click4bonds.app.Modules.DealConfirmation.Enums.DealSide;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.Party.Enums.Depository;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
@@ -35,6 +37,15 @@ public record CreateClientDealRequest(
          * and the month of the deal reference.
          */
         LocalDate dealDate,
+
+        /**
+         * Settlement lag: {@code 0} for T+0 (same day), {@code 1} for T+1,
+         * {@code 2} for T+2. The value date is the deal date plus that many
+         * business days. Null means T+0.
+         */
+        @Min(value = 0, message = "Value date offset must be 0, 1 or 2")
+        @Max(value = 2, message = "Value date offset must be 0, 1 or 2")
+        Integer valueDateOffsetDays,
 
         /**
          * Whether the confirmation letter is emailed to the client. False when

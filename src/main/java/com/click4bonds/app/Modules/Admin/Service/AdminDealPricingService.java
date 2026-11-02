@@ -12,12 +12,12 @@ import com.click4bonds.app.Modules.Admin.Dto.AdminDealPricingPreviewResponse;
 import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Redis.RedisService;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,7 +52,7 @@ public class AdminDealPricingService {
     private final BondService bondService;
     private final PriceCalculationService priceCalculationService;
     private final YtmCalculationService ytmCalculationService;
-    private final DocumentProperties documentProperties;
+    private final BusinessDateService businessDateService;
 
     /**
      * The cached figures.
@@ -92,10 +92,13 @@ public class AdminDealPricingService {
 
         Bond bond = bondService.findBondById(request.bondId());
 
-        LocalDate valueDate = (request.dealDate() == null
-                ? LocalDate.now()
-                : request.dealDate())
-                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                request.dealDate() == null
+                        ? LocalDate.now()
+                        : request.dealDate(),
+                request.valueDateOffsetDays() == null
+                        ? 0
+                        : request.valueDateOffsetDays());
 
         BigDecimal pricePerUnit;
         BigDecimal annualYtm;

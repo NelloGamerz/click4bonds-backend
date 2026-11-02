@@ -100,6 +100,8 @@ public record DealConfirmationSheetValues(
         String counterpartyLine,
         String transactionType,
         String modeOfDelivery,
+        /** Market type printed in our particulars, e.g. {@code ICDM(T+1)}. */
+        String marketType,
         LocalDate dealDate,
         LocalDate valueDate,
         String isin,

@@ -138,7 +138,7 @@ public class PsuPrivateSaleSheetStrategy implements DealConfirmationSheetStrateg
         cells.put("D31", organisation.getIfscCode());
         cells.put("B32", organisation.getCmName());
         cells.put("D32", organisation.getBeneficiaryName());
-        cells.put("B33", organisation.getMarketType());
+        cells.put("B33", values.marketType());
         cells.put("D33", organisation.getAccountNumber());
         cells.put("B34", organisation.getSettlementNumber());
         cells.put("D34", organisation.getBanker());

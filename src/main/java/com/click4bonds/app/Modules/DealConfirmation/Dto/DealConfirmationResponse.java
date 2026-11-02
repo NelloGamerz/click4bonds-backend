@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Dto;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
@@ -23,6 +24,15 @@ public class DealConfirmationResponse {
     private UUID dealConfirmationId;
 
     private String dealReference;
+
+    /** The date the deal was struck. */
+    private LocalDate dealDate;
+
+    /**
+     * Settlement lag chosen for the deal: {@code 0} for T+0, {@code 1} for T+1,
+     * {@code 2} for T+2.
+     */
+    private Integer valueDateOffsetDays;
 
     private UUID bondId;
 
