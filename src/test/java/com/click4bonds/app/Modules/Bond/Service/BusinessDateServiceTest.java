@@ -20,9 +20,9 @@ class BusinessDateServiceTest {
     @BeforeEach
     void setUp() {
         marketHolidayRepository = Mockito.mock(MarketHolidayRepository.class);
-        Mockito.when(marketHolidayRepository.existsByHolidayDate(Mockito.any()))
+        Mockito.when(marketHolidayRepository.existsByDate(Mockito.any()))
                 .thenReturn(false);
-        Mockito.when(marketHolidayRepository.existsByHolidayDate(HOLIDAY))
+        Mockito.when(marketHolidayRepository.existsByDate(HOLIDAY))
                 .thenReturn(true);
         businessDateService = new BusinessDateService(marketHolidayRepository);
     }
