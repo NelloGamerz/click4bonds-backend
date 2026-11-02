@@ -580,7 +580,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     stats,
                     text(organisation.getCmBpId()),
                     text(organisation.getCmName()),
-                    text(organisation.getMarketType()),
+                    text(values.marketType()),
                     text(values.settlementNumber()));
 
             /* An ICCL deal also prints the account its consideration settles to. */
@@ -591,7 +591,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     stats,
                     text(organisation.getIfscCode()),
                     text(organisation.getBanker()),
-                    iccl ? text(organisation.getAccountNumber()) : "",
+                    iccl ? text(organisation.getNscllAccountNumber()) : "",
                     "");
         }
 

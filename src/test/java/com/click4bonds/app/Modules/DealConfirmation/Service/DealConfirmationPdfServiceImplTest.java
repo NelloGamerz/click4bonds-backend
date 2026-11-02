@@ -108,6 +108,7 @@ class DealConfirmationPdfServiceImplTest {
                 null,
                 null,
                 null,
+                null,
                 null);
 
         byte[] pdf = service.render(sparse, DealConfirmationLayout.CORPORATE);
@@ -175,6 +176,7 @@ class DealConfirmationPdfServiceImplTest {
                 "Counterparty Name- Karan Pareek",
                 "Our Sale",
                 "ICCL",
+                "ICDM(T+0)",
                 LocalDate.of(2026, 10, 5),
                 LocalDate.of(2026, 10, 5),
                 "INE0I5X07042",
@@ -216,6 +218,7 @@ class DealConfirmationPdfServiceImplTest {
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "Demat",
+                null,
                 LocalDate.of(2026, 9, 25),
                 LocalDate.of(2026, 9, 25),
                 "IN0020240035",

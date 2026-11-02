@@ -467,6 +467,7 @@ class DealConfirmationServiceTest {
                 "Counterparty Name- Test Customer",
                 "Our Sale",
                 "ICCL",
+                "ICDM(T+0)",
                 LocalDate.of(2026, 9, 22),
                 LocalDate.of(2026, 9, 22),
                 ISIN,

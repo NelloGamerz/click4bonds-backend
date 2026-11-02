@@ -21,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
+import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
@@ -28,7 +29,6 @@ import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Party.Model.BankAccount;
@@ -110,7 +110,7 @@ class DealConfirmationWriterTest {
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
-                new DocumentProperties(),
+                new BusinessDateService(),
                 bankAccountRepository,
                 dematAccountRepository,
                 panDetailsService,
@@ -389,6 +389,7 @@ class DealConfirmationWriterTest {
                         bond.getId(),
                         5L,
                         dealDate,
+                        0,
                         null,
                         USER_ID,
                         null,
@@ -411,6 +412,54 @@ class DealConfirmationWriterTest {
         assertEquals("Acme Ltd", created.documentData().customerName());
         assertEquals("ops@acme.example", created.documentData().customerEmail());
         assertEquals(dealDate, created.documentData().dealDate());
+    }
+
+    @Test
+    void aFridayDealAtTPlusOneSettlesOnMonday() {
+
+        Bond bond = bond(BondStatus.ACTIVE, 1000L);
+
+        Client client = Client.builder()
+                .id(UUID.randomUUID())
+                .name("Acme Ltd")
+                .email("ops@acme.example")
+                .build();
+
+        LocalDate friday = LocalDate.of(2026, 10, 30);
+
+        Mockito.when(clientRepository.findById(client.getId()))
+                .thenReturn(Optional.of(client));
+        Mockito.when(userService.getUser(USER_ID))
+                .thenReturn(customer());
+        Mockito.when(bondService.findBondById(bond.getId()))
+                .thenReturn(bond);
+        Mockito.when(bondService.reserveQuantity(bond.getId(), BigDecimal.valueOf(500)))
+                .thenReturn(1);
+        givenReference("2026/S/OCT/2");
+        givenSaveReturnsItsArgument();
+
+        DealConfirmationWriter.CreatedDeal created =
+                writer.createForClient(
+                        client.getId(),
+                        bond.getId(),
+                        5L,
+                        friday,
+                        1,
+                        null,
+                        USER_ID,
+                        null,
+                        null,
+                        DeliveryMode.ICCL,
+                        "2610022",
+                        DealSide.SELL,
+                        null,
+                        false,
+                        null);
+
+        assertEquals(LocalDate.of(2026, 11, 2),
+                created.documentData().valueDate());
+        assertEquals(friday, created.response().getDealDate());
+        assertEquals(1, created.response().getValueDateOffsetDays());
     }
 
     @Test
@@ -470,6 +519,7 @@ class DealConfirmationWriterTest {
                 bond.getId(),
                 5L,
                 LocalDate.of(2026, 10, 1),
+                0,
                 null,
                 USER_ID,
                 bank.getId(),
@@ -529,6 +579,7 @@ class DealConfirmationWriterTest {
                         bond.getId(),
                         5L,
                         LocalDate.of(2026, 10, 1),
+                        0,
                         null,
                         USER_ID,
                         someoneElsesBank,
@@ -888,6 +939,7 @@ class DealConfirmationWriterTest {
                 bond.getId(),
                 5L,
                 LocalDate.of(2026, 10, 1),
+                0,
                 null,
                 USER_ID,
                 null,

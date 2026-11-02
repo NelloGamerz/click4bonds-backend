@@ -136,6 +136,19 @@ public class DealConfirmation {
     @Column(name = "deal_date")
     private LocalDate dealDate;
 
+    /**
+     * Settlement lag chosen for this deal: {@code 0} for T+0, {@code 1} for T+1,
+     * {@code 2} for T+2. The value date is {@link #dealDate} plus that many
+     * business days.
+     *
+     * <p>Stored because a back-office deal is lettered only when it is
+     * confirmed, long after the request that chose the lag. Null on rows written
+     * before the field existed and on customer deals, which settle T+0.</p>
+     */
+    @Column(name = "value_date_offset_days")
+    @Builder.Default
+    private Integer valueDateOffsetDays = 0;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bond_id", nullable = false)
     private Bond bond;

@@ -100,6 +100,7 @@ class DealConfirmationDocumentProducerTest {
                         LocalDate.of(2026, 9, 25),
                         null,
                         LocalDate.of(2026, 9, 25),
+                        0,
                         "Test Customer",
                         "customer@example.com",
                         "TEST BOND 2027",

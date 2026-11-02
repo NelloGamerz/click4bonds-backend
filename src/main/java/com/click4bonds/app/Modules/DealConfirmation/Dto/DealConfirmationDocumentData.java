@@ -41,6 +41,12 @@ public record DealConfirmationDocumentData(
         /** Settlement date the letter prints and the accrual is measured to. */
         LocalDate valueDate,
 
+        /**
+         * Settlement lag chosen for the deal: {@code 0} for T+0, {@code 1} for
+         * T+1, {@code 2} for T+2. An ICCL letter prints it as {@code ICDM(T+n)}.
+         */
+        Integer valueDateOffsetDays,
+
         String customerName,
 
         String customerEmail,
@@ -169,6 +175,7 @@ public record DealConfirmationDocumentData(
                 dealDateOf(deal),
                 deal.getCreatedAt(),
                 valueDate,
+                deal.getValueDateOffsetDays() == null ? 0 : deal.getValueDateOffsetDays(),
                 counterpartyName(deal),
                 counterpartyEmail(deal),
                 bond == null ? null : bond.getName(),

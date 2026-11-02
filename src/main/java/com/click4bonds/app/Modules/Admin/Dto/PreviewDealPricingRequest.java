@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.UUID;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 
 /**
@@ -31,5 +33,13 @@ public record PreviewDealPricingRequest(
          * The date the deal will be struck, which fixes the value date the
          * calculation measures to. Null means today.
          */
-        LocalDate dealDate) {
+        LocalDate dealDate,
+
+        /**
+         * Settlement lag: {@code 0} for T+0, {@code 1} for T+1, {@code 2} for
+         * T+2. Null means T+0.
+         */
+        @Min(value = 0, message = "Value date offset must be 0, 1 or 2")
+        @Max(value = 2, message = "Value date offset must be 0, 1 or 2")
+        Integer valueDateOffsetDays) {
 }

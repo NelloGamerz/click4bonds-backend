@@ -16,6 +16,7 @@ import com.click4bonds.app.Modules.Admin.Dto.CalculateDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
 import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Bond.Dto.BondPrice;
+import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
 import com.click4bonds.app.Modules.Bond.Service.YtmCalculationService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
@@ -35,7 +36,6 @@ import com.click4bonds.app.Modules.DealConfirmation.Service.DealAccrualCalculato
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.User.Model.User;
 
 import lombok.RequiredArgsConstructor;
@@ -51,10 +51,10 @@ public class AdminDealService {
     private final DealConfirmationRepository dealConfirmationRepository;
     private final DealAccrualCalculator accrualCalculator;
     private final DealConfirmationSheetValuesFactory sheetValuesFactory;
-    private final DocumentProperties documentProperties;
     private final PriceCalculationService priceCalculationService;
     private final YtmCalculationService ytmCalculationService;
     private final AdminDealPricingService pricingService;
+    private final BusinessDateService businessDateService;
 
     public DealConfirmationResponse create(
             CreateClientDealRequest request,
@@ -100,6 +100,7 @@ public class AdminDealService {
                         request.bondId(),
                         request.numberOfLots(),
                         request.dealDate(),
+                        request.valueDateOffsetDays(),
                         request.sendEmail(),
                         employeeId,
                         request.bankAccountId(),
@@ -222,8 +223,11 @@ public class AdminDealService {
                             + deal.getDealReference());
         }
 
-        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
-                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                DealConfirmationDocumentData.dealDateOf(deal),
+                deal.getValueDateOffsetDays() == null
+                        ? 0
+                        : deal.getValueDateOffsetDays());
 
         BigDecimal pricePerUnit;
         BigDecimal annualYtm;
@@ -329,8 +333,11 @@ public class AdminDealService {
      */
     private DealConfirmationSheetValues letterValues(DealConfirmation deal) {
 
-        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
-                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+        LocalDate valueDate = businessDateService.plusBusinessDays(
+                DealConfirmationDocumentData.dealDateOf(deal),
+                deal.getValueDateOffsetDays() == null
+                        ? 0
+                        : deal.getValueDateOffsetDays());
 
         DealAccrual accrual = accrualCalculator
                 .calculate(deal.getBond(), valueDate)

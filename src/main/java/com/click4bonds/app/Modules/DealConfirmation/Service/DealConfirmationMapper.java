@@ -30,6 +30,11 @@ public class DealConfirmationMapper {
         return DealConfirmationResponse.builder()
                 .dealConfirmationId(deal.getId())
                 .dealReference(deal.getDealReference())
+                .dealDate(DealConfirmationDocumentData.dealDateOf(deal))
+                .valueDateOffsetDays(
+                        deal.getValueDateOffsetDays() == null
+                                ? 0
+                                : deal.getValueDateOffsetDays())
                 .bondId(deal.getBond() == null ? null : deal.getBond().getId())
                 .bondName(deal.getBond() == null ? null : deal.getBond().getName())
                 .isin(deal.getIsin())

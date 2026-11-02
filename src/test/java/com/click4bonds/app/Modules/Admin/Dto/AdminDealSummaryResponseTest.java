@@ -92,7 +92,7 @@ class AdminDealSummaryResponseTest {
     private DealConfirmationSheetValues values() {
 
         return new DealConfirmationSheetValues(
-                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null,
                 500L,
                 null,
