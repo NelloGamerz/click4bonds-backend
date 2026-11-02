@@ -30,6 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.click4bonds.app.Modules.Bond.Enums.BondStatus;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
+import com.click4bonds.app.Modules.Bond.Repository.MarketHolidayRepository;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.BusinessDateService;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
@@ -190,7 +191,7 @@ class DealConfirmationConcurrencyTest {
                 dealReferenceGenerator,
                 new DealConfirmationMapper(),
                 accrualCalculator,
-                new BusinessDateService(),
+                new BusinessDateService(mock(MarketHolidayRepository.class)),
                 mock(BankAccountRepository.class),
                 mock(DematAccountRepository.class),
                 mock(PanDetailsService.class),
