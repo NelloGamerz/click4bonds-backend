@@ -14,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,6 +32,7 @@ import com.click4bonds.app.Modules.Admin.Dto.CalculateDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Dto.CreateClientDealRequest;
 import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
+import com.click4bonds.app.Modules.Admin.Service.AdminPermissionService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentReader;
@@ -66,6 +68,7 @@ public class AdminDealController {
     private static final Sort DEAL_DEFAULT_SORT = Sort.by(Sort.Direction.DESC, "createdAt");
 
     private final AdminDealService adminDealService;
+    private final AdminPermissionService adminPermissionService;
     private final DealConfirmationDocumentReader documentReader;
     private final DealConfirmationService dealConfirmationService;
 
@@ -160,22 +163,22 @@ public class AdminDealController {
     }
 
     /**
-     * The deals the authenticated employee created.
-     *
-     * <p>Scoped to the caller in the query itself, so an employee sees only their
-     * own deals. {@code search} is matched against the deal reference, client,
-     * bond and ISIN.</p>
+     * The deals this caller may see: all of them for an {@code ADMIN}, or only
+     * the ones the authenticated employee created. {@code search} is matched
+     * against the deal reference, client, bond and ISIN.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
-    public ResponseEntity<Page<AdminDealSummaryResponse>> getMyDeals(
+    public ResponseEntity<Page<AdminDealSummaryResponse>> getDeals(
             @RequestParam(required = false) String search,
             @ParameterObject @PageableDefault(size = 20) Pageable pageable,
+            Authentication authentication,
             @AuthenticationPrincipal Jwt jwt) {
 
         return ResponseEntity.ok(
-                adminDealService.getDealsCreatedBy(
+                adminDealService.getDeals(
                         UUID.fromString(jwt.getSubject()),
+                        adminPermissionService.isAdmin(authentication),
                         search,
                         PaginationSorts.restrict(
                                 pageable,

@@ -269,21 +269,25 @@ public class AdminDealService {
     }
 
     /**
-     * One page of the deals the given employee created, newest first unless the
-     * caller asked otherwise. {@code search} is matched against the reference,
+     * One page of deals, newest first unless the caller asked otherwise: every
+     * staff-created deal for an {@code ADMIN}, or only the ones this employee
+     * created otherwise. {@code search} is matched against the reference,
      * client, bond and ISIN; null or blank means no filter.
      */
     @Transactional(readOnly = true)
-    public Page<AdminDealSummaryResponse> getDealsCreatedBy(
+    public Page<AdminDealSummaryResponse> getDeals(
             UUID employeeId,
+            boolean admin,
             String search,
             Pageable pageable) {
 
         String term = search == null || search.isBlank() ? null : search.trim();
 
-        return dealConfirmationRepository
-                .findCreatedBy(employeeId, term, pageable)
-                .map(this::toSummary);
+        Page<DealConfirmation> deals = admin
+                ? dealConfirmationRepository.findAllDeals(term, pageable)
+                : dealConfirmationRepository.findCreatedBy(employeeId, term, pageable);
+
+        return deals.map(this::toSummary);
     }
 
     private AdminDealSummaryResponse toSummary(DealConfirmation deal) {

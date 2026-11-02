@@ -100,6 +100,25 @@ class AdminPermissionServiceTest {
     }
 
     @Test
+    void anAdminIsRecognisedAsAnAdmin() {
+
+        UUID id = UUID.randomUUID();
+        account(id, UserRole.ADMIN);
+
+        assertTrue(service.isAdmin(authenticationFor(id)));
+    }
+
+    @Test
+    void anEmployeeIsNotAnAdmin() {
+
+        UUID id = UUID.randomUUID();
+        account(id, UserRole.EMPLOYEE);
+
+        assertFalse(service.isAdmin(authenticationFor(id)));
+        assertFalse(service.isAdmin(null));
+    }
+
+    @Test
     void anEmployeeIsAllowedAModuleItHasBeenGranted() {
 
         UUID id = UUID.randomUUID();
