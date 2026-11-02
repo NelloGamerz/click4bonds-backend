@@ -5,6 +5,8 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Document.Model.DocumentFormat;
@@ -27,6 +29,8 @@ public class DealConfirmationDocumentReader {
 
     private final DealConfirmationRepository dealConfirmationRepository;
     private final DocumentStorage documentStorage;
+    private final DealConfirmationDocumentService documentService;
+    private final DealConfirmationWriter writer;
 
     /**
      * A document ready to be sent to the customer.
@@ -80,23 +84,38 @@ public class DealConfirmationDocumentReader {
                 dealReference);
     }
 
+    /**
+     * Loads the confirmation letter for any deal. Only for an {@code ADMIN},
+     * who may read every deal's letter.
+     *
+     * @param dealReference the deal to read
+     * @throws ResourceNotFoundException when there is no such deal, or it has no
+     *                                   document yet
+     */
+    public DownloadedDocument readAny(String dealReference) {
+
+        return toDocument(
+                dealConfirmationRepository
+                        .findByDealReference(dealReference)
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Deal not found: " + dealReference)),
+                dealReference);
+    }
+
     private DownloadedDocument toDocument(
             DealConfirmation deal,
             String dealReference) {
 
-        if (deal.getDocumentR2Path() == null) {
+        /*
+         * A deal whose letter has not been produced yet is lettered now, from
+         * the deal as it stands, and the bytes are returned without recording
+         * them: the stored copy and CONFIRMATION_GENERATED stay the document
+         * step's to set, so a preview download cannot claim a deal is lettered.
+         */
+        if (deal.getStatus() != DealConfirmationStatus.CONFIRMATION_GENERATED
+                || deal.getDocumentR2Path() == null) {
 
-            /*
-             * A real deal with no letter. Reported as "not found" rather than as
-             * an error because it is a legitimate state: document generation may
-             * have failed, or may be switched off in this environment. The deal
-             * itself is unaffected.
-             */
-            log.info(
-                    "Deal {} has no generated document", dealReference);
-
-            throw new ResourceNotFoundException(
-                    "No document has been generated for deal: " + dealReference);
+            return generateOnDemand(deal, dealReference);
         }
 
         /*
@@ -120,5 +139,34 @@ public class DealConfirmationDocumentReader {
                 dealReference + "." + format.extension(),
                 format.contentType(),
                 content);
+    }
+
+    /**
+     * Renders the deal's letter right now and returns it, without recording it.
+     *
+     * @throws ResourceNotFoundException when documents are switched off in this
+     *                                   environment, so nothing was produced
+     */
+    private DownloadedDocument generateOnDemand(
+            DealConfirmation deal,
+            String dealReference) {
+
+        DealConfirmationDocument document =
+                documentService.generate(writer.documentDataFor(deal.getId()));
+
+        if (!document.isPresent()) {
+
+            log.info(
+                    "Deal {} has no generated document and documents are switched off",
+                    dealReference);
+
+            throw new ResourceNotFoundException(
+                    "No document has been generated for deal: " + dealReference);
+        }
+
+        return new DownloadedDocument(
+                document.fileName(),
+                document.contentType(),
+                document.content());
     }
 }
