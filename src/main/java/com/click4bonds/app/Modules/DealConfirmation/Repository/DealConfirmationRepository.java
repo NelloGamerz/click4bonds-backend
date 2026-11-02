@@ -64,6 +64,28 @@ public interface DealConfirmationRepository
             Pageable pageable);
 
     /**
+     * One page of every staff-created deal, optionally filtered like
+     * {@link #findCreatedBy}. Used by an {@code ADMIN}, who may see all deals.
+     */
+    @EntityGraph(attributePaths = { "bond", "client" })
+    @Query("""
+            SELECT d
+            FROM DealConfirmation d
+            LEFT JOIN d.client c
+            LEFT JOIN d.bond b
+            WHERE (
+                :search IS NULL
+                OR LOWER(d.dealReference) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(d.isin) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(c.name) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+                OR LOWER(b.name) LIKE LOWER(CONCAT('%', CAST(:search AS String), '%'))
+            )
+            """)
+    Page<DealConfirmation> findAllDeals(
+            @Param("search") String search,
+            Pageable pageable);
+
+    /**
      * Looks up a deal by reference, but only for the customer it belongs to.
      *
      * <p>Used to serve a deal's generated document. Scoping the query to the

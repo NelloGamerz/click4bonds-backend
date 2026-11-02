@@ -111,6 +111,26 @@ public class AdminPermissionService {
     }
 
     /**
+     * Whether the authenticated account is an {@code ADMIN}, re-read from the
+     * account row for the same reason {@link #hasModule} does.
+     *
+     * @param authentication the request's authentication, or null if there is none
+     * @return {@code true} only when the account is an administrator
+     */
+    public boolean isAdmin(Authentication authentication) {
+
+        UUID userId = subjectOf(authentication);
+
+        if (userId == null) {
+            return false;
+        }
+
+        return userService.findUser(userId)
+                .map(user -> user.getRole() == UserRole.ADMIN)
+                .orElse(false);
+    }
+
+    /**
      * Reads the account identifier off the authentication.
      *
      * <p>The subject of the bearer token is {@code User.id}, and
