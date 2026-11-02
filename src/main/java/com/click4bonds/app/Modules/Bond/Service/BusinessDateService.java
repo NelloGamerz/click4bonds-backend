@@ -58,6 +58,6 @@ public class BusinessDateService {
             return false;
         }
 
-        return !marketHolidayRepository.existsByHolidayDate(date);
+        return !marketHolidayRepository.existsByDate(date);
     }
 }
