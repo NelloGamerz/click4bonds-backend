@@ -546,6 +546,18 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     text(organisation.getNscllAccountNumber()),
                     text(values.settlementNumber()));
 
+            /*
+             * The clearing member that settles an NSCCL deal is printed under
+             * our bank particulars, which is where the letter has room for it.
+             */
+            addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "");
+            addStatValues(
+                    stats,
+                    text(organisation.getNscllCmBpId()),
+                    text(organisation.getNscllCmName()),
+                    text(organisation.getNscllMarketType()),
+                    "");
+
         } else if (values.deliveryMode() == null && layout == DealConfirmationLayout.GSEC) {
 
             /*
@@ -571,12 +583,15 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     text(organisation.getMarketType()),
                     text(values.settlementNumber()));
 
-            addStatLabels(stats, "IFSC code", "Banker", "", "");
+            /* An ICCL deal also prints the account its consideration settles to. */
+            boolean iccl = values.deliveryMode() == DeliveryMode.ICCL;
+
+            addStatLabels(stats, "IFSC code", "Banker", iccl ? "Account No." : "", "");
             addStatValues(
                     stats,
                     text(organisation.getIfscCode()),
                     text(organisation.getBanker()),
-                    "",
+                    iccl ? text(organisation.getAccountNumber()) : "",
                     "");
         }
 
@@ -636,14 +651,25 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         } else if (values.deliveryMode() == DeliveryMode.NSCCL) {
 
-            DocumentProperties.Organisation organisation = properties.getOrganisation();
-
-            addStatLabels(stats, "CM-BP-Id", "CM name", "Market type", "");
+            /*
+             * An NSCCL deal prints the counterparty's demat identifiers and the
+             * bank account it settles to; our CM particulars are on the other
+             * card.
+             */
+            addStatLabels(stats, "DP name", "DP ID", "Client ID", "Client Bank Name");
             addStatValues(
                     stats,
-                    text(organisation.getNscllCmBpId()),
-                    text(organisation.getNscllCmName()),
-                    text(organisation.getNscllMarketType()),
+                    party == null ? NONE : text(party.dpName()),
+                    party == null ? NONE : text(party.dpId()),
+                    party == null ? NONE : text(party.clientId()),
+                    party == null ? NONE : text(party.bankName()));
+
+            addStatLabels(stats, "IFSC code", "Account No.", "", "");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.bankIfsc()),
+                    party == null ? NONE : text(party.bankAccountNumber()),
+                    "",
                     "");
 
         } else {
