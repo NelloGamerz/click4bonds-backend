@@ -460,6 +460,41 @@ public class DealConfirmationWriter {
     }
 
     /**
+     * The snapshot a persisted deal's letter is built from, rebuilt on demand.
+     *
+     * <p>Used when a letter is requested before document generation has run.
+     * Runs in its own transaction because it reads the deal's lazily loaded
+     * customer, client and bond.</p>
+     *
+     * @param dealId the deal to describe
+     * @throws ResourceNotFoundException when there is no such deal
+     */
+    @Transactional(readOnly = true)
+    public DealConfirmationDocumentData documentDataFor(UUID dealId) {
+
+        DealConfirmation deal = dealConfirmationRepository.findById(dealId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Deal not found: " + dealId));
+
+        LocalDate valueDate = DealConfirmationDocumentData.dealDateOf(deal)
+                .plusDays(documentProperties.getDeal().getValueDateOffsetDays());
+
+        DealAccrual accrual = accrualCalculator
+                .calculate(deal.getBond(), valueDate)
+                .orElse(null);
+
+        return mapper.toDocumentData(
+                deal,
+                valueDate,
+                accrual,
+                counterpartyOf(deal),
+                deal.getDeliveryMode(),
+                deal.getSettlementNumber(),
+                deal.getSide(),
+                deal.getDepository());
+    }
+
+    /**
      * The counterparty particulars of an already-persisted deal, for a letter
      * generated after the fact.
      *

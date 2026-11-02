@@ -59,12 +59,29 @@ public record AdminDealSummaryResponse(
         BigDecimal stampDuty,
         BigDecimal totalConsideration,
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        BigDecimal tds) {
+        BigDecimal tds,
+
+        /**
+         * The staff account that created the deal, by name. Only an
+         * {@code ADMIN} is told this; on an employee's own listing it is null
+         * and omitted from the JSON.
+         */
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        String createdByName) {
 
     public static AdminDealSummaryResponse from(
             DealConfirmation deal,
             DealConfirmationSheetValues values,
             boolean sovereign) {
+
+        return from(deal, values, sovereign, null);
+    }
+
+    public static AdminDealSummaryResponse from(
+            DealConfirmation deal,
+            DealConfirmationSheetValues values,
+            boolean sovereign,
+            String createdByName) {
 
         return new AdminDealSummaryResponse(
                 deal.getId(),
@@ -88,6 +105,7 @@ public record AdminDealSummaryResponse(
                 sovereign
                         ? (values == null ? null : values.gsecTotalConsiderationAmount())
                         : (values == null ? null : values.totalConsideration()),
-                sovereign && values != null ? values.gsecTds() : null);
+                sovereign && values != null ? values.gsecTds() : null,
+                createdByName);
     }
 }

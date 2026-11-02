@@ -187,20 +187,21 @@ public class AdminDealController {
     }
 
     /**
-     * Downloads the confirmation letter for a deal the authenticated employee
-     * created.
+     * Downloads a deal's confirmation letter: any deal for an {@code ADMIN},
+     * only the caller's own otherwise.
      *
-     * <p>Scoped to {@code createdBy} in the query itself, so another employee's
-     * reference is indistinguishable from one that does not exist — both are
-     * 404.</p>
+     * <p>For an employee the query is scoped to {@code createdBy}, so another
+     * employee's reference is indistinguishable from one that does not exist —
+     * both are 404.</p>
      */
     @GetMapping("/{dealReference}/document")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
     public ResponseEntity<byte[]> downloadDocument(
             @PathVariable String dealReference,
+            Authentication authentication,
             @AuthenticationPrincipal Jwt jwt) {
 
-        return download(dealReference, jwt);
+        return download(dealReference, authentication, jwt);
     }
 
     /**
@@ -214,9 +215,10 @@ public class AdminDealController {
             @PathVariable String side,
             @PathVariable String month,
             @PathVariable String sequence,
+            Authentication authentication,
             @AuthenticationPrincipal Jwt jwt) {
 
-        return download(year + "/" + side + "/" + month + "/" + sequence, jwt);
+        return download(year + "/" + side + "/" + month + "/" + sequence, authentication, jwt);
     }
 
     /**
@@ -232,17 +234,23 @@ public class AdminDealController {
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
     public ResponseEntity<byte[]> downloadDocumentByReference(
             @RequestParam String reference,
+            Authentication authentication,
             @AuthenticationPrincipal Jwt jwt) {
 
-        return download(reference, jwt);
+        return download(reference, authentication, jwt);
     }
 
-    private ResponseEntity<byte[]> download(String dealReference, Jwt jwt) {
+    private ResponseEntity<byte[]> download(
+            String dealReference,
+            Authentication authentication,
+            Jwt jwt) {
 
         DealConfirmationDocumentReader.DownloadedDocument document =
-                documentReader.readCreatedBy(
-                        UUID.fromString(jwt.getSubject()),
-                        dealReference);
+                adminPermissionService.isAdmin(authentication)
+                        ? documentReader.readAny(dealReference)
+                        : documentReader.readCreatedBy(
+                                UUID.fromString(jwt.getSubject()),
+                                dealReference);
 
         ContentDisposition disposition = ContentDisposition.attachment()
                 .filename(document.fileName())

@@ -36,6 +36,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationServ
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
+import com.click4bonds.app.Modules.User.Model.User;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -287,16 +288,35 @@ public class AdminDealService {
                 ? dealConfirmationRepository.findAllDeals(term, pageable)
                 : dealConfirmationRepository.findCreatedBy(employeeId, term, pageable);
 
-        return deals.map(this::toSummary);
+        return deals.map(deal -> toSummary(deal, admin));
     }
 
-    private AdminDealSummaryResponse toSummary(DealConfirmation deal) {
+    private AdminDealSummaryResponse toSummary(
+            DealConfirmation deal,
+            boolean admin) {
 
         return AdminDealSummaryResponse.from(
                 deal,
                 letterValues(deal),
                 DealConfirmationSheetStrategyFactory.isSovereign(
-                        deal.getBond() == null ? null : deal.getBond().getRating()));
+                        deal.getBond() == null ? null : deal.getBond().getRating()),
+                admin ? creatorName(deal) : null);
+    }
+
+    /** The staff account's name, falling back to its email when it has none. */
+    private static String creatorName(DealConfirmation deal) {
+
+        User creator = deal.getCreatedBy();
+
+        if (creator == null) {
+            return null;
+        }
+
+        String name = ((creator.getFirstName() == null ? "" : creator.getFirstName())
+                + " "
+                + (creator.getLastName() == null ? "" : creator.getLastName())).trim();
+
+        return name.isEmpty() ? creator.getEmail() : name;
     }
 
     /**

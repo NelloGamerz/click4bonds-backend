@@ -67,7 +67,7 @@ public interface DealConfirmationRepository
      * One page of every staff-created deal, optionally filtered like
      * {@link #findCreatedBy}. Used by an {@code ADMIN}, who may see all deals.
      */
-    @EntityGraph(attributePaths = { "bond", "client" })
+    @EntityGraph(attributePaths = { "bond", "client", "createdBy" })
     @Query("""
             SELECT d
             FROM DealConfirmation d

@@ -70,6 +70,21 @@ class AdminDealSummaryResponseTest {
         assertNull(response.tds());
     }
 
+    @Test
+    void theCreatorIsNamedOnlyWhenItIsSupplied() throws Exception {
+
+        AdminDealSummaryResponse adminRow = AdminDealSummaryResponse.from(
+                deal, null, false, "Karan Pareek");
+        AdminDealSummaryResponse employeeRow = AdminDealSummaryResponse.from(
+                deal, null, false);
+
+        assertEquals("Karan Pareek", adminRow.createdByName());
+        assertNull(employeeRow.createdByName());
+
+        assertTrue(new ObjectMapper().writeValueAsString(adminRow).contains("createdByName"));
+        assertFalse(new ObjectMapper().writeValueAsString(employeeRow).contains("createdByName"));
+    }
+
     /**
      * A deal the sheet can be built from: corporate and G-Sec figures differ, so
      * a test can tell which set a row carries.

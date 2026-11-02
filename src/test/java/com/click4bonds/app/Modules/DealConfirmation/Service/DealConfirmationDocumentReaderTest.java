@@ -2,6 +2,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -17,6 +18,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument;
+import com.click4bonds.app.Modules.DealConfirmation.Enums.DealConfirmationStatus;
 import com.click4bonds.app.Modules.DealConfirmation.Model.DealConfirmation;
 import com.click4bonds.app.Modules.DealConfirmation.Repository.DealConfirmationRepository;
 import com.click4bonds.app.Modules.Document.Exception.DocumentStorageException;
@@ -53,6 +56,12 @@ class DealConfirmationDocumentReaderTest {
 
     @Mock
     private DocumentStorage documentStorage;
+
+    @Mock
+    private DealConfirmationDocumentService documentService;
+
+    @Mock
+    private DealConfirmationWriter writer;
 
     @InjectMocks
     private DealConfirmationDocumentReader reader;
@@ -94,6 +103,24 @@ class DealConfirmationDocumentReaderTest {
 
         assertThat(document.content()).isEqualTo(CONTENT);
         assertThat(document.fileName()).isEqualTo(REFERENCE + ".pdf");
+    }
+
+    @Test
+    void anAdminReadsAnyDealThroughTheUnscopedLookup() {
+
+        when(dealConfirmationRepository.findByDealReference(REFERENCE))
+                .thenReturn(Optional.of(dealWith(LOCATION)));
+        when(documentStorage.keyOf(LOCATION)).thenReturn(KEY);
+        when(documentStorage.read(KEY)).thenReturn(CONTENT);
+
+        DealConfirmationDocumentReader.DownloadedDocument document =
+                reader.readAny(REFERENCE);
+
+        verify(dealConfirmationRepository).findByDealReference(REFERENCE);
+        verify(dealConfirmationRepository, org.mockito.Mockito.never())
+                .findByDealReferenceAndCreatedBy_Id(REFERENCE, CUSTOMER_ID);
+
+        assertThat(document.content()).isEqualTo(CONTENT);
     }
 
     @Test
@@ -141,18 +168,46 @@ class DealConfirmationDocumentReaderTest {
     @Test
     void reportsADealWithNoDocumentAsMissing() {
 
+        DealConfirmation deal = dealWith(null);
+
         when(dealConfirmationRepository.findByDealReferenceAndCustomer_Id(REFERENCE, CUSTOMER_ID))
-                .thenReturn(Optional.of(dealWith(null)));
+                .thenReturn(Optional.of(deal));
+        when(documentService.generate(any()))
+                .thenReturn(DealConfirmationDocument.none());
 
         /*
-         * A real deal whose generation failed or was switched off. Reported like
-         * a missing deal rather than as an error, because it is a legitimate
+         * A deal whose generation has not happened is rendered on demand; with
+         * documents switched off nothing is produced, which is reported like a
+         * missing deal rather than as an error, because it is a legitimate
          * state and the deal itself is unaffected.
          */
         assertThatThrownBy(() -> reader.read(CUSTOMER_ID, REFERENCE))
                 .isInstanceOf(ResourceNotFoundException.class);
 
         verifyNoInteractions(documentStorage);
+    }
+
+    @Test
+    void generatesTheLetterWhenTheDealIsNotYetConfirmationGenerated() {
+
+        DealConfirmation deal = dealWith(null);
+        deal.setStatus(DealConfirmationStatus.CREATED);
+
+        when(dealConfirmationRepository.findByDealReferenceAndCreatedBy_Id(REFERENCE, CUSTOMER_ID))
+                .thenReturn(Optional.of(deal));
+        when(documentService.generate(any()))
+                .thenReturn(new DealConfirmationDocument(
+                        REFERENCE + ".pdf", "application/pdf", CONTENT, KEY));
+
+        DealConfirmationDocumentReader.DownloadedDocument document =
+                reader.readCreatedBy(CUSTOMER_ID, REFERENCE);
+
+        // Rendered from the deal as it stands, never read from the store.
+        verify(writer).documentDataFor(deal.getId());
+        verifyNoInteractions(documentStorage);
+
+        assertThat(document.content()).isEqualTo(CONTENT);
+        assertThat(document.contentType()).isEqualTo("application/pdf");
     }
 
     @Test
@@ -178,6 +233,7 @@ class DealConfirmationDocumentReaderTest {
         DealConfirmation deal = new DealConfirmation();
 
         deal.setDocumentR2Path(documentR2Path);
+        deal.setStatus(DealConfirmationStatus.CONFIRMATION_GENERATED);
 
         return deal;
     }
