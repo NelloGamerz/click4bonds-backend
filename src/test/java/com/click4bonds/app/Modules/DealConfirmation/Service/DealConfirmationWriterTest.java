@@ -492,6 +492,7 @@ class DealConfirmationWriterTest {
         DematAccount demat = DematAccount.builder()
                 .id(UUID.randomUUID())
                 .accountHolderName("Acme Broking")
+                .dpName("Acme Depository Services")
                 .dpId("IN300001")
                 .clientId("12345678")
                 .build();
@@ -535,7 +536,7 @@ class DealConfirmationWriterTest {
         CounterpartyDetails details = created.documentData().counterparty();
 
         assertEquals("AAKCP1234C", details.pan());
-        assertEquals("Acme Broking", details.dpName());
+        assertEquals("Acme Depository Services", details.dpName());
         assertEquals("IN300001", details.dpId());
         assertEquals("12345678", details.clientId());
         assertEquals("HDFC Bank", details.bankName());

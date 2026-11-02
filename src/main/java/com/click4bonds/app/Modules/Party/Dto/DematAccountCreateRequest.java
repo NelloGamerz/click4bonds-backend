@@ -25,6 +25,10 @@ public record DematAccountCreateRequest(
         @Pattern(regexp = "^[A-Za-z0-9]+$", message = "DP ID must be alphanumeric")
         String dpId,
 
+        @NotBlank(message = "DP name is required")
+        @Size(max = 255, message = "DP name must not exceed 255 characters")
+        String dpName,
+
         @NotBlank(message = "Client ID is required")
         @Size(max = 20, message = "Client ID must not exceed 20 characters")
         @Pattern(regexp = "^[A-Za-z0-9]+$", message = "Client ID must be alphanumeric")
