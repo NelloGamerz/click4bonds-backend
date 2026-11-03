@@ -4,14 +4,12 @@ import java.awt.Color;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
@@ -107,7 +105,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
      *
      * <p>A letter that spills onto a second page carrying only a signature is
      * worse than the same letter set a little smaller, so the whole body is
-     * measured at the next scale until it fits one page. The masthead and
+     * re-rendered at the next scale until it fits one page. The masthead and
      * the address bar are page furniture and stay full size.</p>
      *
      * <p>shortcut: below 0.7 the type is unreadable, so pathological data still
@@ -119,6 +117,13 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     /** The fit scale of the render in progress; 1 is full size. */
     private static final ThreadLocal<Float> SCALE = ThreadLocal.withInitial(() -> 1f);
+
+    /**
+     * A small reduction applied to every body size and font, so the letter sits
+     * a little tighter and one page holds more before the fit scale has to
+     * tighten further. Lower it to shrink the whole letter.
+     */
+    private static final float BASE_SCALE = 0.95f;
 
     /** The registered entity, as printed in the letter and its metadata. */
     private static final String LEGAL_NAME = "All Time Securities Pvt. Ltd.";
@@ -228,15 +233,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private final DocumentProperties properties;
 
-    /**
-     * Draws the letter once, at the largest fit scale whose body still fits one
-     * page.
-     *
-     * <p>The body is measured at full size first; only a letter that spills is
-     * measured again at each tighter scale, and the winning scale is rendered
-     * once. The masthead and the address bar are page furniture and stay full
-     * size.</p>
-     */
     @Override
     public byte[] render(
             DealConfirmationSheetValues values, DealConfirmationLayout layout) {
@@ -250,94 +246,53 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
          * The masthead and the address bar are drawn on every page by a page
          * event rather than added once to the content. Their height is reserved
          * out of the page margins, which is what keeps the body from printing
-         * over them — and why they are loaded once, before measuring.
+         * over them — and why they are loaded once, outside the fit loop.
          */
         float availableWidth = PageSize.A4.getWidth() - LEFT_MARGIN - RIGHT_MARGIN;
 
         Image logo = letterheadImage(availableWidth);
 
-        if (measurePages(values, layout, logo, availableWidth, 1f) <= 1) {
-
-            return renderAt(values, layout, logo, availableWidth, 1f);
-        }
-
-        /*
-         * The default is the tightest scale: pathological data that does not
-         * fit even there still renders, onto a second page, rather than
-         * shrinking past the readable floor.
-         */
-        float fit = FIT_SCALES[FIT_SCALES.length - 1];
-
-        for (int i = 1; i < FIT_SCALES.length; i++) {
-
-            if (measurePages(values, layout, logo, availableWidth, FIT_SCALES[i]) <= 1) {
-
-                fit = FIT_SCALES[i];
-                break;
-            }
-        }
-
-        return renderAt(values, layout, logo, availableWidth, fit);
-    }
-
-    /**
-     * Counts the pages the body would take at {@code fit}, writing the PDF
-     * nowhere: measuring costs the layout pass, not the bytes.
-     */
-    private int measurePages(
-            DealConfirmationSheetValues values, DealConfirmationLayout layout,
-            Image logo, float availableWidth, float fit) {
-
-        Document document = newDocument(values, logo);
-
-        SCALE.set(fit);
-
         try {
 
-            PdfWriter writer = PdfWriter.getInstance(document, OutputStream.nullOutputStream());
+            byte[] pdf = null;
 
-            writer.setPageEvent(new LetterheadAndFooter(logo, availableWidth));
+            for (float fit : FIT_SCALES) {
 
-            document.open();
+                SCALE.set(fit);
 
-            writeBody(document, values, layout);
+                Rendered rendered = renderAt(values, layout, logo, availableWidth);
 
-            document.close();
+                pdf = rendered.pdf();
 
-            return writer.getPageNumber();
+                if (rendered.pages() <= 1) {
+                    break;
+                }
+            }
 
-        } catch (DocumentException failure) {
-
-            log.error(
-                    "Failed to draw the deal confirmation PDF for deal={}",
-                    values.dealReference(),
-                    failure);
-
-            throw new DocumentGenerationException(
-                    "Could not generate the deal confirmation PDF for "
-                            + values.dealReference(),
-                    failure);
+            return pdf;
 
         } finally {
-
-            if (document.isOpen()) {
-                document.close();
-            }
 
             SCALE.remove();
         }
     }
 
-    /** Renders the whole letter once at {@code fit} and returns its bytes. */
-    private byte[] renderAt(
+    private Rendered renderAt(
             DealConfirmationSheetValues values, DealConfirmationLayout layout,
-            Image logo, float availableWidth, float fit) {
+            Image logo, float availableWidth) {
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
 
-        Document document = newDocument(values, logo);
+        float mastheadHeight = logo == null ? 0f : logo.getScaledHeight();
+        float topMargin = HEADER_TOP_GAP + mastheadHeight
+                + (logo == null ? 0f : MASTHEAD_BAND_GAP) + BAND_HEIGHT + HEADER_CONTENT_GAP;
 
-        SCALE.set(fit);
+        Document document = new Document(
+                PageSize.A4, LEFT_MARGIN, RIGHT_MARGIN, topMargin, BOTTOM_MARGIN);
+
+        document.addTitle("Deal Confirmation - " + values.dealReference());
+        document.addAuthor(LEGAL_NAME);
+        document.addCreator("CLICK4BOND");
 
         try {
 
@@ -347,11 +302,16 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
             document.open();
 
-            writeBody(document, values, layout);
+            addCounterparty(document, values);
+            addBondAndDealTerms(document, values, layout);
+            addOurDetails(document, layout, values);
+            addCustomerDetails(document, values);
+            addDisclaimer(document);
+            addSignatures(document, values);
 
             document.close();
 
-            return out.toByteArray();
+            return new Rendered(out.toByteArray(), writer.getPageNumber());
 
         } catch (DocumentException failure) {
 
@@ -375,45 +335,11 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
             if (document.isOpen()) {
                 document.close();
             }
-
-            SCALE.remove();
         }
     }
 
-    /** The letter's page geometry and metadata, before the document is opened. */
-    private Document newDocument(
-            DealConfirmationSheetValues values, Image logo) {
-
-        Document document = new Document(
-                PageSize.A4, LEFT_MARGIN, RIGHT_MARGIN, topMarginFor(logo), BOTTOM_MARGIN);
-
-        document.addTitle("Deal Confirmation - " + values.dealReference());
-        document.addAuthor(LEGAL_NAME);
-        document.addCreator("CLICK4BOND");
-
-        return document;
-    }
-
-    /** The top margin: the masthead, its rule and the gap above the body. */
-    private float topMarginFor(Image logo) {
-
-        float mastheadHeight = logo == null ? 0f : logo.getScaledHeight();
-
-        return HEADER_TOP_GAP + mastheadHeight
-                + (logo == null ? 0f : MASTHEAD_BAND_GAP) + BAND_HEIGHT + HEADER_CONTENT_GAP;
-    }
-
-    /** The six sections of the letter, in the order they are printed. */
-    private void writeBody(
-            Document document, DealConfirmationSheetValues values,
-            DealConfirmationLayout layout) throws DocumentException {
-
-        addCounterparty(document, values);
-        addBondAndDealTerms(document, values, layout);
-        addOurDetails(document, layout, values);
-        addCustomerDetails(document, values);
-        addDisclaimer(document);
-        addSignatures(document, values);
+    /** One render attempt: the bytes, and how many pages they took. */
+    private record Rendered(byte[] pdf, int pages) {
     }
 
     // =========================================================
@@ -1547,10 +1473,6 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         private static final float FOOTER_ICON_GAP = 2.5f;
         private static final float FOOTER_SEPARATOR_PAD = 5f;
 
-        /** Decoded footer icons, so each resource is read and parsed once. */
-        private static final ConcurrentHashMap<String, Image> FOOTER_ICON_CACHE =
-                new ConcurrentHashMap<>();
-
         /**
          * Draws the particulars as one centred line, an icon before each field.
          *
@@ -1560,7 +1482,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         private static void drawFooterLine(PdfContentByte canvas, float width) {
 
             Font font = REGULAR.at(7.5f, FOOTER_TEXT);
-            float size = 7.5f;
+            float size = 7.5f * BASE_SCALE * SCALE.get();
             String separator = "·";
             float separatorWidth = textWidth(separator, font, size);
 
@@ -1616,65 +1538,33 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
             String resource = FOOTER_ICONS[index];
 
-            Image image = footerIcon(resource);
-
-            if (image == null) {
-                return;
-            }
-
-            float scale = Math.min(
-                    FOOTER_ICON_SIZE / image.getWidth(),
-                    FOOTER_ICON_SIZE / image.getHeight());
-
-            float width = image.getWidth() * scale;
-            float height = image.getHeight() * scale;
-
-            try {
-
-                /*
-                 * A copy is drawn: the cached instance must not be scaled or
-                 * otherwise touched by one page's placement.
-                 */
-                canvas.addImage(
-                        Image.getInstance(image),
-                        width, 0f, 0f, height,
-                        x + (FOOTER_ICON_SIZE - width) / 2f,
-                        baseline - 1.5f);
-
-            } catch (DocumentException failure) {
-
-                log.warn("Could not place {}, the footer shows no icon", resource, failure);
-            }
-        }
-
-        /** One decoded footer icon, cached after its first load. */
-        private static Image footerIcon(String resource) {
-
-            Image cached = FOOTER_ICON_CACHE.get(resource);
-
-            if (cached != null) {
-                return cached;
-            }
-
             try (InputStream stream =
                          DealConfirmationPdfServiceImpl.class.getResourceAsStream(resource)) {
 
                 if (stream == null) {
 
                     log.warn("{} is not on the classpath, the footer shows no icon", resource);
-                    return null;
+                    return;
                 }
 
-                Image loaded = Image.getInstance(stream.readAllBytes());
+                Image image = Image.getInstance(stream.readAllBytes());
 
-                Image existing = FOOTER_ICON_CACHE.putIfAbsent(resource, loaded);
+                float scale = Math.min(
+                        FOOTER_ICON_SIZE / image.getWidth(),
+                        FOOTER_ICON_SIZE / image.getHeight());
 
-                return existing == null ? loaded : existing;
+                float width = image.getWidth() * scale;
+                float height = image.getHeight() * scale;
+
+                canvas.addImage(
+                        image,
+                        width, 0f, 0f, height,
+                        x + (FOOTER_ICON_SIZE - width) / 2f,
+                        baseline - 1.5f);
 
             } catch (IOException | DocumentException failure) {
 
-                log.warn("Could not read {}, the footer shows no icon", resource, failure);
-                return null;
+                log.warn("Could not place {}, the footer shows no icon", resource, failure);
             }
         }
     }
@@ -1683,10 +1573,10 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
     // FORMATTING
     // =========================================================
 
-    /** A body measurement at the current fit scale. */
+    /** A body measurement at the base and current fit scale. */
     private static float scaled(float value) {
 
-        return value * SCALE.get();
+        return value * BASE_SCALE * SCALE.get();
     }
 
     private static String text(String value) {
@@ -1839,7 +1729,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Font at(float size, Color color) {
 
-            return FontFactory.getFont(family, size * SCALE.get(), style, color);
+            return FontFactory.getFont(family, size * BASE_SCALE * SCALE.get(), style, color);
         }
     }
 }
