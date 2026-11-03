@@ -74,6 +74,13 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
     private static final String LETTERHEAD_RESOURCE = "/logo/alltime_header.png";
 
+    /**
+     * One knob for fitting the whole letter on a single page: every type size,
+     * and the padding that surrounds it, shrinks by this factor. Raise it back
+     * towards 1f if the letter still has room left over.
+     */
+    private static final float SCALE = 0.94f;
+
     /*
      * Page geometry. The masthead and the address bar belong to the page rather
      * than to the content, so their heights are reserved out of the margins and
@@ -156,7 +163,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
      * it fills the height the longer deal-terms card sets — but no wider, or
      * the letter spills onto a second page.
      */
-    private static final float BOND_ROW_PADDING = 4.2f;
+    private static final float BOND_ROW_PADDING = 4.2f * SCALE;
 
     /*
      * The border: a rule along the top edge, rules down both sides and along
@@ -719,7 +726,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Paragraph disclaimer = new Paragraph(DISCLAIMER, REGULAR.at(7.2f, MUTED));
 
-        disclaimer.setLeading(9.4f);
+        disclaimer.setLeading(9.4f * SCALE);
         disclaimer.setAlignment(Element.ALIGN_JUSTIFIED);
         disclaimer.setSpacingBefore(5f);
 
@@ -965,7 +972,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
          */
         PdfPCell cell = new PdfPCell();
         cell.setBorder(Rectangle.NO_BORDER);
-        cell.setPadding(8f);
+        cell.setPadding(8f * SCALE);
         cell.setCellEvent(new RoundedCard());
         cell.addElement(content);
 
@@ -992,8 +999,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         keyCell.setBorder(Rectangle.BOTTOM);
         keyCell.setBorderColor(DIVIDER);
         keyCell.setBorderWidth(0.6f);
-        keyCell.setPaddingTop(2.5f);
-        keyCell.setPaddingBottom(2.5f);
+        keyCell.setPaddingTop(2.5f * SCALE);
+        keyCell.setPaddingBottom(2.5f * SCALE);
         keyCell.setPaddingLeft(0f);
         keyCell.setPaddingRight(3f);
 
@@ -1001,8 +1008,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         valueCell.setBorder(Rectangle.BOTTOM);
         valueCell.setBorderColor(DIVIDER);
         valueCell.setBorderWidth(0.6f);
-        valueCell.setPaddingTop(2.5f);
-        valueCell.setPaddingBottom(2.5f);
+        valueCell.setPaddingTop(2.5f * SCALE);
+        valueCell.setPaddingBottom(2.5f * SCALE);
         valueCell.setPaddingLeft(3f);
         valueCell.setPaddingRight(0f);
         valueCell.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -1024,7 +1031,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         for (String heading : headings) {
 
             PdfPCell cell = heading.isEmpty() ? empty() : borderless();
-            cell.setPaddingTop(6f);
+            cell.setPaddingTop(6f * SCALE);
             cell.setPaddingBottom(0f);
 
             if (!heading.isEmpty()) {
@@ -1040,8 +1047,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         for (String value : values) {
 
             PdfPCell cell = value.isEmpty() ? empty() : borderless();
-            cell.setPaddingTop(1f);
-            cell.setPaddingBottom(2f);
+            cell.setPaddingTop(1f * SCALE);
+            cell.setPaddingBottom(2f * SCALE);
 
             if (!value.isEmpty()) {
 
@@ -1069,8 +1076,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         label.setBorder(Rectangle.LEFT);
         label.setBorderColor(CYAN);
         label.setBorderWidthLeft(2.5f);
-        label.setPaddingTop(8f);
-        label.setPaddingBottom(8f);
+        label.setPaddingTop(8f * SCALE);
+        label.setPaddingBottom(8f * SCALE);
         label.setPaddingLeft(9f);
         label.setPaddingRight(6f);
 
@@ -1081,8 +1088,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         PdfPCell value = new PdfPCell(amount);
         value.setBackgroundColor(TOTAL_BG);
         value.setBorder(Rectangle.NO_BORDER);
-        value.setPaddingTop(8f);
-        value.setPaddingBottom(8f);
+        value.setPaddingTop(8f * SCALE);
+        value.setPaddingBottom(8f * SCALE);
         value.setPaddingLeft(6f);
         value.setPaddingRight(9f);
         value.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -1423,7 +1430,8 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         private static void drawFooterLine(PdfContentByte canvas, float width) {
 
             Font font = REGULAR.at(7.5f, FOOTER_TEXT);
-            float size = 7.5f;
+            /* The scaled size the font was actually built with, so the line measures right. */
+            float size = font.getSize();
             String separator = "·";
             float separatorWidth = textWidth(separator, font, size);
 
@@ -1664,7 +1672,7 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
 
         Font at(float size, Color color) {
 
-            return FontFactory.getFont(family, size, style, color);
+            return FontFactory.getFont(family, size * SCALE, style, color);
         }
     }
 }
