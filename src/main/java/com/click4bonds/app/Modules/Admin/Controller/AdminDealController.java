@@ -34,6 +34,7 @@ import com.click4bonds.app.Modules.Admin.Dto.PreviewDealPricingRequest;
 import com.click4bonds.app.Modules.Admin.Service.AdminDealService;
 import com.click4bonds.app.Modules.Admin.Service.AdminPermissionService;
 import com.click4bonds.app.Modules.Common.Web.PaginationSorts;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CancelledDealResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentReader;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationService;
@@ -153,7 +154,7 @@ public class AdminDealController {
      */
     @PostMapping("/{dealId}/cancel")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') and @adminPermissionService.hasModule(authentication, 'DEAL_CREATION')")
-    public ResponseEntity<DealConfirmationResponse> cancelDeal(
+    public ResponseEntity<CancelledDealResponse> cancelDeal(
             @PathVariable UUID dealId,
             @AuthenticationPrincipal Jwt jwt) {
 

@@ -3,6 +3,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CancelledDealResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
@@ -232,7 +233,7 @@ public class DealConfirmationService {
      * @param employeeId the creator; another employee's deal is not found
      * @return the cancelled deal
      */
-    public DealConfirmationResponse cancelDeal(UUID dealId, UUID employeeId) {
+    public CancelledDealResponse cancelDeal(UUID dealId, UUID employeeId) {
         return writer.cancel(dealId, employeeId);
     }
 
