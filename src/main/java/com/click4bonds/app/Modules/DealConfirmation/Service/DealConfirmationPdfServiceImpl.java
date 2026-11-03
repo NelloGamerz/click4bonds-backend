@@ -640,91 +640,88 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
         heading.addCell(pan);
 
         addBlock(block, heading);
-        addBlock(block, gap(3f));
+        addBlock(block, gap(2f));
         addBlock(block, divider());
 
-        PdfPTable stats = stats(4);
+        /*
+         * Every particular on one line — "LABEL value · LABEL value" — rather
+         * than a label row above a value row, which doubled the block's height.
+         */
+        addBlock(block, inlineDetails(customerParticulars(values, party)));
+
+        document.add(fullWidthCard(block));
+    }
+
+    /**
+     * The counterparty particulars the customer-details card prints, as
+     * alternating label and value.
+     *
+     * <p>A demat sale moves securities out of the counterparty's account, so it
+     * prints the account they come from and the bank the consideration is paid
+     * to. An NSCCL deal prints the counterparty's demat identifiers and the bank
+     * account it settles to; our CM particulars are on the other card.</p>
+     */
+    private String[] customerParticulars(
+            DealConfirmationSheetValues values, CounterpartyDetails party) {
 
         if (values.deliveryMode() == DeliveryMode.DEMAT
                 && values.side() == DealSide.BUY) {
 
-            addStatLabels(
-                    stats, "Your Bank Branch Location", "Your Bank Name", "IFSC Code", "Account No.");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.bankBranchLocation()),
-                    party == null ? NONE : text(party.bankName()),
-                    party == null ? NONE : text(party.bankIfsc()),
-                    party == null ? NONE : text(party.bankAccountNumber()));
-
-        } else if (values.deliveryMode() == DeliveryMode.DEMAT) {
-
-            /*
-             * A demat sale moves securities out of the counterparty's account,
-             * so the letter prints the account it comes from and the bank the
-             * consideration is paid to.
-             */
-            addStatLabels(stats, "Your DP Name", "DP ID", "Client ID", "Bank Name");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.dpName()),
-                    party == null ? NONE : text(party.dpId()),
-                    party == null ? NONE : text(party.clientId()),
-                    party == null ? NONE : text(party.bankName()));
-
-            addStatLabels(stats, "IFSC Code", "Account No.", "", "");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.bankIfsc()),
-                    party == null ? NONE : text(party.bankAccountNumber()),
-                    "",
-                    "");
-
-        } else if (values.deliveryMode() == DeliveryMode.NSCCL) {
-
-            /*
-             * An NSCCL deal prints the counterparty's demat identifiers and the
-             * bank account it settles to; our CM particulars are on the other
-             * card.
-             */
-            addStatLabels(stats, "DP name", "DP ID", "Client ID", "Client Bank Name");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.dpName()),
-                    party == null ? NONE : text(party.dpId()),
-                    party == null ? NONE : text(party.clientId()),
-                    party == null ? NONE : text(party.bankName()));
-
-            addStatLabels(stats, "IFSC code", "Account No.", "", "");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.bankIfsc()),
-                    party == null ? NONE : text(party.bankAccountNumber()),
-                    "",
-                    "");
-
-        } else {
-
-            addStatLabels(stats, "Your DP name", "DP ID", "Client ID", "Bank Name");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.dpName()),
-                    party == null ? NONE : text(party.dpId()),
-                    party == null ? NONE : text(party.clientId()),
-                    party == null ? NONE : text(party.bankName()));
-
-            addStatLabels(stats, "Account No.", "", "", "");
-            addStatValues(
-                    stats,
-                    party == null ? NONE : text(party.bankAccountNumber()),
-                    "",
-                    "",
-                    "");
+            return new String[] {
+                    "Your Bank Branch Location", party == null ? NONE : text(party.bankBranchLocation()),
+                    "Your Bank Name", party == null ? NONE : text(party.bankName()),
+                    "IFSC Code", party == null ? NONE : text(party.bankIfsc()),
+                    "Account No.", party == null ? NONE : text(party.bankAccountNumber())
+            };
         }
 
-        addBlock(block, stats);
+        if (values.deliveryMode() == DeliveryMode.DEMAT
+                || values.deliveryMode() == DeliveryMode.NSCCL) {
 
-        document.add(fullWidthCard(block));
+            String clientBank = values.deliveryMode() == DeliveryMode.NSCCL
+                    ? "Client Bank Name"
+                    : "Bank Name";
+
+            return new String[] {
+                    "Your DP Name", party == null ? NONE : text(party.dpName()),
+                    "DP ID", party == null ? NONE : text(party.dpId()),
+                    "Client ID", party == null ? NONE : text(party.clientId()),
+                    clientBank, party == null ? NONE : text(party.bankName()),
+                    "IFSC Code", party == null ? NONE : text(party.bankIfsc()),
+                    "Account No.", party == null ? NONE : text(party.bankAccountNumber())
+            };
+        }
+
+        return new String[] {
+                "Your DP name", party == null ? NONE : text(party.dpName()),
+                "DP ID", party == null ? NONE : text(party.dpId()),
+                "Client ID", party == null ? NONE : text(party.clientId()),
+                "Bank Name", party == null ? NONE : text(party.bankName()),
+                "Account No.", party == null ? NONE : text(party.bankAccountNumber())
+        };
+    }
+
+    /** Alternating label/value pairs set as one line, separated by a muted dot. */
+    private Phrase inlineDetails(String... labelThenValue) {
+
+        Font labelFont = EMPHASIS.at(7.2f, NAVY);
+        Font valueFont = REGULAR.at(10.2f, INK);
+        Font separatorFont = REGULAR.at(9f, MUTED);
+
+        Phrase phrase = new Phrase();
+
+        for (int i = 0; i < labelThenValue.length; i += 2) {
+
+            if (i > 0) {
+                phrase.add(new Chunk("   ·   ", separatorFont));
+            }
+
+            phrase.add(new Chunk(
+                    labelThenValue[i].toUpperCase(Locale.ENGLISH) + "  ", labelFont));
+            phrase.add(new Chunk(labelThenValue[i + 1], valueFont));
+        }
+
+        return phrase;
     }
 
     private void addDisclaimer(Document document) throws DocumentException {
