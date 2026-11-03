@@ -1,6 +1,7 @@
 package com.click4bonds.app.Modules.DealConfirmation.Service;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,10 +13,12 @@ import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
 
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationSheetValues;
 import com.click4bonds.app.Modules.DealConfirmation.Enums.DeliveryMode;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationException;
+import com.lowagie.text.pdf.PdfReader;
 
 /**
  * The corporate letter's rendering: a real PDF, from the values alone.
@@ -134,6 +137,75 @@ class DealConfirmationPdfServiceImplTest {
                         mode + " on " + layout + " should render a letter");
             }
         }
+    }
+
+    @Test
+    void shrinksALetterWithLongDetailsOntoOnePage() throws Exception {
+
+        /*
+         * A long address and a long security name wrap the body onto a second
+         * page at full size. The renderer must tighten the letter until it fits
+         * one page rather than issue a confirmation whose second page carries
+         * only the signatures.
+         */
+        CounterpartyDetails party = new CounterpartyDetails(
+                "ABCDE1234F",
+                "HDFC Securities Limited Demat Services Division",
+                "IN300394",
+                "12345678",
+                "HDFC Bank Limited, Fort Branch",
+                "Plot No 83-84, Pocket D-14, Shiva Road, Sector-8, Rohini, Delhi-110085, "
+                        + "and a second line of the registered office address "
+                        + "that wraps across the width of the card",
+                "Fort, Mumbai",
+                "HDFC0000123",
+                "50200012345678");
+
+        DealConfirmationSheetValues dense = new DealConfirmationSheetValues(
+                LocalDate.of(2026, 10, 5),
+                "DC-20261005-000002",
+                "Karan Pareek and Associates Private Limited",
+                "Counterparty Name- Karan Pareek and Associates Private Limited",
+                "Our Sale",
+                "ICCL",
+                "ICDM(T+0)",
+                LocalDate.of(2026, 10, 5),
+                LocalDate.of(2026, 10, 5),
+                "INE0I5X07042",
+                new BigDecimal("99.69"),
+                "14.40% Monedo Financial Services Private Limited Series IV 2027 "
+                        + "with a security name long enough to wrap the value column",
+                LocalDate.of(2027, 10, 1),
+                "1st of every month",
+                null,
+                LocalDate.of(2026, 10, 1),
+                new BigDecimal("14.40"),
+                4L,
+                79_520L,
+                new BigDecimal("8000000.00"),
+                new BigDecimal("7927202.88"),
+                new BigDecimal("9909.68"),
+                new BigDecimal("7937112.56"),
+                new BigDecimal("8.00"),
+                new BigDecimal("7937120.56"),
+                4L,
+                new BigDecimal("12800.00"),
+                new BigDecimal("7940002.88"),
+                new BigDecimal("1280.00"),
+                new BigDecimal("7938722.88"),
+                null,
+                new BigDecimal("12.50"),
+                party,
+                DeliveryMode.ICCL,
+                "2610022",
+                null,
+                null);
+
+        byte[] pdf = service.render(dense, DealConfirmationLayout.CORPORATE);
+
+        PdfReader reader = new PdfReader(pdf);
+        assertEquals(1, reader.getNumberOfPages(), "the letter must fit one page");
+        reader.close();
     }
 
     @Test
