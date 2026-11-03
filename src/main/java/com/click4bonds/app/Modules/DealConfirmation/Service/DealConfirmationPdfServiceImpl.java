@@ -672,11 +672,11 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     party == null ? NONE : text(party.clientId()),
                     party == null ? NONE : text(party.bankName()));
 
-            addStatLabels(stats, "IFSC Code", "", "", "");
+            addStatLabels(stats, "IFSC Code", "Account No.", "", "");
             addStatValues(
                     stats,
                     party == null ? NONE : text(party.bankIfsc()),
-                    "",
+                    party == null ? NONE : text(party.bankAccountNumber()),
                     "",
                     "");
 
@@ -712,6 +712,14 @@ public class DealConfirmationPdfServiceImpl implements DealConfirmationPdfServic
                     party == null ? NONE : text(party.dpId()),
                     party == null ? NONE : text(party.clientId()),
                     party == null ? NONE : text(party.bankName()));
+
+            addStatLabels(stats, "Account No.", "", "", "");
+            addStatValues(
+                    stats,
+                    party == null ? NONE : text(party.bankAccountNumber()),
+                    "",
+                    "",
+                    "");
         }
 
         addBlock(block, stats);

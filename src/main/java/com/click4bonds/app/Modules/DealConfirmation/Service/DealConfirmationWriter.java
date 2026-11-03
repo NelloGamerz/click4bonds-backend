@@ -16,6 +16,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CancelledDealResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealAccrual;
@@ -419,7 +420,7 @@ public class DealConfirmationWriter {
      * @throws ConflictException when the deal is not awaiting confirmation
      */
     @Transactional
-    public DealConfirmationResponse cancel(UUID dealId, UUID employeeId) {
+    public CancelledDealResponse cancel(UUID dealId, UUID employeeId) {
 
         int updated = dealConfirmationRepository.transitionStatusForCreator(
                 dealId,
@@ -432,7 +433,13 @@ public class DealConfirmationWriter {
                     "Deal is not awaiting cancellation: " + dealId);
         }
 
-        DealConfirmation deal = dealConfirmationRepository.findById(dealId)
+        /*
+         * Fetched with its bond, client and creator, not lazily: the release
+         * below clears the persistence context, so a lazy association read after
+         * it would have no session to load from.
+         */
+        DealConfirmation deal = dealConfirmationRepository
+                .findByIdAndCreatedBy_Id(dealId, employeeId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Deal not found: " + dealId));
 
@@ -463,7 +470,26 @@ public class DealConfirmationWriter {
                 deal.getTotalQuantity(),
                 deal.getIsin());
 
-        return mapper.toResponse(deal);
+        return new CancelledDealResponse(
+                released.getName(),
+                deal.getQuantityPerLot(),
+                deal.getCreatedAt(),
+                creatorName(deal.getCreatedBy()),
+                deal.getClient() == null ? null : deal.getClient().getName());
+    }
+
+    /** The staff account's name, falling back to its email when it has none. */
+    private static String creatorName(User creator) {
+
+        if (creator == null) {
+            return null;
+        }
+
+        String name = ((creator.getFirstName() == null ? "" : creator.getFirstName())
+                + " "
+                + (creator.getLastName() == null ? "" : creator.getLastName())).trim();
+
+        return name.isEmpty() ? creator.getEmail() : name;
     }
 
     /**

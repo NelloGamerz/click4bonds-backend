@@ -27,6 +27,7 @@ import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Common.Exceptions.ForbiddenException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
+import com.click4bonds.app.Modules.DealConfirmation.Dto.CancelledDealResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CounterpartyDetails;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealPricing;
@@ -877,18 +878,22 @@ class DealConfirmationWriterTest {
                 DealConfirmationStatus.CREATED,
                 DealConfirmationStatus.CANCELLED,
                 USER_ID)).thenReturn(1);
-        Mockito.when(dealConfirmationRepository.findById(dealId))
+        Mockito.when(dealConfirmationRepository.findByIdAndCreatedBy_Id(dealId, USER_ID))
                 .thenReturn(Optional.of(deal));
         Mockito.when(bondService.findBondById(bond.getId()))
                 .thenReturn(afterRelease);
 
-        writer.cancel(dealId, USER_ID);
+        CancelledDealResponse response = writer.cancel(dealId, USER_ID);
 
         Mockito.verify(bondService)
                 .releaseQuantity(bond.getId(), BigDecimal.valueOf(500));
 
         assertEquals(BondStatus.ACTIVE, afterRelease.getStatus());
         Mockito.verify(bondService).saveBond(afterRelease);
+
+        // The cancel response carries only what the listing needs.
+        assertEquals("Test Bond", response.bondName());
+        assertEquals(100L, response.lotSize());
     }
 
     @Test

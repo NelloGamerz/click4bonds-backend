@@ -25,10 +25,11 @@ public interface DealConfirmationRepository
      * listing and the document download use, so one employee cannot price
      * another's deal.
      *
-     * <p>The bond is fetched eagerly because the caller prices against it after
-     * the lookup.</p>
+     * <p>The bond, client and creator are fetched eagerly because callers read
+     * them after a bulk UPDATE has cleared the persistence context, when a lazy
+     * association could no longer be loaded.</p>
      */
-    @EntityGraph(attributePaths = { "bond" })
+    @EntityGraph(attributePaths = { "bond", "client", "createdBy" })
     Optional<DealConfirmation> findByIdAndCreatedBy_Id(UUID id, UUID employeeId);
 
     /**
