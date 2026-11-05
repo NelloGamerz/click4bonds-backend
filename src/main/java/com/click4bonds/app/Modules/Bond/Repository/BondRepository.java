@@ -136,10 +136,9 @@ public interface BondRepository extends JpaRepository<Bond, UUID> {
          * and short-circuits on null, so a caller that passes none gets exactly
          * the query this method ran before they existed.</p>
          *
-         * <p>{@code rating} matches the stored grade column exactly rather than
-         * the agency-and-grade string {@code BondResponse.rating} shows, which
-         * is why it is compared on its own and not against
-         * {@code ratingAgency}. The comparison is case-insensitive.</p>
+         * <p>{@code rating} matches the stored grade column exactly. It is
+         * compared on its own and not against {@code ratingAgency}; the
+         * comparison is case-insensitive.</p>
          */
         @Query("""
                             SELECT b

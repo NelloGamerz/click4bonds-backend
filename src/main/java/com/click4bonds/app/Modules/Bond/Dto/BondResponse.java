@@ -62,14 +62,11 @@ public class BondResponse {
      */
     private LocalDate maturityDate;
 
-    /**
-     * Rating agency and grade as one string.
-     *
-     * Examples:
-     * CRISIL AAA
-     * ICRA AA+
-     */
+    /** Credit grade, for example {@code AAA} or {@code AA+}. */
     private String rating;
+
+    /** Agency that assigned the credit grade, for example {@code CRISIL}. */
+    private String ratingAgency;
 
     /**
      * What one lot costs, in rupees.

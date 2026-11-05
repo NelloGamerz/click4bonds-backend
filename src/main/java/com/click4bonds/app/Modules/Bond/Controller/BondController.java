@@ -63,10 +63,8 @@ public class BondController {
      *       {@code QUARTERLY}, {@code HALF_YEARLY}, {@code YEARLY} or
      *       {@code AT_MATURITY}.</li>
      *   <li>{@code rating} — the credit grade, e.g. {@code AAA}. This matches
-     *       the stored grade column, not the agency-and-grade string
-     *       {@link BondResponse#getRating()} shows, so a row that displays
-     *       {@code "CRISIL AAA"} is selected with {@code ?rating=AAA}. The
-     *       comparison is case-insensitive; blank is treated as absent.</li>
+     *       the stored grade column, not the rating agency. The comparison is
+     *       case-insensitive; blank is treated as absent.</li>
      * </ul>
      *
      * <p>A value outside an enum's constants is a 400, not a silent no-match,

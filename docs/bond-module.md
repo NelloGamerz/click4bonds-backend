@@ -137,8 +137,9 @@ No `@PreAuthorize`. `SecurityConfig` permits `GET /api/bonds` and
 A `POST /{bondId}/calculate-ytm` endpoint is commented out in the source.
 
 Each bond in the public list includes `securityType` (`SECURED` or
-`UNSECURED`) along with its pricing, yield, maturity, rating, investment minimum,
-and logo fields.
+`UNSECURED`) along with its pricing, yield, maturity, `rating`, `ratingAgency`,
+investment minimum, and logo fields. The rating grade and rating agency are
+returned as separate fields.
 
 ### 3.2 Admin — `AdminBondController` (`/api/admin`)
 

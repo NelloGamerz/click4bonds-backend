@@ -1048,9 +1048,10 @@ public class BondService {
                         bond.getMaturityDate())
 
                 .rating(
-                        combineRating(
-                                bond.getRatingAgency(),
-                                bond.getRating()))
+                        bond.getRating())
+
+                .ratingAgency(
+                        bond.getRatingAgency())
 
                 .minimumInvestment(
                         minimumInvestment(
@@ -1302,32 +1303,6 @@ public class BondService {
         return bond.getQuantum()
                 .divideToIntegralValue(bond.getLotSize())
                 .intValueExact();
-    }
-
-    /**
-     * Joins the rating agency and the grade into the single string the response
-     * carries, e.g. {@code "CRISIL AAA"}.
-     *
-     * <p>A bond may have been entered with only one of the two — or neither —
-     * so what is present is what is shown, and a bond with no rating at all
-     * reports null rather than an empty string.</p>
-     */
-    private static String combineRating(
-            String ratingAgency,
-            String rating) {
-
-        boolean hasAgency = ratingAgency != null && !ratingAgency.isBlank();
-        boolean hasRating = rating != null && !rating.isBlank();
-
-        if (hasAgency && hasRating) {
-            return ratingAgency.trim() + " " + rating.trim();
-        }
-
-        if (hasAgency) {
-            return ratingAgency.trim();
-        }
-
-        return hasRating ? rating.trim() : null;
     }
 
     /**
