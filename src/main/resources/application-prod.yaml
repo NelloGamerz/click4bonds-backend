@@ -189,32 +189,6 @@ sms:
 document:
   enabled: ${DOCUMENT_ENABLED}
 
-  template:
-    # Read as a classpath stream, never a file: the template is packaged inside
-    # the jar. The name contains a space, which a plain YAML scalar allows.
-    path: ${DOCUMENT_TEMPLATE_PATH:deal_confirmation/ATSPL Deal Format.xlsx}
-    # The sheet in the template is actually named "PSU Private Sale " with a
-    # trailing space, which YAML would strip from this value — the lookup trims
-    # both sides before comparing, so the spelling here does not have to match
-    # that quirk. Do not wrap this in quotes: they would become part of the name.
-    sheet-name: ${DOCUMENT_TEMPLATE_SHEET:PSU Private Sale}
-    # The layout a Sovereign-rated (government) security is confirmed on. That
-    # sheet charges TDS rather than stamp duty, so it cannot be the corporate one.
-    gsec-sheet-name: ${DOCUMENT_TEMPLATE_GSEC_SHEET:gsec paper}
-
-  pdf:
-    # false produces the spreadsheet only. A deliberate degraded mode for an
-    # environment without LibreOffice, not a failure.
-    enabled: ${DOCUMENT_PDF_ENABLED:true}
-    # Absolute path, or a bare name resolved from PATH.
-    #    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
-    soffice-path: ${DOCUMENT_SOFFICE_PATH:C:/Program Files/LibreOffice/program/soffice.exe}
-    # A hung engine must not hold an HTTP request open indefinitely.
-    timeout: ${DOCUMENT_SOFFICE_TIMEOUT:30s}
-    # Each conversion is a separate process taking a few hundred megabytes, and
-    # there is no queue behind this. Requests over the limit wait.
-    max-concurrent-conversions: ${DOCUMENT_MAX_CONCURRENT_CONVERSIONS:2}
-
   deal:
     # Bond has no face-value field; 100 is the market convention and the only
     # value consistent with the persisted total_amount (price x quantity).

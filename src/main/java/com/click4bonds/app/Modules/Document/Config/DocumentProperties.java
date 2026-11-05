@@ -1,7 +1,5 @@
 package com.click4bonds.app.Modules.Document.Config;
 
-import java.time.Duration;
-
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
@@ -13,13 +11,6 @@ import lombok.Data;
  * <pre>
  * document:
  *   enabled: true
- *   template:
- *     path: deal_confirmation/ATSPL Deal Format.xlsx
- *     sheet-name: "PSU Private Sale "
- *     gsec-sheet-name: "gsec paper"
- *   pdf:
- *     enabled: true
- *     soffice-path: soffice
  *   deal:
  *     face-value: 100
  *   organisation:
@@ -30,7 +21,7 @@ import lombok.Data;
  * else that keeps a file, and is configured under {@code storage.r2.*} — see
  * {@link com.click4bonds.app.Modules.Storage.Config.StorageProperties}.</p>
  *
- * <p>Split into engine settings, document content policy, and legal-entity
+ * <p>Split into the master switch, document content policy, and legal-entity
  * identity. The first is the same in every environment; the second is per-market
  * and changes with the business's arithmetic; the third is who we are, and
  * changes only if a second entity is onboarded.</p>
@@ -49,87 +40,14 @@ public class DocumentProperties {
      * Master switch for document generation.
      *
      * <p>{@code false} wires the no-op implementation, so deals are created and
-     * simply produce no document. This is the switch for a machine with no
-     * LibreOffice — a developer laptop or CI — where failure would otherwise be
-     * guaranteed on every purchase.</p>
+     * simply produce no document. This is the switch for an environment that
+     * should not produce letters at all — a developer laptop or CI.</p>
      */
     private boolean enabled = true;
-
-    private Template template = new Template();
-
-    private Pdf pdf = new Pdf();
 
     private Deal deal = new Deal();
 
     private Organisation organisation = new Organisation();
-
-    /** The spreadsheet that is filled in. */
-    @Data
-    public static class Template {
-
-        /**
-         * Classpath location of the template.
-         *
-         * <p>Read as a stream, never a file: the template lives inside the
-         * packaged jar, where it has no filesystem path.</p>
-         */
-        private String path = "deal_confirmation/ATSPL Deal Format.xlsx";
-
-        /**
-         * Sheet to fill. <strong>Every sheet name in this workbook ends with a
-         * space</strong>, and the lookup trims both sides, so either spelling
-         * works. YAML strips trailing whitespace from an unquoted scalar, which
-         * is why the default here carries none.
-         */
-        private String sheetName = "PSU Private Sale";
-
-        /**
-         * Sheet used for a Sovereign-rated (government) security, which charges
-         * TDS rather than stamp duty and so cannot be printed on the corporate
-         * layout.
-         *
-         * <p>Found the same way as {@link #sheetName}, with surrounding whitespace
-         * ignored, so the trailing space the templates carry does not have to be
-         * reproduced here.</p>
-         */
-        private String gsecSheetName = "gsec paper";
-    }
-
-    /** How the PDF is produced. */
-    @Data
-    public static class Pdf {
-
-        /**
-         * Whether to render a PDF.
-         *
-         * <p>{@code false} produces the spreadsheet only. Useful while the
-         * LibreOffice dependency is being sorted out in an environment, and as
-         * a deliberate degraded mode: the document is still produced and
-         * recorded, just not rendered.</p>
-         */
-        private boolean enabled = true;
-
-        /** Absolute path to {@code soffice}, or a bare name resolved from PATH. */
-        private String sofficePath = "soffice";
-
-        /**
-         * Ceiling on a single conversion.
-         *
-         * <p>A hung engine must not hold an HTTP request open indefinitely. On
-         * expiry the process is killed and generation fails.</p>
-         */
-        private Duration timeout = Duration.ofSeconds(30);
-
-        /**
-         * How many conversions may run at once.
-         *
-         * <p>Each conversion is a separate {@code soffice} process taking a few
-         * hundred megabytes, and there is no queue: without a bound, N
-         * simultaneous purchases start N processes. Requests over the limit
-         * wait, bounded by {@link #timeout}.</p>
-         */
-        private int maxConcurrentConversions = 2;
-    }
 
     /** Values the letter prints that no single deal supplies. */
     @Data
@@ -149,7 +67,7 @@ public class DocumentProperties {
          * Which side of the trade the letter describes.
          *
          * <p>The customer is buying from us, so it is our sale. A purchase-side
-         * letter would be a different document with a different sheet.</p>
+         * letter would be a different document with a different layout.</p>
          */
         private String transactionType = "Our Sale";
 
@@ -211,7 +129,7 @@ public class DocumentProperties {
          *
          * <p>{@code ifscCode} is {@code ICLL0000001} — the clearing
          * corporation's, printed on the corporate letter beside "IFSC Code" in
-         * our own particulars block. The G-Sec sheet uses the same label for a
+         * our own particulars block. The G-Sec letter uses the same label for a
          * bank IFSC, a different thing. Sharing one key between them would print
          * the clearing corporation's code wherever a bank's belongs.</p>
          */

@@ -1,8 +1,5 @@
 package com.click4bonds.app.Modules.DealConfirmation.Config;
 
-import java.util.concurrent.Executor;
-
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -14,10 +11,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationPdfS
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
-import com.click4bonds.app.Modules.Document.Service.PdfConverter;
-import com.click4bonds.app.Modules.Document.Service.XlsxTemplateWriter;
 
 /**
  * Chooses which document implementation a deal confirmation uses.
@@ -29,7 +23,7 @@ import com.click4bonds.app.Modules.Document.Service.XlsxTemplateWriter;
  * ordering explicit and the selection deterministic.</p>
  *
  * <p>{@code document.enabled=false} wires the no-op implementation, so an
- * environment without LibreOffice can still create deals. That state is
+ * environment can still create deals without producing letters. That state is
  * reachable and testable; making the real bean {@code @Primary} instead would
  * leave both beans constructed, the no-op logging a misleading line, and the
  * "off" path impossible to exercise.</p>
@@ -38,12 +32,12 @@ import com.click4bonds.app.Modules.Document.Service.XlsxTemplateWriter;
 public class DealConfirmationDocumentConfig {
 
     /**
-     * The real implementation: fills the template, renders a PDF and stores both.
+     * The real implementation: draws the PDF and stores it.
      *
      * <p>On by default. Its dependencies are injected rather than exercised, so
-     * constructing it touches no filesystem and starts no process — a
-     * context-load test does not need LibreOffice installed, and the first
-     * failure is reported when a document is actually generated.</p>
+     * constructing it touches nothing — a context-load test does not need any
+     * rendering setup, and the first failure is reported when a document is
+     * actually generated.</p>
      */
     @Bean
     @ConditionalOnProperty(
@@ -51,24 +45,16 @@ public class DealConfirmationDocumentConfig {
             havingValue = "true",
             matchIfMissing = true)
     public DealConfirmationDocumentService atSplDealConfirmationDocumentService(
-            XlsxTemplateWriter templateWriter,
-            PdfConverter pdfConverter,
             DealConfirmationPdfService pdfService,
             DocumentStorage documentStorage,
             DealConfirmationSheetValuesFactory sheetValuesFactory,
-            DealConfirmationSheetStrategyFactory sheetStrategyFactory,
-            DocumentProperties documentProperties,
-            @Qualifier("documentTaskExecutor") Executor documentTaskExecutor) {
+            DealConfirmationSheetStrategyFactory sheetStrategyFactory) {
 
         return new AtSplDealConfirmationDocumentService(
-                templateWriter,
-                pdfConverter,
                 pdfService,
                 documentStorage,
                 sheetValuesFactory,
-                sheetStrategyFactory,
-                documentProperties,
-                documentTaskExecutor);
+                sheetStrategyFactory);
     }
 
     /**

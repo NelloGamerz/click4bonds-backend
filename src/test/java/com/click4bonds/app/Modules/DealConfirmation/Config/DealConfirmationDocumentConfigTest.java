@@ -3,13 +3,12 @@ package com.click4bonds.app.Modules.DealConfirmation.Config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
-import java.util.concurrent.Executor;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import com.click4bonds.app.Modules.DealConfirmation.Service.AtSplDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationDocumentService;
+import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationPdfService;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetStrategyFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.DealConfirmationSheetValuesFactory;
 import com.click4bonds.app.Modules.DealConfirmation.Service.GsecAccrualCalculator;
@@ -18,48 +17,32 @@ import com.click4bonds.app.Modules.DealConfirmation.Service.PsuPrivateSaleSheetS
 import com.click4bonds.app.Modules.DealConfirmation.Service.NoOpDealConfirmationDocumentService;
 import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
 import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
-import com.click4bonds.app.Modules.Document.Service.PdfConverter;
-import com.click4bonds.app.Modules.Document.Service.XlsxTemplateWriter;
 
 /**
  * Which document implementation a deal confirmation gets.
  *
  * <p>Worth pinning because both candidates implement the same interface and the
  * selection is a condition rather than a type. Getting it wrong is silent: the
- * application starts, deals are created, and the letters simply never appear —
- * or a machine with no LibreOffice fails every purchase instead of skipping the
- * render.</p>
+ * application starts, deals are created, and the letters simply never appear.</p>
  *
- * <p>The engine beans are stubbed. Nothing here should touch the filesystem or
- * start a process; a configuration test that needs LibreOffice installed would
- * not run where it is most needed.</p>
+ * <p>The engine beans are stubbed. Nothing here should touch storage or start a
+ * render.</p>
  */
 class DealConfirmationDocumentConfigTest {
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
             .withUserConfiguration(DealConfirmationDocumentConfig.class)
             .withBean(DocumentProperties.class)
-            /*
-             * The real pipeline runs its upload and its render on this pool. A
-             * direct executor keeps the test synchronous, so the beans are still
-             * exercised rather than the threading being mocked away.
-             */
-            .withBean("documentTaskExecutor", Executor.class, () -> Runnable::run)
-            .withBean(XlsxTemplateWriter.class, () -> mock(XlsxTemplateWriter.class))
-            .withBean(PdfConverter.class, () -> mock(PdfConverter.class))
+            .withBean(DealConfirmationPdfService.class, () -> mock(DealConfirmationPdfService.class))
             .withBean(DocumentStorage.class, () -> mock(DocumentStorage.class))
             .withBean(DealConfirmationSheetValuesFactory.class,
                     () -> new DealConfirmationSheetValuesFactory(
                             new DocumentProperties(),
                             new GsecAccrualCalculator()))
-            .withBean(DealConfirmationSheetStrategyFactory.class, () -> {
-
-                DocumentProperties properties = new DocumentProperties();
-
-                return new DealConfirmationSheetStrategyFactory(
-                        new PsuPrivateSaleSheetStrategy(properties),
-                        new GsecSellSheetStrategy(properties));
-            });
+            .withBean(DealConfirmationSheetStrategyFactory.class,
+                    () -> new DealConfirmationSheetStrategyFactory(
+                            new PsuPrivateSaleSheetStrategy(),
+                            new GsecSellSheetStrategy()));
 
     @Test
     void wiresTheRealImplementationByDefault() {

@@ -23,12 +23,11 @@ import org.springframework.stereotype.Component;
  * than corrected — the two are not interchangeable with an actual/360 count, and
  * "fixing" one without the other would change the money.</p>
  *
- * <p><strong>Why it is computed here rather than read from the sheet.</strong> The
- * template holds these as live formulas. Leaving them live would print the
+ * <p><strong>Why it is computed here rather than read from a sheet.</strong> The
+ * old template held these as live formulas; leaving them live would print the
  * template's cached values for whichever deal it was last saved from unless the
- * receiving application recalculated on open, and the corporate letter already
- * settled the opposite way: the platform's figures win and are written as literals
- * (see {@code XlsxTemplateWriter}).</p>
+ * receiving application recalculated on open. The platform's figures win and are
+ * drawn straight onto the letter.</p>
  *
  * <p><strong>Limits, deliberately accepted.</strong> Coupon dates are taken to fall
  * on the maturity date's day of every sixth month, clamped to the month's length —
