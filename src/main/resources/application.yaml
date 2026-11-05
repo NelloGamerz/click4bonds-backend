@@ -28,34 +28,16 @@ email:
 
 # Generation of customer-facing documents — today, the deal confirmation letter.
 #
-# Split into two groups: how documents are produced (template, pdf) and what they
-# say (deal), plus who we are (organisation). The first is the same in every
-# environment, the second changes with the business's arithmetic, and the third
-# changes only if a second entity is onboarded.
+# Split into what documents say (deal) and who we are (organisation): the first
+# changes with the business's arithmetic, the second only if a second entity is
+# onboarded.
 #
 # Where they are stored is not configured here. Generated documents go to the
 # shared object store, configured once under `storage:` further down.
 document:
   # Master switch. false wires the no-op implementation, so deals are still
-  # created and simply produce no letter. This is the setting for a machine with
-  # no LibreOffice — a laptop or CI — where generation would otherwise fail on
-  # every purchase.
+  # created and simply produce no letter.
   enabled: ${DOCUMENT_ENABLED:true}
-
-  template:
-    # Read as a classpath stream, never a file: the template is packaged inside
-    # the jar. The name contains a space, which a plain YAML scalar allows.
-    path: ${DOCUMENT_TEMPLATE_PATH:deal_confirmation/ATSPL Deal Format.xlsx}
-    # The sheet in the template is actually named "PSU Private Sale " with a
-    # trailing space, which YAML would strip from this value — the lookup trims
-    # both sides before comparing, so the spelling here does not have to match
-    # that quirk. Do not wrap this in quotes: they would become part of the name.
-    sheet-name: ${DOCUMENT_TEMPLATE_SHEET:PSU Private Sale}
-    # The layout a Sovereign-rated (government) security is confirmed on. That
-    # sheet charges TDS rather than stamp duty, so it cannot be the corporate one.
-    # Found with surrounding whitespace ignored, like sheet-name above, so the
-    # template's trailing space does not have to be reproduced here.
-    gsec-sheet-name: ${DOCUMENT_TEMPLATE_GSEC_SHEET:gsec paper}
 
   # How the document step reads its work off Kafka.
   #
@@ -65,32 +47,16 @@ document:
   # DealConfirmationDocumentKafkaConfig, and the broker comes from the shared
   # spring.kafka settings — only the amount of parallelism is worth tuning.
   kafka:
-    # Messages this listener renders at once. Defaults to one more than
-    # document.pdf.max-concurrent-conversions, so a render waiting on LibreOffice
-    # does not stop another message's upload progressing. Raising it does NOT
-    # raise the number of concurrent LibreOffice processes — that is capped by
-    # the converter's own semaphore.
+    # Messages this listener renders at once. Rendering is CPU work done on the
+    # listener thread, so this is the number of letters drawn concurrently.
     consumer-concurrency: ${DOCUMENT_KAFKA_CONSUMER_CONCURRENCY:3}
-
-  pdf:
-    # false produces the spreadsheet only. A deliberate degraded mode for an
-    # environment without LibreOffice, not a failure.
-    enabled: ${DOCUMENT_PDF_ENABLED:true}
-    # Absolute path, or a bare name resolved from PATH.
-#    soffice-path: ${DOCUMENT_SOFFICE_PATH:soffice}
-    soffice-path: ${DOCUMENT_SOFFICE_PATH:C:/Program Files/LibreOffice/program/soffice.exe}
-    # A hung engine must not hold an HTTP request open indefinitely.
-    timeout: ${DOCUMENT_SOFFICE_TIMEOUT:30s}
-    # Each conversion is a separate process taking a few hundred megabytes, and
-    # there is no queue behind this. Requests over the limit wait.
-    max-concurrent-conversions: ${DOCUMENT_MAX_CONCURRENT_CONVERSIONS:2}
 
   deal:
     # Bond has no face-value field; 100 is the market convention and the only
     # value consistent with the persisted total_amount (price x quantity).
     face-value: ${DOCUMENT_FACE_VALUE:100}
     # The customer is buying from us, so the letter is our sale. A purchase-side
-    # letter is a different document with a different sheet.
+    # letter is a different document with a different layout.
     transaction-type: ${DOCUMENT_TRANSACTION_TYPE:Our Sale}
 
   # Printed in the "Our ..." cells of the letter. These identify an organisation;
@@ -188,9 +154,9 @@ storage:
     # job is to keep things out, so an absent list fails closed.
     #
     # This applies only to uploads that arrive from outside the application.
-    # Files this application generates — the deal confirmation spreadsheet and
-    # its PDF — are written through the store directly and are not subject to
-    # it, so removing a type here does not affect document generation.
+    # Files this application generates — the deal confirmation PDF — are written
+    # through the store directly and are not subject to it, so removing a type
+    # here does not affect document generation.
     allowed-content-types:
       - application/pdf
       - application/vnd.openxmlformats-officedocument.spreadsheetml.sheet

@@ -31,13 +31,12 @@ import java.util.UUID;
  * that must happen outside its transaction: recognising a retried request, and
  * asking for the confirmation document to be produced.</p>
  *
- * <p><strong>The document step is no longer performed here.</strong> Filling a
- * spreadsheet, rendering it with LibreOffice and uploading two artefacts is
- * seconds of work, and the customer was made to wait through all of it for an
- * answer that only needed the deal row to exist. The request now ends as soon as
- * the deal is committed: the response carries every figure the letter prints, and
- * a request to produce the letter is published to Kafka, where
- * {@code DealConfirmationDocumentConsumer} picks it up.</p>
+ * <p><strong>The document step is no longer performed here.</strong> Drawing the
+ * letter and uploading it is seconds of work, and the customer was made to wait
+ * through all of it for an answer that only needed the deal row to exist. The
+ * request now ends as soon as the deal is committed: the response carries every
+ * figure the letter prints, and a request to produce the letter is published to
+ * Kafka, where {@code DealConfirmationDocumentConsumer} picks it up.</p>
  *
  * <p>This class is deliberately not transactional. Building the response's
  * letter values and publishing to Kafka are both things that must not happen

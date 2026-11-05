@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -13,8 +12,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
-
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,27 +30,16 @@ import com.click4bonds.app.Modules.Document.Exception.DocumentGenerationExceptio
 import com.click4bonds.app.Modules.Document.Model.DocumentFormat;
 import com.click4bonds.app.Modules.Document.Model.StoredDocument;
 import com.click4bonds.app.Modules.Document.Service.DocumentStorage;
-import com.click4bonds.app.Modules.Document.Service.PdfConverter;
-import com.click4bonds.app.Modules.Document.Service.XlsxTemplateWriter;
-
-import java.nio.charset.StandardCharsets;
 
 /**
- * The letter pipeline: fill, render, store — and what happens when one of those
- * steps fails.
+ * The letter pipeline: draw the PDF and store it — and what happens when the
+ * render fails.
  */
 @ExtendWith(MockitoExtension.class)
 class AtSplDealConfirmationDocumentServiceTest {
 
     private static final String REFERENCE = "DC-20260925-000001";
-    private static final byte[] XLSX = "spreadsheet".getBytes(StandardCharsets.UTF_8);
     private static final byte[] PDF = "pdf".getBytes(StandardCharsets.UTF_8);
-
-    @Mock
-    private XlsxTemplateWriter templateWriter;
-
-    @Mock
-    private PdfConverter pdfConverter;
 
     @Mock
     private DealConfirmationPdfService pdfService;
@@ -59,33 +47,19 @@ class AtSplDealConfirmationDocumentServiceTest {
     @Mock
     private DocumentStorage storage;
 
-    private DocumentProperties properties;
-
     private AtSplDealConfirmationDocumentService service;
 
     @BeforeEach
     void setUp() {
 
-        properties = new DocumentProperties();
-
         service = new AtSplDealConfirmationDocumentService(
-                templateWriter,
-                pdfConverter,
                 pdfService,
                 storage,
-                new DealConfirmationSheetValuesFactory(properties, new GsecAccrualCalculator()),
+                new DealConfirmationSheetValuesFactory(
+                        new DocumentProperties(), new GsecAccrualCalculator()),
                 new DealConfirmationSheetStrategyFactory(
-                        new PsuPrivateSaleSheetStrategy(properties),
-                        new GsecSellSheetStrategy(properties)),
-                properties,
-                /*
-                 * A direct executor, so the upload and the render run on the
-                 * calling thread in the order they are submitted. The stages are
-                 * still submitted and awaited exactly as they are in production —
-                 * only the pool is removed, which is what makes the interaction
-                 * with storage and the converter verifiable here.
-                 */
-                Runnable::run);
+                        new PsuPrivateSaleSheetStrategy(),
+                        new GsecSellSheetStrategy()));
     }
 
     // =========================================================
@@ -93,19 +67,13 @@ class AtSplDealConfirmationDocumentServiceTest {
     // =========================================================
 
     @Test
-    void drawsTheCorporateLetterDirectlyAndStoresOnlyThePdf() {
+    void drawsTheCorporateLetterAndStoresItAsAPdf() {
 
         givenThePdfIsDrawn();
 
         DealConfirmationDocument document = service.generate(snapshot());
 
-        /*
-         * The corporate letter no longer goes through a spreadsheet: it is
-         * drawn from the values and stored as a PDF, so neither the template
-         * writer nor the LibreOffice converter is touched.
-         */
         verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
-        verifyNoInteractions(templateWriter, pdfConverter);
 
         verify(storage).store(
                 eq("2026/09/" + REFERENCE + ".pdf"),
@@ -121,19 +89,13 @@ class AtSplDealConfirmationDocumentServiceTest {
     }
 
     @Test
-    void drawsTheGsecLetterDirectlyAndStoresOnlyThePdf() {
+    void drawsTheGsecLetterAndStoresItAsAPdf() {
 
         givenThePdfIsDrawn();
 
         DealConfirmationDocument document = service.generate(snapshot("Sovereign"));
 
-        /*
-         * Same design, different figures: the G-Sec layout is now drawn from
-         * the values like the corporate letter, with no spreadsheet and no
-         * LibreOffice in the path.
-         */
         verify(pdfService).render(any(), eq(DealConfirmationLayout.GSEC));
-        verifyNoInteractions(templateWriter, pdfConverter);
 
         verify(storage).store(
                 eq("2026/09/" + REFERENCE + ".pdf"),
@@ -154,32 +116,11 @@ class AtSplDealConfirmationDocumentServiceTest {
 
         ArgumentCaptor<String> key = ArgumentCaptor.forClass(String.class);
 
-        verify(storage, org.mockito.Mockito.atLeastOnce())
-                .store(key.capture(), anyString(), anyString(), any());
+        verify(storage).store(key.capture(), anyString(), anyString(), any());
 
         assertTrue(
                 key.getValue().startsWith("2026/09/"),
                 "expected the September the deal settles in, got " + key.getValue());
-    }
-
-    @Test
-    void fillsTheGsecSheetWhenPdfRenderingIsDisabled() {
-
-        properties.getPdf().setEnabled(false);
-
-        givenTheSpreadsheetIsFilled();
-
-        service.generate(snapshot("Sovereign"));
-
-        /*
-         * The sheet name is configurable because the workbook has two sale
-         * sheets. If the configured name were wrong the fill would throw, but
-         * asserting the wiring here makes a config regression obvious.
-         */
-        verify(templateWriter).fill(
-                eq(properties.getTemplate().getGsecSheetName()),
-                anyMap(),
-                anyMap());
     }
 
     // =========================================================
@@ -193,13 +134,7 @@ class AtSplDealConfirmationDocumentServiceTest {
 
         service.generate(snapshot("AAA"));
 
-        /*
-         * Anything that is not a Sovereign keeps the letter it has always had.
-         * The corporate letter is now drawn directly, so the layout is selected
-         * by proving the renderer was used and the G-Sec sheet was not.
-         */
         verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
-        verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     @Test
@@ -209,11 +144,6 @@ class AtSplDealConfirmationDocumentServiceTest {
 
         service.generate(snapshot("Sovereign"));
 
-        /*
-         * The whole point of the routing: a government security is drawn on the
-         * G-Sec layout, not the corporate one. The figures that layout prints
-         * are pinned in GsecSellSheetStrategyTest.
-         */
         verify(pdfService).render(any(), eq(DealConfirmationLayout.GSEC));
     }
 
@@ -244,37 +174,6 @@ class AtSplDealConfirmationDocumentServiceTest {
         service.generate(snapshot(null));
 
         verify(pdfService).render(any(), eq(DealConfirmationLayout.CORPORATE));
-        verifyNoInteractions(templateWriter, pdfConverter);
-    }
-
-    // =========================================================
-    // PDF SWITCHED OFF
-    // =========================================================
-
-    @Test
-    void storesTheSpreadsheetOnlyWhenPdfRenderingIsDisabled() {
-
-        properties.getPdf().setEnabled(false);
-
-        givenTheSpreadsheetIsFilled();
-
-        DealConfirmationDocument document = service.generate(snapshot());
-
-        /*
-         * A deliberate degraded mode, not a failure: the spreadsheet is the
-         * document, and it can be rendered elsewhere. The caller still gets a
-         * present document, so the deal is recorded as documented.
-         */
-        verify(storage).store(
-                eq("2026/09/" + REFERENCE + ".xlsx"),
-                anyString(),
-                eq(DocumentFormat.XLSX.contentType()),
-                eq(XLSX));
-
-        verifyNoInteractions(pdfConverter, pdfService);
-
-        assertEquals(DocumentFormat.XLSX.contentType(), document.contentType());
-        assertTrue(document.isPresent());
     }
 
     // =========================================================
@@ -282,23 +181,18 @@ class AtSplDealConfirmationDocumentServiceTest {
     // =========================================================
 
     @Test
-    void storesNothingWhenTheSpreadsheetCannotBeFilled() {
-
-        properties.getPdf().setEnabled(false);
-
-        when(templateWriter.fill(anyString(), any(), any()))
-                .thenThrow(new DocumentGenerationException("template is missing"));
-
-        assertThrows(
-                DocumentGenerationException.class,
-                () -> service.generate(snapshot("Sovereign")));
+    void refusesASovereignDealWhoseGsecFiguresCouldNotBeComputed() {
 
         /*
-         * Nothing half-written: if the fill failed there is no spreadsheet to
-         * keep and no PDF to render.
+         * The G-Sec letter refuses a deal with no maturity or no coupon rather
+         * than printing blanks. Checked before the render, so nothing is drawn
+         * and nothing is stored.
          */
-        verifyNoInteractions(storage);
-        verifyNoInteractions(pdfConverter, pdfService);
+        assertThrows(
+                DocumentGenerationException.class,
+                () -> service.generate(sovereignWithNoMaturity()));
+
+        verifyNoInteractions(pdfService, storage);
     }
 
     @Test
@@ -310,44 +204,18 @@ class AtSplDealConfirmationDocumentServiceTest {
         assertThrows(DocumentGenerationException.class, () -> service.generate(snapshot()));
 
         /*
-         * The direct route has no intermediate artefact to keep, so a failed
-         * render leaves nothing behind and the deal stays retryable.
+         * There is no intermediate artefact to keep, so a failed render leaves
+         * nothing behind and the deal stays retryable.
          */
         verifyNoInteractions(storage);
-        verifyNoInteractions(templateWriter, pdfConverter);
     }
 
     @Test
-    void keepsTheSpreadsheetWhenRenderingFailsInTheDegradedMode() {
+    void refusesADealItCannotBuildValuesFor() {
 
         /*
-         * With PDF rendering switched off there is no render step, so a stored
-         * spreadsheet is the whole document. This pins that the degraded path
-         * still stores rather than silently producing nothing.
-         */
-        properties.getPdf().setEnabled(false);
-
-        givenTheSpreadsheetIsFilled();
-
-        assertEquals(
-                DocumentFormat.XLSX.contentType(),
-                service.generate(snapshot("Sovereign")).contentType());
-
-        verify(storage).store(
-                eq("2026/09/" + REFERENCE + ".xlsx"),
-                anyString(),
-                anyString(),
-                any());
-
-        verifyNoInteractions(pdfService, pdfConverter);
-    }
-
-    @Test
-    void refusesADealItCannotPrintAFullConsiderationFor() {
-
-        /*
-         * Raised before anything is written, so a deal missing its accrued
-         * interest leaves no partial artefacts behind.
+         * Raised by the values factory before anything is drawn, so a deal
+         * missing its price or accrued interest leaves no partial artefacts.
          */
         DealConfirmationDocumentData incomplete = new DealConfirmationDocumentData(
                 REFERENCE,
@@ -385,8 +253,7 @@ class AtSplDealConfirmationDocumentServiceTest {
 
         assertThrows(DocumentGenerationException.class, () -> service.generate(incomplete));
 
-        verifyNoInteractions(storage);
-        verifyNoInteractions(templateWriter, pdfConverter, pdfService);
+        verifyNoInteractions(pdfService, storage);
     }
 
     @Test
@@ -395,11 +262,10 @@ class AtSplDealConfirmationDocumentServiceTest {
         /*
          * The values factory no longer requires a reference, because the same
          * values are built for a view-only request describing a deal that was
-         * never written. A letter is what needs one: it prints the reference in A5
-         * and files both artefacts under it, so a reference-less snapshot would
-         * mean a blank cell and a key reading "null.pdf". That guard lives here,
-         * at the layer that would build both, and it is checked before anything is
-         * written.
+         * never written. A letter is what needs one: it prints the reference and
+         * is filed under it, so a reference-less snapshot would mean a key
+         * reading "null.pdf". That guard lives here, at the layer that would
+         * build it, and it is checked before anything is written.
          */
         DealConfirmationDocumentData noReference = snapshot(null);
 
@@ -441,36 +307,16 @@ class AtSplDealConfirmationDocumentServiceTest {
                 DocumentGenerationException.class,
                 () -> service.generate(withoutReference));
 
-        verifyNoInteractions(storage);
-        verifyNoInteractions(templateWriter, pdfConverter, pdfService);
+        verifyNoInteractions(pdfService, storage);
     }
 
     // =========================================================
     // FIXTURES
     // =========================================================
 
-    /**
-     * The corporate letter: a bond with no rating, which is what every deal was
-     * before the G-Sec layout existed.
-     */
-    private DealConfirmationDocumentData snapshot() {
-
-        return snapshot(null);
-    }
-
-    private void givenTheSpreadsheetIsFilled() {
-
-        when(templateWriter.fill(anyString(), any(), any())).thenReturn(XLSX);
-    }
-
     private void givenThePdfIsDrawn() {
 
         when(pdfService.render(any(), any())).thenReturn(PDF);
-
-        givenDocumentsAreStored();
-    }
-
-    private void givenDocumentsAreStored() {
 
         when(storage.store(anyString(), anyString(), anyString(), any()))
                 .thenAnswer(call -> new StoredDocument(
@@ -478,6 +324,54 @@ class AtSplDealConfirmationDocumentServiceTest {
                         call.getArgument(1),
                         call.getArgument(2),
                         ((byte[]) call.getArgument(3)).length));
+    }
+
+    private DealConfirmationDocumentData snapshot() {
+
+        return snapshot(null);
+    }
+
+    /**
+     * A Sovereign deal with no maturity: the G-Sec figures cannot be computed,
+     * so the G-Sec layout refuses it.
+     */
+    private DealConfirmationDocumentData sovereignWithNoMaturity() {
+
+        DealConfirmationDocumentData complete = snapshot("Sovereign");
+
+        return new DealConfirmationDocumentData(
+                complete.dealReference(),
+                complete.dealDate(),
+                complete.dealCreatedAt(),
+                complete.valueDate(),
+                complete.valueDateOffsetDays(),
+                complete.customerName(),
+                complete.customerEmail(),
+                complete.bondName(),
+                complete.isin(),
+                complete.securityType(),
+                complete.rating(),
+                complete.semiYtm(),
+                complete.annualYtm(),
+                complete.couponRate(),
+                null,
+                complete.ipDateDescription(),
+                complete.putCallDescription(),
+                complete.previousCouponDate(),
+                complete.accruedDays(),
+                complete.accruedInterestPerHundredFace(),
+                complete.principalPerLot(),
+                complete.quantityPerLot(),
+                complete.numberOfLots(),
+                complete.totalQuantity(),
+                complete.pricePerUnit(),
+                complete.totalAmount(),
+                complete.status(),
+                complete.counterparty(),
+                complete.deliveryMode(),
+                complete.settlementNumber(),
+                complete.side(),
+                complete.depository());
     }
 
     private DealConfirmationDocumentData snapshot(String rating) {

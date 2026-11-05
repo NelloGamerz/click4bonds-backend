@@ -6,15 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
-import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
-
 /**
  * Which layout a deal is printed on.
  *
  * <p>Worth pinning because the rule is a string comparison against free text, and
  * both ways it can go wrong are silent. A Sovereign deal routed to the corporate
- * sheet prints a G-Sec on a letter that charges it stamp duty instead of TDS; an
- * ordinary deal routed to the G-Sec sheet fails to generate a letter at all.
+ * letter prints a G-Sec on a letter that charges it stamp duty instead of TDS; an
+ * ordinary deal routed to the G-Sec letter fails to generate a letter at all.
  * Neither raises an error of its own.</p>
  *
  * <p>{@code Bond.rating} is a plain {@code String(100)} with no enum and no
@@ -23,13 +21,11 @@ import com.click4bonds.app.Modules.Document.Config.DocumentProperties;
  */
 class DealConfirmationSheetStrategyFactoryTest {
 
-    private final DocumentProperties properties = new DocumentProperties();
-
     private final PsuPrivateSaleSheetStrategy psuPrivateSale =
-            new PsuPrivateSaleSheetStrategy(properties);
+            new PsuPrivateSaleSheetStrategy();
 
     private final GsecSellSheetStrategy gsecSellSheet =
-            new GsecSellSheetStrategy(properties);
+            new GsecSellSheetStrategy();
 
     private final DealConfirmationSheetStrategyFactory factory =
             new DealConfirmationSheetStrategyFactory(psuPrivateSale, gsecSellSheet);
@@ -127,19 +123,19 @@ class DealConfirmationSheetStrategyFactoryTest {
     // =========================================================
 
     @Test
-    void everyRouteReturnsAStrategyThatNamesASheet() {
+    void everyRouteReturnsAStrategyWithALayout() {
 
         /*
-         * The factory never returns null, and whatever it returns can name the
-         * sheet it fills. A null here would surface far away as a
-         * NullPointerException inside the fill.
+         * The factory never returns null, and whatever it returns names the
+         * letter it draws. A null here would surface far away as a
+         * NullPointerException inside the renderer.
          */
         for (String rating : new String[] { null, "", "AAA", "Sovereign" }) {
 
             DealConfirmationSheetStrategy strategy = factory.strategyFor(rating);
 
             assertThat(strategy).isNotNull();
-            assertThat(strategy.sheetName()).isNotBlank();
+            assertThat(strategy.layout()).isNotNull();
         }
     }
 }

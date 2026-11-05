@@ -19,10 +19,10 @@ import lombok.extern.slf4j.Slf4j;
  * Produces a deal's confirmation letter, off the request thread.
  *
  * <p>This is the half that used to run inside {@code POST /api/deal-confirmations}.
- * Filling a spreadsheet, rendering it with LibreOffice and uploading two
- * artefacts is seconds of work, and a customer was made to wait through all of
- * it for an answer that only needed the deal row to exist. Now the request ends
- * when the deal is committed and this listener does the slow part.</p>
+ * Drawing the letter and uploading it is seconds of work, and a customer was made
+ * to wait through all of it for an answer that only needed the deal row to exist.
+ * Now the request ends when the deal is committed and this listener does the slow
+ * part.</p>
  *
  * <p><strong>It is the only caller of the document step.</strong> The two
  * collaborators it uses were both written to be called from somewhere other than

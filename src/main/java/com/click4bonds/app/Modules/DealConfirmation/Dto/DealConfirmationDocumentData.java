@@ -15,11 +15,11 @@ import com.click4bonds.app.Modules.User.Model.User;
 /**
  * Everything the deal confirmation document needs, in one flat record.
  *
- * <p>This is the seam for the Excel template step: the template is filled from
- * this record, and the template code never sees an entity, a repository or a
- * session. It is assembled inside the transaction that creates the deal, so the
- * document step — which runs after that transaction has committed — never
- * touches a lazy association.</p>
+ * <p>This is the input to the document step: the letter is drawn from this
+ * record, and the document code never sees an entity, a repository or a session.
+ * It is assembled inside the transaction that creates the deal, so the document
+ * step — which runs after that transaction has committed — never touches a lazy
+ * association.</p>
  *
  * <p>Values are snapshots taken at purchase time; they do not follow later edits
  * to the bond.</p>

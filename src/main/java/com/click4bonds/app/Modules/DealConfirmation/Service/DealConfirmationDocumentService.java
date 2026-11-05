@@ -6,8 +6,8 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
 /**
  * The deal confirmation document step.
  *
- * <p>Fills the ATSPL confirmation letter and renders it as a PDF. Two
- * implementations are wired by
+ * <p>Renders the ATSPL confirmation letter as a PDF. Two implementations are
+ * wired by
  * {@link com.click4bonds.app.Modules.DealConfirmation.Config.DealConfirmationDocumentConfig}:</p>
  *
  * <pre>
@@ -20,13 +20,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
  * DealConfirmationSheetStrategyFactory (rating -> which layout)
  *        |
  *        v
- * DealConfirmationSheetStrategy        (values -> cells of that sheet)
- *        |
- *        v
- * XlsxTemplateWriter                   (fills ATSPL Deal Format.xlsx)
- *        |
- *        v
- * PdfConverter                         (LibreOffice, headless)
+ * DealConfirmationPdfService           (values -> the PDF, drawn in code)
  *        |
  *        v
  * DocumentStorage                      (the deal-shaped view of the store)
@@ -40,7 +34,7 @@ import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocument
  *
  * <p>{@link AtSplDealConfirmationDocumentService} is the real one.
  * {@link NoOpDealConfirmationDocumentService} produces nothing and is wired when
- * {@code document.enabled=false}, for environments with no LibreOffice.</p>
+ * {@code document.enabled=false}.</p>
  *
  * <p><strong>Contract.</strong> Implementations run after the deal's transaction
  * has committed (a slow document step must not hold a database transaction

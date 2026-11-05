@@ -123,13 +123,13 @@ public class BondOrderPaymentService {
     }
 
     /**
-     * Asks for the deal's confirmation letter — the Excel and the PDF stored in
-     * R2 — to be produced.
+     * Asks for the deal's confirmation letter — the PDF stored in R2 — to be
+     * produced.
      *
      * <p>Follows {@code DealConfirmationService.requestDocument}: the letter is
      * not built on the request thread. The request is published to Kafka, where
-     * {@code DealConfirmationDocumentConsumer} fills the spreadsheet, renders the
-     * PDF, stores both and records the address against the deal, moving it to
+     * {@code DealConfirmationDocumentConsumer} draws the PDF, stores it and
+     * records the address against the deal, moving it to
      * {@code CONFIRMATION_GENERATED}.</p>
      *
      * <p>Nothing happens on a replayed payment: the letter was asked for by the

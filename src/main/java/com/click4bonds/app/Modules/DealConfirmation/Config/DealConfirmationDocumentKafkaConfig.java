@@ -97,12 +97,8 @@ public class DealConfirmationDocumentKafkaConfig {
      * overridden.</p>
      *
      * @param concurrency how many messages this listener renders at once.
-     *                    Defaults to three: one more than LibreOffice's default
-     *                    conversion permits, so a render waiting on the engine
-     *                    does not stop another message's upload progressing.
-     *                    Raising it does not raise the number of concurrent
-     *                    renderings — that is capped by the converter's own
-     *                    semaphore.
+     *                    Rendering is CPU work done on the listener thread, so
+     *                    this is also the number of letters drawn concurrently.
      */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<String, DealConfirmationDocumentEvent>

@@ -34,14 +34,14 @@ import lombok.RequiredArgsConstructor;
  * </ul>
  *
  * <p>The two charges belong to two different letters — stamp duty on the
- * corporate sheet, TDS on the G-Sec sheet — and both are computed here so that
- * neither sheet's arithmetic lives in a layout class. Which of them a given
+ * corporate letter, TDS on the G-Sec one — and both are computed here so that
+ * neither letter's arithmetic lives in a layout class. Which of them a given
  * letter prints is
  * {@link DealConfirmationSheetStrategyFactory}'s business.</p>
  *
  * <p><strong>The G-Sec letter's accrued interest is a second calculation, not a
  * reuse of the first.</strong> The corporate figure is the bond's own, on an
- * actual/actual count. The G-Sec sheet's rule is its own —
+ * actual/actual count. The G-Sec letter's rule is its own —
  * {@code quantum x coupon x days / 360}, with the days from
  * {@code COUPDAYBS(valueDate, maturity, 2, 4)} — so it is computed here on the
  * same record and travels in its own fields. Two conventions, deliberately, for
@@ -49,11 +49,10 @@ import lombok.RequiredArgsConstructor;
  *
  * <p><strong>The coupon rate is not converted.</strong> The letter prints it
  * exactly as {@code Bond} stores it, a percentage, so {@code 8.80} prints as
- * {@code 8.80%} and a null prints as a blank cell rather than a zero — which
- * would read as a zero-coupon bond. The template's coupon cell is formatted as
- * a percentage of a <em>fraction</em>, so it is that cell's format the letter
- * changes rather than this class that divides; see
- * {@link PsuPrivateSaleSheetStrategy#numberFormats()}.</p>
+ * {@code 8.80%} and a null prints as a blank rather than a zero — which would
+ * read as a zero-coupon bond. The G-Sec letter prints it as a fraction because
+ * that is its own convention; the conversion is the renderer's, not this
+ * class's.</p>
  *
  * <p><strong>Refuses to build values it cannot complete.</strong> A letter
  * missing its price or its accrued interest is a legal document with a hole in
@@ -294,9 +293,10 @@ public class DealConfirmationSheetValuesFactory {
                 snapshot.maturityDate());
 
         /*
-         * The sheet's coupon cell holds a FRACTION — 0.0734 for 7.34% — which is
-         * what its own formula multiplies by. Moving the point rather than dividing
-         * keeps it exact for a rate stored to two decimals.
+         * The G-Sec letter prints the coupon as a FRACTION — 0.0734 for 7.34% —
+         * which is what its own interest convention multiplies by. Moving the
+         * point rather than dividing keeps it exact for a rate stored to two
+         * decimals.
          */
         BigDecimal couponFraction = snapshot.couponRate().movePointLeft(2);
 
@@ -308,7 +308,7 @@ public class DealConfirmationSheetValuesFactory {
         BigDecimal gsecConsideration = money(principalAmount.add(gsecAccruedInterest));
 
         /*
-         * TDS comes off here where the corporate sheet's stamp duty goes on, and
+         * TDS comes off here where the corporate letter's stamp duty goes on, and
          * it is levied on the interest rather than on the consideration — but
          * only once the consideration reaches the threshold.
          */

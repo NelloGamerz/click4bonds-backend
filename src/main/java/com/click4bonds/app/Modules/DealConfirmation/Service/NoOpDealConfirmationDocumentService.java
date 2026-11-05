@@ -10,10 +10,8 @@ import lombok.extern.slf4j.Slf4j;
  * {@link DealConfirmationDocumentService}.
  *
  * <p>Produces no document, and says so at information level. It is wired when
- * {@code document.enabled=false}, which is the setting for an environment
- * without LibreOffice — a developer laptop or CI — where generation would
- * otherwise fail on every purchase and fill the logs with errors that are not
- * anyone's problem.</p>
+ * {@code document.enabled=false}, the setting for an environment that should
+ * not produce letters — a developer laptop or CI.</p>
  *
  * <p>It is not a placeholder any more. The real implementation is
  * {@link AtSplDealConfirmationDocumentService}; this one is the deliberate
