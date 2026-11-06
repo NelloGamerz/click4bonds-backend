@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Party.Dto.DematAccountCreateRequest;
@@ -32,6 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 public class DematAccountService {
 
     private final DematAccountRepository dematAccountRepository;
+    private final AuditLogService auditLogService;
 
     public DematAccountResponse add(Party party, DematAccountCreateRequest request) {
 
@@ -45,7 +47,15 @@ public class DematAccountService {
      */
     public DematAccountResponse addVerified(Party party, DematAccountCreateRequest request) {
 
-        return add(party, request, VerificationStatus.VERIFIED);
+        DematAccountResponse response = add(party, request, VerificationStatus.VERIFIED);
+
+        auditLogService.record(
+                "CREATE_PARTY_DEMAT_ACCOUNT",
+                "PARTY",
+                party.getId(),
+                "Added demat account " + response.id());
+
+        return response;
     }
 
     private DematAccountResponse add(
@@ -104,7 +114,15 @@ public class DematAccountService {
 
         log.info("Demat account {} updated for party {}", account.getId(), party.getId());
 
-        return DematAccountResponse.of(account);
+        DematAccountResponse response = DematAccountResponse.of(account);
+
+        auditLogService.record(
+                "UPDATE_PARTY_DEMAT_ACCOUNT",
+                "PARTY",
+                party.getId(),
+                "Updated demat account " + account.getId());
+
+        return response;
     }
 
     public void delete(Party party, UUID accountId) {
@@ -129,7 +147,15 @@ public class DematAccountService {
         log.info("Demat account {} verification for party {} set to {}",
                 account.getId(), party.getId(), status);
 
-        return DematAccountResponse.of(account);
+        DematAccountResponse response = DematAccountResponse.of(account);
+
+        auditLogService.record(
+                "UPDATE_PARTY_DEMAT_VERIFICATION",
+                "PARTY",
+                party.getId(),
+                "Demat account " + account.getId() + " verification -> " + status);
+
+        return response;
     }
 
     private DematAccount require(Party party, UUID accountId) {

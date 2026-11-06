@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -114,7 +115,8 @@ class BondDocumentServiceTest {
                 bondService,
                 userService,
                 uploadService,
-                objectStore);
+                objectStore,
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
         issuer = Issuer.builder()
                 .id(UUID.randomUUID())

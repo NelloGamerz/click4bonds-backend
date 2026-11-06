@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Service.UserService;
@@ -78,6 +79,7 @@ public class BondService {
     private final BondValuationService bondValuationService;
     private final RedisService redisService;
     private final StorageProperties storageProperties;
+    private final AuditLogService auditLogService;
 
     // =========================================================
     // CREATE
@@ -129,7 +131,15 @@ public class BondService {
 
         Bond savedBond = bondRepository.save(bond);
 
-        return mapToResponse(savedBond);
+        BondResponse response = mapToResponse(savedBond);
+
+        auditLogService.record(
+                "CREATE_BOND",
+                "BOND",
+                null,
+                "Created bond " + response.getName() + " (" + response.getIsin() + ")");
+
+        return response;
     }
 
     public List<BondResponse> updatePrices(
@@ -154,9 +164,18 @@ public class BondService {
             bonds.add(bond);
         }
 
-        return bondRepository.saveAll(bonds).stream()
+        List<BondResponse> responses = bondRepository.saveAll(bonds).stream()
                 .map(this::mapToResponse)
                 .toList();
+
+        auditLogService.record(
+                "UPDATE_BOND_PRICES",
+                "BOND",
+                null,
+                "Updated prices for " + responses.size() + " bonds: "
+                        + responses.stream().map(BondResponse::getIsin).toList());
+
+        return responses;
     }
 
     // =========================================================
@@ -782,7 +801,15 @@ public class BondService {
                 savedBond.getId(),
                 savedBond.getStatus());
 
-        return mapToResponse(savedBond);
+        BondResponse response = mapToResponse(savedBond);
+
+        auditLogService.record(
+                "UPDATE_BOND",
+                "BOND",
+                null,
+                "Updated bond " + isin);
+
+        return response;
     }
 
     // =========================================================
@@ -826,8 +853,15 @@ public class BondService {
 
         evictCachedBond(isin);
 
-        return mapToResponse(
-                bondRepository.save(bond));
+        BondResponse response = mapToResponse(bondRepository.save(bond));
+
+        auditLogService.record(
+                "ACTIVATE_BOND",
+                "BOND",
+                null,
+                "Activated bond " + isin);
+
+        return response;
     }
 
     // =========================================================
@@ -852,8 +886,15 @@ public class BondService {
 
         evictCachedBond(isin);
 
-        return mapToResponse(
-                bondRepository.save(bond));
+        BondResponse response = mapToResponse(bondRepository.save(bond));
+
+        auditLogService.record(
+                "SUSPEND_BOND",
+                "BOND",
+                null,
+                "Suspended bond " + isin);
+
+        return response;
     }
 
     // =========================================================
@@ -891,6 +932,12 @@ public class BondService {
         evictCachedBond(isin);
 
         bondRepository.save(bond);
+
+        auditLogService.record(
+                "CANCEL_BOND",
+                "BOND",
+                null,
+                "Cancelled bond " + isin);
     }
 
     // =========================================================

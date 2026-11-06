@@ -55,6 +55,7 @@ public class AdminDealService {
     private final YtmCalculationService ytmCalculationService;
     private final AdminDealPricingService pricingService;
     private final BusinessDateService businessDateService;
+    private final AuditLogService auditLogService;
 
     public DealConfirmationResponse create(
             CreateClientDealRequest request,
@@ -116,6 +117,12 @@ public class AdminDealService {
             clearPricing(employeeId, request.bondId());
         }
 
+        auditLogService.record(
+                "CREATE_DEAL",
+                "DEAL",
+                response.getDealConfirmationId(),
+                "Created deal " + response.getDealReference() + " on " + response.getIsin());
+
         return response;
     }
 
@@ -169,7 +176,15 @@ public class AdminDealService {
             UUID employeeId,
             PreviewDealPricingRequest request) {
 
-        return pricingService.preview(employeeId, request);
+        AdminDealPricingPreviewResponse response = pricingService.preview(employeeId, request);
+
+        auditLogService.record(
+                "PREVIEW_DEAL_PRICING",
+                "BOND",
+                response.bondId(),
+                "Priced " + response.isin());
+
+        return response;
     }
 
     /**
@@ -262,6 +277,12 @@ public class AdminDealService {
                 pricePerUnit,
                 annualYtm,
                 valueDate);
+
+        auditLogService.record(
+                "CALCULATE_DEAL",
+                "DEAL",
+                deal.getId(),
+                "Priced deal " + deal.getDealReference());
 
         return new AdminDealCalculationResponse(
                 deal.getId(),

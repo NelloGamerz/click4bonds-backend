@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.Party.Dto.BankAccountCreateRequest;
@@ -43,6 +44,7 @@ public class BankAccountService {
 
     private final BankAccountRepository bankAccountRepository;
     private final SecretCipher secretCipher;
+    private final AuditLogService auditLogService;
 
     public BankAccountResponse add(Party party, BankAccountCreateRequest request) {
 
@@ -56,7 +58,15 @@ public class BankAccountService {
      */
     public BankAccountResponse addVerified(Party party, BankAccountCreateRequest request) {
 
-        return add(party, request, VerificationStatus.VERIFIED);
+        BankAccountResponse response = add(party, request, VerificationStatus.VERIFIED);
+
+        auditLogService.record(
+                "CREATE_PARTY_BANK_ACCOUNT",
+                "PARTY",
+                party.getId(),
+                "Added bank account " + response.id());
+
+        return response;
     }
 
     private BankAccountResponse add(
@@ -130,7 +140,15 @@ public class BankAccountService {
 
         log.info("Bank account {} updated for party {}", account.getId(), party.getId());
 
-        return BankAccountResponse.of(account, secretCipher.decrypt(account.getAccountNumber()));
+        BankAccountResponse response = BankAccountResponse.of(account, secretCipher.decrypt(account.getAccountNumber()));
+
+        auditLogService.record(
+                "UPDATE_PARTY_BANK_ACCOUNT",
+                "PARTY",
+                party.getId(),
+                "Updated bank account " + account.getId());
+
+        return response;
     }
 
     public void delete(Party party, UUID accountId) {
@@ -155,7 +173,15 @@ public class BankAccountService {
         log.info("Bank account {} verification for party {} set to {}",
                 account.getId(), party.getId(), status);
 
-        return BankAccountResponse.of(account, secretCipher.decrypt(account.getAccountNumber()));
+        BankAccountResponse response = BankAccountResponse.of(account, secretCipher.decrypt(account.getAccountNumber()));
+
+        auditLogService.record(
+                "UPDATE_PARTY_BANK_VERIFICATION",
+                "PARTY",
+                party.getId(),
+                "Bank account " + account.getId() + " verification -> " + status);
+
+        return response;
     }
 
     private static String trimOrNull(String value) {

@@ -31,7 +31,7 @@ class AdminClientServicePatchTest {
     private final PanDetailsService panDetailsService = mock(PanDetailsService.class);
 
     private final AdminClientService service =
-            new AdminClientService(clientRepository, partyService, panDetailsService);
+            new AdminClientService(clientRepository, partyService, panDetailsService, mock(AuditLogService.class));
 
     @Test
     void patchLeavesFieldsNotIncludedInRequestUnchanged() {

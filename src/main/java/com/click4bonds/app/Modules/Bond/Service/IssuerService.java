@@ -3,6 +3,7 @@ package com.click4bonds.app.Modules.Bond.Service;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +44,7 @@ public class IssuerService {
     private final IssuerMapper issuerMapper;
     private final IssuerBulkWriter issuerBulkWriter;
     private final AnalyticsService analyticsService;
+    private final AuditLogService auditLogService;
 
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 100;
@@ -79,7 +81,15 @@ public class IssuerService {
         bond.setIssuer(saved);
         bondService.saveBond(bond);
 
-        return issuerMapper.toResponse(saved);
+        IssuerResponse response = issuerMapper.toResponse(saved);
+
+        auditLogService.record(
+                "CREATE_ISSUER",
+                "ISSUER",
+                response.getId(),
+                "Added issuer " + response.getName() + " to bond " + isin);
+
+        return response;
     }
 
     // =========================================================
@@ -104,8 +114,16 @@ public class IssuerService {
 
         validateUnique(issuer, issuer.getId());
 
-        return issuerMapper.toResponse(
+        IssuerResponse response = issuerMapper.toResponse(
                 issuerRepository.save(issuer));
+
+        auditLogService.record(
+                "UPDATE_ISSUER",
+                "ISSUER",
+                response.getId(),
+                "Updated issuer " + response.getName() + " on bond " + isin);
+
+        return response;
     }
 
     // =========================================================
@@ -402,7 +420,7 @@ public class IssuerService {
             }
         }
 
-        return BulkIssuerResponse.builder()
+        BulkIssuerResponse response = BulkIssuerResponse.builder()
                 .totalRequested(items.size())
                 .createdCount(createdCount)
                 .updatedCount(updatedCount)
@@ -410,6 +428,16 @@ public class IssuerService {
                 .issuers(issuers)
                 .errors(errors)
                 .build();
+
+        auditLogService.record(
+                "BULK_UPSERT_ISSUERS",
+                "ISSUER",
+                null,
+                "Bulk issuer import: " + response.getCreatedCount() + " created, "
+                        + response.getUpdatedCount() + " updated, "
+                        + response.getFailedCount() + " failed");
+
+        return response;
     }
 
     // =========================================================

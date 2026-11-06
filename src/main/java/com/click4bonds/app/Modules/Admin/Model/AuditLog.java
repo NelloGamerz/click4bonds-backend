@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Model.UserRoleAssertions;
 
@@ -57,11 +58,31 @@ public class AuditLog {
         }
     }
 
+    /**
+     * The actor's role when the entry was written.
+     *
+     * <p>Stored rather than read back from {@link #performedBy}, because that
+     * account's role can change after the fact. An entry saying an
+     * {@code ADMIN} promoted someone has to keep saying that even once the
+     * actor has been demoted themselves.</p>
+     */
+    @Enumerated(EnumType.STRING)
+    private UserRole performedByRole;
+
+    /**
+     * The action performed, as a short verb phrase such as
+     * {@code CREATE_USER}, {@code UPDATE_USER} or {@code PATCH /api/admin/users}.
+     */
     private String action;
 
+    /** The kind of record acted on, e.g. {@code USER} or {@code CLIENT}. */
     private String entityType;
 
+    /** Identifier of that record; null for actions that have no single target. */
     private UUID entityId;
+
+    /** Caller's address, so an action can be traced to a machine. */
+    private String ipAddress;
 
     @Column(length = 5000)
     private String details;

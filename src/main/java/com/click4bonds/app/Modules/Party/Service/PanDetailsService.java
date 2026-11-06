@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.Common.Exceptions.ConflictException;
 import com.click4bonds.app.Modules.Party.Dto.PanDetailsResponse;
@@ -37,6 +38,7 @@ public class PanDetailsService {
 
     private final PanDetailsRepository panDetailsRepository;
     private final SecretCipher secretCipher;
+    private final AuditLogService auditLogService;
 
     /**
      * Adds or replaces the PAN on a party.
@@ -62,7 +64,15 @@ public class PanDetailsService {
      */
     public PanDetailsResponse submitVerified(Party party, String panNumber) {
 
-        return save(party, panNumber, VerificationStatus.VERIFIED, true);
+        PanDetailsResponse response = save(party, panNumber, VerificationStatus.VERIFIED, true);
+
+        auditLogService.record(
+                "RECORD_PARTY_PAN",
+                "PARTY",
+                party.getId(),
+                "Recorded PAN " + response.panNumber());
+
+        return response;
     }
 
     private PanDetailsResponse save(
@@ -138,6 +148,14 @@ public class PanDetailsService {
 
         log.info("PAN verification for party {} set to {}", party.getId(), status);
 
-        return PanDetailsResponse.of(details, secretCipher.decrypt(details.getPanNumber()));
+        PanDetailsResponse response = PanDetailsResponse.of(details, secretCipher.decrypt(details.getPanNumber()));
+
+        auditLogService.record(
+                "UPDATE_PARTY_PAN_VERIFICATION",
+                "PARTY",
+                party.getId(),
+                "PAN verification -> " + status);
+
+        return response;
     }
 }
