@@ -80,7 +80,8 @@ class AdminBondDetailTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 redisService,
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
     }
 
     // =========================================================
@@ -186,7 +187,8 @@ class AdminBondDetailTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 redisService,
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
         service.getBondsForAdmin(null, PageRequest.of(0, 20));
 
@@ -281,7 +283,8 @@ class AdminBondDetailTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 redisService,
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
         assertNotNull(service.getBondForAdmin(ISIN));
 

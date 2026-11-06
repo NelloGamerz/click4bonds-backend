@@ -36,7 +36,7 @@ class PanDetailsServiceTest {
 
     private final SecretCipher cipher = new SecretCipher(KEY);
 
-    private final PanDetailsService service = new PanDetailsService(repository, cipher);
+    private final PanDetailsService service = new PanDetailsService(repository, cipher, mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
     private final Party party = Party.builder().id(UUID.randomUUID()).legalName("Test").build();
 

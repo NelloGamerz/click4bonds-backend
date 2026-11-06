@@ -3,6 +3,7 @@ package com.click4bonds.app.Modules.DealConfirmation.Service;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CancelledDealResponse;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.CreateDealConfirmationRequest;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentData;
@@ -54,6 +55,7 @@ public class DealConfirmationService {
     private final DealConfirmationSheetValuesFactory sheetValuesFactory;
     private final DealConfirmationDocumentProducer documentProducer;
     private final DocumentProperties documentProperties;
+    private final AuditLogService auditLogService;
 
     /**
      * Outcome of a create request.
@@ -222,6 +224,12 @@ public class DealConfirmationService {
                 confirmed.documentData(),
                 confirmed.sendEmail());
 
+        auditLogService.record(
+                "CONFIRM_DEAL",
+                "DEAL",
+                confirmed.response().getDealConfirmationId(),
+                "Confirmed deal " + confirmed.response().getDealReference());
+
         return confirmed.response();
     }
 
@@ -233,7 +241,16 @@ public class DealConfirmationService {
      * @return the cancelled deal
      */
     public CancelledDealResponse cancelDeal(UUID dealId, UUID employeeId) {
-        return writer.cancel(dealId, employeeId);
+
+        CancelledDealResponse response = writer.cancel(dealId, employeeId);
+
+        auditLogService.record(
+                "CANCEL_DEAL",
+                "DEAL",
+                dealId,
+                "Cancelled deal on " + response.bondName());
+
+        return response;
     }
 
     /**

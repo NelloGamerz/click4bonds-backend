@@ -103,7 +103,8 @@ class BondServiceCacheTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 new RedisServiceImpl(template, mapper),
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
     }
 
     // =========================================================
@@ -236,7 +237,8 @@ class BondServiceCacheTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 unavailable,
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
         BondDetailResponse bond = service.getBond(ISIN, null, false);
 
@@ -261,7 +263,8 @@ class BondServiceCacheTest {
                 mock(BondRequestMapper.class),
                 mock(BondValuationService.class),
                 unavailable,
-                new StorageProperties());
+                new StorageProperties(),
+                mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
         BondDetailResponse bond = service.getBond(ISIN, null, false);
 

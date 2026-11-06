@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Analytics.Model.AnalyticsEventType;
 import com.click4bonds.app.Modules.Analytics.Service.AnalyticsService;
 import com.click4bonds.app.Modules.Bond.Enums.BondOrderStatus;
@@ -37,6 +38,7 @@ public class BondOrderService {
     private final UserService userService;
     private final BondService bondService;
     private final AnalyticsService analyticsService;
+    private final AuditLogService auditLogService;
 
     /**
      * Outcome of a create request.
@@ -161,6 +163,13 @@ public class BondOrderService {
                         "numberOfLots", numberOfLots,
                         "quantity", savedOrder.getQuantity(),
                         "status", savedOrder.getStatus().name()));
+
+        auditLogService.record(
+                "CREATE_ORDER",
+                "ORDER",
+                savedOrder.getId(),
+                "Created order " + savedOrder.getOrderNumber()
+                        + " for customer " + callerId);
 
         return new Result(mapToResponse(savedOrder), false);
     }

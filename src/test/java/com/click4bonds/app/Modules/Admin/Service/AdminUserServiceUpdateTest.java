@@ -46,7 +46,7 @@ class AdminUserServiceUpdateTest {
     private final AdminProfileRepository adminProfileRepository = mock(AdminProfileRepository.class);
 
     private final AdminUserService service =
-            new AdminUserService(userService, contactInquiryService, adminProfileRepository);
+            new AdminUserService(userService, contactInquiryService, adminProfileRepository, mock(AuditLogService.class));
 
     private static User staff(UserRole role) {
 

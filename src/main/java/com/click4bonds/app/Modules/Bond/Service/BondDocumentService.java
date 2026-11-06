@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Bond.Dto.BondDocumentResponse;
 import com.click4bonds.app.Modules.Bond.Dto.ConfirmBondUploadRequest;
 import com.click4bonds.app.Modules.Bond.Dto.PresignBondUploadRequest;
@@ -99,6 +100,7 @@ public class BondDocumentService {
     private final UserService userService;
     private final UploadService uploadService;
     private final ObjectStore objectStore;
+    private final AuditLogService auditLogService;
 
     /**
      * A document ready to be handed to a caller as a download.
@@ -271,7 +273,15 @@ public class BondDocumentService {
                 saved.getId(),
                 saved.getSizeBytes());
 
-        return toResponse(bond.getIsin(), saved);
+        BondDocumentResponse response = toResponse(bond.getIsin(), saved);
+
+        auditLogService.record(
+                "UPLOAD_BOND_DOCUMENT",
+                "BOND_DOCUMENT",
+                saved.getId(),
+                "Uploaded " + saved.getFileName() + " to bond " + bond.getIsin());
+
+        return response;
     }
 
     // =========================================================
@@ -424,6 +434,12 @@ public class BondDocumentService {
                 bond.getIsin(),
                 document.getDocumentType(),
                 documentId);
+
+        auditLogService.record(
+                "DELETE_BOND_DOCUMENT",
+                "BOND_DOCUMENT",
+                documentId,
+                "Deleted " + document.getDocumentType() + " from bond " + bond.getIsin());
     }
 
     // =========================================================

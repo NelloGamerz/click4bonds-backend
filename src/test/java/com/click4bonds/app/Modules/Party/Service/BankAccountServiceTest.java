@@ -35,7 +35,7 @@ class BankAccountServiceTest {
     private final BankAccountRepository repository = mock(BankAccountRepository.class);
 
     private final BankAccountService service =
-            new BankAccountService(repository, new SecretCipher(KEY));
+            new BankAccountService(repository, new SecretCipher(KEY), mock(com.click4bonds.app.Modules.Admin.Service.AuditLogService.class));
 
     private final Party party = Party.builder().id(UUID.randomUUID()).legalName("Test").build();
 

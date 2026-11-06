@@ -6,6 +6,7 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Bond.Models.Bond;
 import com.click4bonds.app.Modules.Bond.Service.BondService;
 import com.click4bonds.app.Modules.Bond.Service.PriceCalculationService;
@@ -44,6 +45,7 @@ public class OfferService {
     private final PriceCalculationService priceCalculationService;
     private final YtmCalculationService ytmCalculationService;
     private final OfferDesignStrategyFactory designFactory;
+    private final AuditLogService auditLogService;
 
     /**
      * Draws the offer as a PDF.
@@ -120,9 +122,17 @@ public class OfferService {
                 offer.ytmPercentage(),
                 request.design());
 
-        return designFactory
+        byte[] pdf = designFactory
                 .strategyFor(request.design())
                 .render(offer);
+
+        auditLogService.record(
+                "CREATE_OFFER",
+                "BOND",
+                null,
+                "Rendered offer PDF for ISIN " + bond.getIsin());
+
+        return pdf;
     }
 
     /**

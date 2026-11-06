@@ -1,6 +1,8 @@
 package com.click4bonds.app.Modules.Admin.Service;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -41,6 +43,7 @@ public class AdminUserService {
     private final UserService userService;
     private final ContactInquiryService contactInquiryService;
     private final AdminProfileRepository adminProfileRepository;
+    private final AuditLogService auditLogService;
 
     @Transactional(readOnly = true)
     public Page<AdminUserSummaryResponse> getUsers(
@@ -70,9 +73,17 @@ public class AdminUserService {
             UUID inquiryId,
             ContactInquiryStatus status) {
 
-        return contactInquiryService.updateStatus(
+        ContactInquiryAdminResponse response = contactInquiryService.updateStatus(
                 inquiryId,
                 status);
+
+        auditLogService.record(
+                "UPDATE_CONTACT_INQUIRY_STATUS",
+                "CONTACT_INQUIRY",
+                inquiryId,
+                "Status -> " + status);
+
+        return response;
     }
 
     /**
@@ -135,6 +146,12 @@ public class AdminUserService {
 
         log.info("Created staff account {} with role {}", saved.getId(), request.role());
 
+        auditLogService.record(
+                "CREATE_USER",
+                "USER",
+                saved.getId(),
+                "Created " + saved.getRole() + " account " + saved.getEmail());
+
         return AdminUserMapper.toDetails(saved);
     }
 
@@ -168,6 +185,10 @@ public class AdminUserService {
 
         User user = userService.getUser(userId);
 
+        // Captured before the change so the entry can state what it changed from.
+        UserRole previousRole = user.getRole();
+        UserStatus previousStatus = user.getStatus();
+
         if (request.role() != null) {
 
             // Refuses a change across the customer/staff line, because it would
@@ -194,6 +215,28 @@ public class AdminUserService {
                     request.accessConfig());
 
             log.info("Updated module access for user {}", userId);
+        }
+
+        List<String> changes = new ArrayList<>();
+
+        if (request.role() != null && request.role() != previousRole) {
+            changes.add("role " + previousRole + " -> " + request.role());
+        }
+
+        if (request.status() != null && request.status() != previousStatus) {
+            changes.add("status " + previousStatus + " -> " + request.status());
+        }
+
+        if (request.accessConfig() != null) {
+            changes.add("module access -> " + request.accessConfig());
+        }
+
+        if (!changes.isEmpty()) {
+            auditLogService.record(
+                    "UPDATE_USER",
+                    "USER",
+                    userId,
+                    String.join("; ", changes));
         }
 
         return AdminUserMapper.toDetails(user);

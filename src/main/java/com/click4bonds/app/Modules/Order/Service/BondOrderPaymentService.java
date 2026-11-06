@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import com.click4bonds.app.Modules.Admin.Service.AuditLogService;
 import com.click4bonds.app.Modules.Common.Exceptions.ResourceNotFoundException;
 import com.click4bonds.app.Modules.DealConfirmation.Dto.DealConfirmationDocumentEvent;
 import com.click4bonds.app.Modules.DealConfirmation.Producer.DealConfirmationDocumentProducer;
@@ -41,6 +42,7 @@ public class BondOrderPaymentService {
     private final DealConfirmationDocumentProducer documentProducer;
     private final DocumentProperties documentProperties;
     private final BondOrderRepository orderRepository;
+    private final AuditLogService auditLogService;
 
     /**
      * Pays for an order on behalf of the account that placed it.
@@ -67,7 +69,18 @@ public class BondOrderPaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order not found: " + orderId));
 
-        return payOrder(order.getCustomer().getId(), orderId);
+        BondOrderPaymentResponse response = payOrder(order.getCustomer().getId(), orderId);
+
+        if (!response.isReplayed()) {
+            auditLogService.record(
+                    "PAY_ORDER",
+                    "ORDER",
+                    response.getOrderId(),
+                    "Paid order " + response.getOrderNumber()
+                            + ", deal " + response.getDealReference());
+        }
+
+        return response;
     }
 
     /**

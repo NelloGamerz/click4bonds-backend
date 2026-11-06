@@ -36,6 +36,7 @@ public class AdminClientService {
     private final ClientRepository clientRepository;
     private final PartyService partyService;
     private final PanDetailsService panDetailsService;
+    private final AuditLogService auditLogService;
 
     public ClientResponse create(CreateClientRequest request) {
 
@@ -55,7 +56,15 @@ public class AdminClientService {
                 .address(request.address())
                 .build();
 
-        return ClientResponse.from(clientRepository.save(client));
+        Client saved = clientRepository.save(client);
+
+        auditLogService.record(
+                "CREATE_CLIENT",
+                "CLIENT",
+                saved.getId(),
+                "Created client " + saved.getName());
+
+        return ClientResponse.from(saved);
     }
 
     /**
@@ -94,7 +103,15 @@ public class AdminClientService {
                     request.address());
         }
 
-        return ClientResponse.from(clientRepository.save(client));
+        Client saved = clientRepository.save(client);
+
+        auditLogService.record(
+                "UPDATE_CLIENT",
+                "CLIENT",
+                saved.getId(),
+                "Updated client " + saved.getName());
+
+        return ClientResponse.from(saved);
     }
 
     /**
@@ -120,12 +137,28 @@ public class AdminClientService {
 
         client.setParty(party);
 
-        return ClientResponse.from(clientRepository.save(client));
+        Client saved = clientRepository.save(client);
+
+        auditLogService.record(
+                "LINK_CLIENT_PARTY",
+                "CLIENT",
+                saved.getId(),
+                "Linked client " + saved.getName() + " to party " + partyId);
+
+        return ClientResponse.from(saved);
     }
 
     public void delete(UUID id) {
 
-        clientRepository.delete(require(id));
+        Client client = require(id);
+
+        clientRepository.delete(client);
+
+        auditLogService.record(
+                "DELETE_CLIENT",
+                "CLIENT",
+                client.getId(),
+                "Deleted client " + client.getName());
     }
 
     public List<ClientResponse> getAll() {
