@@ -22,6 +22,10 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
 
         registry.addInterceptor(auditLogInterceptor)
-                .addPathPatterns("/api/admin/**");
+                .addPathPatterns("/api/admin/**")
+                // Listing users is a bulk read, not an action on an account.
+                // A particular account's details ({id}/details) still pass
+                // through; user creation is recorded by AdminUserService.
+                .excludePathPatterns("/api/admin/users");
     }
 }
