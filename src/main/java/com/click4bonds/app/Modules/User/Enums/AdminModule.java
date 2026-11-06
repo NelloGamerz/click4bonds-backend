@@ -65,7 +65,12 @@ public enum AdminModule {
      * confirmation letter. Separate from {@link #DEAL_CREATION} so the employee
      * who strikes a deal is not necessarily the one who signs it off.
      */
-    DEAL_CONFIRMATION;
+    DEAL_CONFIRMATION,
+
+    /**
+     * Reading the audit trail of what staff accounts have done.
+     */
+    LOG_MANAGEMENT;
 
     /**
      * Resolves a stored or declared module name.

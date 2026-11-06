@@ -1,18 +1,25 @@
 package com.click4bonds.app.Modules.Admin.Service;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import org.springframework.context.annotation.Lazy;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
+import com.click4bonds.app.Modules.Admin.Dto.AuditLogResponse;
 import com.click4bonds.app.Modules.Admin.Model.AuditLog;
 import com.click4bonds.app.Modules.Admin.Repository.AuditLogRepository;
+import com.click4bonds.app.Modules.Common.Exceptions.BadRequestException;
 import com.click4bonds.app.Modules.User.Enums.UserRole;
 import com.click4bonds.app.Modules.User.Model.User;
 import com.click4bonds.app.Modules.User.Service.UserService;
@@ -77,6 +84,40 @@ public class AuditLogService {
 
         write(actor, action, entityType, entityId, details);
         markRecorded();
+    }
+
+    /**
+     * One page of a staff account's audit entries.
+     *
+     * <p>A range with neither bound means the last 24 hours; one supplied bound
+     * is completed with the other (the window ends now, or starts 24 hours
+     * before the given end).</p>
+     *
+     * @param userId   the staff account whose actions are being read
+     * @param from     start of the range, inclusive; null means 24 hours before
+     *                 {@code to}
+     * @param to       end of the range, inclusive; null means now
+     * @param pageable page number, size and sort
+     * @return the matching entries
+     * @throws BadRequestException when {@code from} is after {@code to}
+     */
+    @Transactional(readOnly = true)
+    public Page<AuditLogResponse> getLogs(
+            UUID userId,
+            Instant from,
+            Instant to,
+            Pageable pageable) {
+
+        Instant end = to != null ? to : Instant.now();
+        Instant start = from != null ? from : end.minus(24, ChronoUnit.HOURS);
+
+        if (start.isAfter(end)) {
+            throw new BadRequestException("'from' must be before 'to'");
+        }
+
+        return auditLogRepository
+                .findByPerformedBy_IdAndCreatedAtBetween(userId, start, end, pageable)
+                .map(AuditLogResponse::from);
     }
 
     /**
